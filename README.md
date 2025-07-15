@@ -52,3 +52,15 @@ Environment variables can be set via `.env` file. See `.env.example` for availab
 
 ### Examples
 Refer to the `examples/` directory (if present) for sample usage patterns.
+
+## Architecture
+
+This project follows a modular architecture pattern with separated concerns between different layers.
+
+### Key Components
+- Core business logic lives in the primary source directories
+- Configuration is managed through environment variables and config files
+- Tests validate expected behavior across modules
+
+## Contributing
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute.
