@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-klawva-bg: #0A0A0A;
+  --color-klawva-surface: #111111;
+  --color-klawva-elevated: #1A1A1A;
+  --color-klawva-border: #2A2A2A;
+  --color-klawva-accent: #E8FF47;
+  --color-klawva-orange: #FF4D00;
+  --color-klawva-text: #F5F5F5;
+  --color-klawva-muted: #888888;
+  --color-klawva-dim: #444444;
+
+  --font-syne: var(--font-syne), sans-serif;
+  --font-mono: var(--font-dm-mono), monospace;
+}
+
+body {
+  background-color: var(--color-klawva-bg);
+  color: var(--color-klawva-text);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-klawva-accent);
+  color: var(--color-klawva-bg);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-klawva-border) var(--color-klawva-bg);
+}
