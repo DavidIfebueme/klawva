@@ -12,12 +12,15 @@ from app.features.termination.routes import router as termination_router
 from app.platform.errors.handlers import register_exception_handlers
 from app.platform.http.routes.health import router as health_router
 from app.platform.logging.config import configure_logging
+from app.platform.logging.middleware import register_request_logging
+from app.platform.observability.routes import router as observability_router
 from app.platform.security.middleware import register_security_middleware
 
 
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(title="Klawva Backend", version="0.1.0")
+    register_request_logging(app)
     register_security_middleware(app)
     register_exception_handlers(app)
     app.include_router(health_router)
@@ -30,4 +33,5 @@ def create_app() -> FastAPI:
     app.include_router(inference_router)
     app.include_router(reports_router)
     app.include_router(termination_router)
+    app.include_router(observability_router)
     return app
