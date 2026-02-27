@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.features.payments.routes import router as payments_router
 from app.features.sessions.routes import router as sessions_router
 from app.platform.errors.handlers import register_exception_handlers
 from app.platform.http.routes.health import router as health_router
@@ -12,4 +13,5 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(sessions_router)
+    app.include_router(payments_router)
     return app
