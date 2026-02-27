@@ -41,3 +41,12 @@ def test_not_found_envelope() -> None:
     assert response.json() == {
         "error": {"code": "http_error", "message": "Not Found"}
     }
+
+
+def test_cors_header_present() -> None:
+    response = client.get(
+        "/health",
+        headers={"Origin": "http://localhost:3000"},
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
