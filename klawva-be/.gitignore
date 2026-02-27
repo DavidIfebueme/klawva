@@ -1,0 +1,17 @@
+BACKEND_BUILDOUT_PLAN.md
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+*.db
+.DS_Store
+.idea/
+.vscode/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
