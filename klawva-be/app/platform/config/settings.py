@@ -13,9 +13,11 @@ class Settings(BaseSettings):
     frontend_api_base_url: str = "http://localhost:8000"
 
     digitalocean_api_token: str | None = None
+    digitalocean_api_base_url: str = "https://api.digitalocean.com"
     digitalocean_region: str = "nyc1"
     digitalocean_droplet_size: str = "s-2vcpu-4gb"
     digitalocean_openclaw_image: str = "openclaw"
+    provisioning_max_retries: int = 3
 
     gradient_model_access_key: str | None = None
     gradient_base_url: str = "https://inference.do-ai.run"
