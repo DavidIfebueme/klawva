@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.platform.errors.models import ErrorBody, ErrorEnvelope
+from app.platform.security.redaction import redact_sensitive
 
 logger = logging.getLogger(__name__)
 
@@ -27,5 +28,5 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled error", exc_info=exc)
+        logger.exception("Unhandled error: %s", redact_sensitive(str(exc)), exc_info=exc)
         return _error_response(500, "internal_server_error", "internal_server_error")
