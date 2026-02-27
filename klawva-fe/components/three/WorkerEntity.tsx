@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useRef, useMemo, useState, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
-import { useTerminationCycle, TerminationPhase } from './hooks/useTerminationCycle';
+import { useTerminationCycle } from './hooks/useTerminationCycle';
 
 interface WorkerEntityProps {
   position: [number, number, number];
@@ -30,7 +30,7 @@ export function WorkerEntity({
   
   const [hovered, setHovered] = useState(false);
   
-  const { phaseRef, startTimeRef } = useTerminationCycle(isActive);
+  const { phase, phaseRef, startTimeRef } = useTerminationCycle(isActive);
 
   // Geometry
   const geometry = useMemo(() => {
