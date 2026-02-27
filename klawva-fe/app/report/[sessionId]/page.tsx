@@ -1,33 +1,57 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'motion/react';
 import html2canvas from 'html2canvas';
 import { Navbar } from '../../../components/layout/Navbar';
 import { Footer } from '../../../components/layout/Footer';
 import { KlawvaMark } from '../../../components/icons/KlawvaMark';
 import { ScrapperIcon } from '../../../components/icons/ScrapperIcon';
+import { VendorIcon } from '../../../components/icons/VendorIcon';
+import { ResearcherIcon } from '../../../components/icons/ResearcherIcon';
 import { Button } from '../../../components/ui/Button';
-
-// Mock data
-const mockReport = {
-  agentId: 'scrapper',
-  agentName: 'Klawva Scrapper',
-  dateRange: 'Feb 25 10:02 AM → Feb 26 10:02 AM',
-  stats: [
-    { label: 'Pages visited', value: '1,432' },
-    { label: 'Price alerts triggered', value: '12' },
-    { label: 'Sites monitored', value: '5' },
-  ],
-  summary: 'Successfully monitored Jumia, Konga, and Jiji for Samsung Galaxy A55 price drops. 12 alerts sent via WhatsApp.',
-};
+import { getSessionReport } from '../../../lib/api';
+import { agents, AgentId } from '../../../lib/agents';
 
 export default function MissionReportCardPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
+  const agentId = (searchParams.get('agent') as AgentId) || 'scrapper';
+  const agent = agents[agentId] || agents.scrapper;
+  const AgentIcon =
+    agent.id === 'vendor' ? VendorIcon : agent.id === 'researcher' ? ResearcherIcon : ScrapperIcon;
   const cardRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [report, setReport] = useState<{
+    dateRange: string;
+    stats: { label: string; value: string }[];
+    summary: string;
+  } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadReport = async () => {
+      try {
+        const payload = await getSessionReport(sessionId);
+        if (cancelled) return;
+        setReport(payload);
+        setErrorMessage(null);
+      } catch {
+        if (cancelled) return;
+        setErrorMessage('Report is not available yet.');
+      }
+    };
+
+    void loadReport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -82,19 +106,19 @@ export default function MissionReportCardPage() {
               </div>
               
               <div className="flex items-center gap-6 mb-8">
-                <ScrapperIcon size={64} className="text-klawva-text" />
+                  <AgentIcon size={64} className="text-klawva-text" />
                 <div>
                   <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-klawva-text mb-2">
-                    {mockReport.agentName}
+                    {agent.name}
                   </h1>
                   <div className="font-mono text-klawva-muted text-sm">
-                    {mockReport.dateRange}
+                    {report?.dateRange || 'Mission in progress'}
                   </div>
                 </div>
               </div>
               
               <div className="grid grid-cols-3 gap-4 mb-12">
-                {mockReport.stats.map((stat, i) => (
+                {(report?.stats || []).map((stat, i) => (
                   <div key={i} className="bg-[#0A0A0A] border border-klawva-border rounded p-4 text-center">
                     <div className="font-syne font-bold text-2xl md:text-3xl text-klawva-accent mb-2">
                       {stat.value}
@@ -111,7 +135,7 @@ export default function MissionReportCardPage() {
                   Final Summary
                 </div>
                 <p className="font-mono text-klawva-text text-base leading-relaxed">
-                  {mockReport.summary}
+                  {report?.summary || 'Mission report is not ready yet.'}
                 </p>
               </div>
               
@@ -125,6 +149,12 @@ export default function MissionReportCardPage() {
               </div>
             </div>
           </motion.div>
+
+          {errorMessage && (
+            <div className="mb-8 border border-klawva-orange rounded p-3 font-mono text-klawva-orange text-xs">
+              {errorMessage}
+            </div>
+          )}
           
           {/* Actions */}
           <motion.div
@@ -145,7 +175,7 @@ export default function MissionReportCardPage() {
             <div className="h-px w-full bg-klawva-border my-2" />
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button variant="primary" href={`/hire/${mockReport.agentId}`}>
+              <Button variant="primary" href={`/hire/${agent.id}`}>
                 Hire again →
               </Button>
               <Button variant="ghost" href="/">

@@ -1,110 +1,151 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { KlawvaMark } from '../../../components/icons/KlawvaMark';
 import { PulseRing } from '../../../components/icons/PulseRing';
 import { Button } from '../../../components/ui/Button';
+import {
+  assignTelegramToken,
+  bootstrapProvisioning,
+  getSessionQR,
+  ingestActivity,
+  startProvisioning,
+} from '../../../lib/api';
 
 type HandshakeState = 'provisioning' | 'qr' | 'telegram';
 
 export default function SessionHandshakePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
+  const channel = searchParams.get('channel') === 'telegram' ? 'telegram' : 'whatsapp';
+  const agent = searchParams.get('agent') || '';
+  const endsAt = searchParams.get('endsAt') || '';
 
   const [state, setState] = useState<HandshakeState>('provisioning');
   const [progress, setProgress] = useState(0);
-  const [statusText, setStatusText] = useState('Provisioning server...');
+  const [statusText, setStatusText] = useState('Preparing your worker...');
   const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrExpiresIn, setQrExpiresIn] = useState(20);
-  const [isTelegram, setIsTelegram] = useState(false); // Mock channel type
+  const [qrExpiresIn, setQrExpiresIn] = useState(60);
+  const [telegramToken, setTelegramToken] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Mock provisioning flow
   useEffect(() => {
-    if (state !== 'provisioning') return;
+    let cancelled = false;
 
-    const statuses = [
-      'Provisioning server...',
-      'Loading agent config...',
-      'Connecting to inference...',
-      'Almost ready...',
-    ];
-    let statusIndex = 0;
+    const runHandshake = async () => {
+      try {
+        setStatusText('Starting provisioning...');
+        await ingestActivity({
+          sessionId,
+          eventType: 'provisioning_started',
+          text: 'Provisioning started from checkout handoff',
+          payload: { source: 'frontend' },
+        });
 
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 80) return prev;
-        return prev + Math.random() * 5;
-      });
-    }, 500);
+        setProgress(30);
+        setStatusText('Provisioning resources...');
 
-    const statusInterval = setInterval(() => {
-      statusIndex = (statusIndex + 1) % statuses.length;
-      setStatusText(statuses[statusIndex]);
-    }, 2000);
+        try {
+          await startProvisioning(sessionId);
+        } catch {
+        }
 
-    const finishTimeout = setTimeout(() => {
-      clearInterval(progressInterval);
-      clearInterval(statusInterval);
-      setProgress(100);
-      
-      // Randomly assign channel for mock purposes
-      const channel = Math.random() > 0.5 ? 'whatsapp' : 'telegram';
-      setIsTelegram(channel === 'telegram');
-      
-      if (channel === 'whatsapp') {
-        setQrCode(`klawva-mock-qr-${Date.now()}`);
-        setState('qr');
-      } else {
+        setProgress(55);
+        setStatusText('Bootstrapping worker runtime...');
+
+        try {
+          await bootstrapProvisioning(sessionId);
+        } catch {
+        }
+
+        setProgress(75);
+
+        if (channel === 'whatsapp') {
+          const qr = await getSessionQR(sessionId);
+          if (cancelled) return;
+          setQrCode(qr.qr);
+          setQrExpiresIn(qr.expiresIn);
+          await ingestActivity({
+            sessionId,
+            eventType: 'channel_ready',
+            text: 'WhatsApp QR generated',
+            payload: { channel: 'whatsapp' },
+          });
+          setProgress(100);
+          setState('qr');
+          return;
+        }
+
+        const assigned = await assignTelegramToken(sessionId);
+        if (cancelled) return;
+        setTelegramToken(assigned.token);
+        await ingestActivity({
+          sessionId,
+          eventType: 'channel_ready',
+          text: 'Telegram token assigned',
+          payload: { channel: 'telegram' },
+        });
+        setProgress(100);
         setState('telegram');
+      } catch {
+        if (cancelled) return;
+        setErrorMessage('Failed to prepare this session. Please retry from checkout.');
       }
-    }, 6000);
+    };
+
+    void runHandshake();
 
     return () => {
-      clearInterval(progressInterval);
-      clearInterval(statusInterval);
-      clearTimeout(finishTimeout);
+      cancelled = true;
     };
-  }, [state]);
+  }, [channel, sessionId]);
 
-  // Mock QR refresh flow
   useEffect(() => {
     if (state !== 'qr') return;
 
     const interval = setInterval(() => {
       setQrExpiresIn((prev) => {
         if (prev <= 1) {
-          setQrCode(`klawva-mock-qr-${Date.now()}`);
-          return 20;
+          void getSessionQR(sessionId)
+            .then((payload) => {
+              setQrCode(payload.qr);
+              setQrExpiresIn(payload.expiresIn);
+            })
+            .catch(() => {
+            });
+          return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    // Mock successful scan after 10 seconds
-    const scanTimeout = setTimeout(() => {
-      router.push(`/session/${sessionId}/status`);
-    }, 10000);
-
     return () => {
       clearInterval(interval);
-      clearTimeout(scanTimeout);
     };
-  }, [state, sessionId, router]);
+  }, [sessionId, state]);
 
-  // Mock Telegram redirect flow
-  useEffect(() => {
-    if (state !== 'telegram') return;
+  const goToStatus = async () => {
+    try {
+      await ingestActivity({
+        sessionId,
+        eventType: 'bootstrap_completed',
+        text: 'Handshake completed and worker activated',
+        payload: { source: 'frontend' },
+      });
+    } catch {
+    }
 
-    const redirectTimeout = setTimeout(() => {
-      router.push(`/session/${sessionId}/status`);
-    }, 5000);
-
-    return () => clearTimeout(redirectTimeout);
-  }, [state, sessionId, router]);
+    const params = new URLSearchParams();
+    if (channel) params.set('channel', channel);
+    if (agent) params.set('agent', agent);
+    if (endsAt) params.set('endsAt', endsAt);
+    router.push(`/session/${sessionId}/status?${params.toString()}`);
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-klawva-bg px-6">
@@ -135,6 +176,12 @@ export default function SessionHandshakePage() {
             />
           </div>
         </motion.div>
+      )}
+
+      {errorMessage && (
+        <div className="mb-6 border border-klawva-orange rounded p-3 font-mono text-klawva-orange text-xs max-w-md w-full text-center">
+          {errorMessage}
+        </div>
       )}
 
       {state === 'qr' && qrCode && (
@@ -170,9 +217,13 @@ export default function SessionHandshakePage() {
             Open WhatsApp → tap the three dots → Linked Devices → Link a Device → Scan this code
           </p>
           
-          <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider">
-            QR expires in 0:{qrExpiresIn.toString().padStart(2, '0')}
+          <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-6">
+            QR expires in 0:{Math.max(qrExpiresIn, 0).toString().padStart(2, '0')}
           </div>
+
+          <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
+            I scanned, continue →
+          </Button>
         </motion.div>
       )}
 
@@ -186,16 +237,18 @@ export default function SessionHandshakePage() {
           
           <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your agent is ready</h2>
           <p className="font-mono text-klawva-muted text-sm mb-8">
-            Click the button below. Your Klawva agent will send you a message automatically.
+            Telegram token assigned for this session.
           </p>
+
+          {telegramToken && (
+            <div className="font-mono text-klawva-dim text-xs break-all mb-6">
+              {telegramToken}
+            </div>
+          )}
           
-          <Button variant="primary" size="lg" className="w-full mb-6" href={`/session/${sessionId}/status`}>
-            Open in Telegram →
+          <Button variant="primary" size="lg" className="w-full mb-6" onClick={goToStatus}>
+            Continue to session →
           </Button>
-          
-          <div className="font-mono text-klawva-dim text-xs">
-            Redirecting automatically...
-          </div>
         </motion.div>
       )}
 
