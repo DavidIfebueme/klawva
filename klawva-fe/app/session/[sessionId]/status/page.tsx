@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Navbar } from '../../../../components/layout/Navbar';
 import { Footer } from '../../../../components/layout/Footer';
@@ -9,47 +9,57 @@ import { Badge } from '../../../../components/ui/Badge';
 import { Countdown } from '../../../../components/ui/Countdown';
 import { PulseRing } from '../../../../components/icons/PulseRing';
 import { ScrapperIcon } from '../../../../components/icons/ScrapperIcon';
+import { VendorIcon } from '../../../../components/icons/VendorIcon';
+import { ResearcherIcon } from '../../../../components/icons/ResearcherIcon';
 import { WhatsAppIcon } from '../../../../components/icons/WhatsAppIcon';
 import { TelegramIcon } from '../../../../components/icons/TelegramIcon';
 import { Button } from '../../../../components/ui/Button';
-
-// Mock data
-const mockSession = {
-  agentId: 'scrapper',
-  agentName: 'Klawva Scrapper',
-  channel: 'whatsapp',
-  endsAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-  status: 'active',
-};
-
-const mockActivities = [
-  { id: '1', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(), text: 'Session started. Initializing parameters.' },
-  { id: '2', timestamp: new Date(Date.now() - 1000 * 60 * 4).toISOString(), text: 'Connected to WhatsApp successfully.' },
-  { id: '3', timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString(), text: 'Began monitoring target URLs.' },
-];
+import { agents, AgentId } from '../../../../lib/agents';
+import { getSessionActivity, getSessionStatus } from '../../../../lib/api';
+import { ActivityEntry } from '../../../../types';
 
 export default function SessionStatusPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
-  const router = useRouter();
+  const channel = searchParams.get('channel') === 'telegram' ? 'telegram' : 'whatsapp';
+  const agentId = (searchParams.get('agent') as AgentId) || 'scrapper';
+  const agent = agents[agentId] || agents.scrapper;
+  const endsAt = searchParams.get('endsAt') || '';
+  const AgentIcon =
+    agent.id === 'vendor' ? VendorIcon : agent.id === 'researcher' ? ResearcherIcon : ScrapperIcon;
 
-  const [activities, setActivities] = useState(mockActivities);
+  const [status, setStatus] = useState<'provisioning' | 'ready' | 'active' | 'completed'>('provisioning');
+  const [activities, setActivities] = useState<ActivityEntry[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Mock activity polling
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActivities(prev => [
-        {
-          id: Date.now().toString(),
-          timestamp: new Date().toISOString(),
-          text: `Scanned ${Math.floor(Math.random() * 10) + 1} new pages. No changes detected.`,
-        },
-        ...prev,
-      ]);
-    }, 30000);
+    let cancelled = false;
 
-    return () => clearInterval(interval);
-  }, []);
+    const loadSessionData = async () => {
+      try {
+        const [sessionStatus, sessionActivity] = await Promise.all([
+          getSessionStatus(sessionId),
+          getSessionActivity(sessionId),
+        ]);
+        if (cancelled) return;
+        setStatus(sessionStatus.status);
+        setActivities(sessionActivity.activities.slice().reverse());
+        setErrorMessage(null);
+      } catch {
+        if (cancelled) return;
+        setErrorMessage('Unable to load live session data.');
+      }
+    };
+
+    void loadSessionData();
+    const interval = setInterval(() => void loadSessionData(), 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [sessionId]);
 
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
@@ -68,10 +78,10 @@ export default function SessionStatusPage() {
             <div className="bg-klawva-surface border border-klawva-border rounded-lg p-8">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
-                  <ScrapperIcon size={48} className="text-klawva-accent" />
+                  <AgentIcon size={48} className="text-klawva-accent" />
                   <div>
                     <h1 className="font-syne font-bold text-2xl text-klawva-text mb-1">
-                      {mockSession.agentName}
+                      {agent.name}
                     </h1>
                     <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider">
                       ID: {sessionId.substring(0, 8)}
@@ -81,7 +91,9 @@ export default function SessionStatusPage() {
                 
                 <div className="relative">
                   <PulseRing size={40} className="absolute -top-2 -right-2" />
-                  <Badge variant="active" className="relative z-10">ACTIVE</Badge>
+                  <Badge variant={status === 'completed' ? 'pending' : 'active'} className="relative z-10">
+                    {status.toUpperCase()}
+                  </Badge>
                 </div>
               </div>
               
@@ -89,11 +101,11 @@ export default function SessionStatusPage() {
                 <div className="font-mono text-klawva-muted text-xs uppercase tracking-wider mb-2">
                   Time Remaining
                 </div>
-                <Countdown endsAt={mockSession.endsAt} />
+                {endsAt ? <Countdown endsAt={endsAt} /> : <div className="font-mono text-klawva-dim text-sm">24-hour session</div>}
               </div>
               
               <div className="flex items-center gap-3 mb-8 bg-[#0A0A0A] border border-klawva-border rounded p-4">
-                {mockSession.channel === 'whatsapp' ? (
+                {channel === 'whatsapp' ? (
                   <WhatsAppIcon size={20} className="text-klawva-accent" />
                 ) : (
                   <TelegramIcon size={20} className="text-klawva-accent" />
@@ -104,14 +116,20 @@ export default function SessionStatusPage() {
               <Button 
                 variant="secondary" 
                 className="w-full"
-                href={`/report/${sessionId}`} // Mock link to report for testing
+                href={`/report/${sessionId}?agent=${agent.id}&channel=${channel}`}
               >
-                Message your agent →
+                View mission report →
               </Button>
             </div>
+
+            {errorMessage && (
+              <div className="border border-klawva-orange rounded p-3 font-mono text-klawva-orange text-xs">
+                {errorMessage}
+              </div>
+            )}
             
             <p className="font-mono text-klawva-dim text-xs text-center max-w-sm mx-auto">
-              When your 24 hours are complete, your Mission Report will be delivered here and to your {mockSession.channel === 'whatsapp' ? 'WhatsApp' : 'Telegram'}.
+              When your 24 hours are complete, your Mission Report will be delivered here and to your {channel === 'whatsapp' ? 'WhatsApp' : 'Telegram'}.
             </p>
           </div>
           
@@ -128,7 +146,7 @@ export default function SessionStatusPage() {
                   Your worker has started. Activity will appear here.
                 </div>
               ) : (
-                activities.map((activity, i) => (
+                activities.map((activity) => (
                   <motion.div
                     key={activity.id}
                     initial={{ opacity: 0, y: -10 }}
