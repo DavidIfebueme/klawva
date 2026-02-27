@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.features.activity.routes import router as activity_router
 from app.features.channels.routes import router as channels_router
 from app.features.payments.routes import router as payments_router
 from app.features.provisioning.inference_routes import router as inference_router
@@ -17,6 +18,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(sessions_router)
     app.include_router(channels_router)
+    app.include_router(activity_router)
     app.include_router(payments_router)
     app.include_router(provisioning_router)
     app.include_router(inference_router)
