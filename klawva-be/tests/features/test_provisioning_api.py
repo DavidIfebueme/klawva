@@ -48,6 +48,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     async def drop_models() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
 
     async def override_get_async_session() -> AsyncSession:
         async with session_factory() as session:
@@ -120,3 +121,30 @@ def test_destroy_provisioning(test_client: TestClient) -> None:
     destroy = test_client.post("/api/provisioning/destroy", json={"sessionId": session_id})
     assert destroy.status_code == 200
     assert destroy.json() == {"destroyed": True}
+
+
+def test_bootstrap_provisioned_session(test_client: TestClient) -> None:
+    session_id = _create_session(test_client)
+    start = test_client.post("/api/provisioning/start", json={"sessionId": session_id})
+    assert start.status_code == 200
+
+    bootstrap = test_client.post("/api/provisioning/bootstrap", json={"sessionId": session_id})
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["status"] == "bootstrapped"
+
+    status = test_client.get(f"/api/sessions/{session_id}/status")
+    assert status.status_code == 200
+    assert status.json()["status"] == "active"
+    assert status.json()["connected"] is True
+
+    activity = test_client.get(f"/api/sessions/{session_id}/activity")
+    assert activity.status_code == 200
+    activities = activity.json()["activities"]
+    assert any(item["text"] == "OpenClaw bootstrap completed" for item in activities)
+
+
+def test_bootstrap_requires_provisioning(test_client: TestClient) -> None:
+    session_id = _create_session(test_client)
+
+    bootstrap = test_client.post("/api/provisioning/bootstrap", json={"sessionId": session_id})
+    assert bootstrap.status_code == 409
