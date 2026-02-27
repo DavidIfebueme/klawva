@@ -24,9 +24,12 @@ class Settings(BaseSettings):
 
     paystack_secret_key: str | None = None
     paystack_webhook_secret: str | None = None
+    paystack_base_url: str = "https://api.paystack.co"
 
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
+    stripe_base_url: str = "https://api.stripe.com"
+    stripe_webhook_tolerance_seconds: int = 300
 
     brevo_api_key: str | None = None
     brevo_sender_email: str | None = None
