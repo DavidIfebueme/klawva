@@ -30,6 +30,7 @@ def test_client() -> TestClient:
     async def drop_models() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
 
     async def override_get_async_session() -> AsyncSession:
         async with session_factory() as session:
