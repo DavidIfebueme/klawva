@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.provisioning.bootstrap import bootstrap_openclaw_session
+from app.features.provisioning.bootstrap_contracts import BootstrapRequest, BootstrapResponse
 from app.features.provisioning.contracts import (
     DestroyProvisioningRequest,
     DestroyProvisioningResponse,
@@ -34,3 +36,12 @@ async def destroy_provisioning_endpoint(
 ) -> DestroyProvisioningResponse:
     destroyed = await destroy_provisioning(db, session_id=payload.session_id)
     return DestroyProvisioningResponse(destroyed=destroyed)
+
+
+@router.post("/bootstrap", response_model=BootstrapResponse)
+async def bootstrap_provisioned_session_endpoint(
+    payload: BootstrapRequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> BootstrapResponse:
+    job = await bootstrap_openclaw_session(db, session_id=payload.session_id)
+    return BootstrapResponse(jobId=job.id, status=job.status)
