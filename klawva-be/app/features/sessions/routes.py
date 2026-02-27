@@ -38,7 +38,11 @@ async def create_session_endpoint(
     return CreateSessionResponse(sessionId=session.id)
 
 
-@router.get("/{session_id}/status", response_model=SessionStatusResponse)
+@router.get(
+    "/{session_id}/status",
+    response_model=SessionStatusResponse,
+    response_model_exclude_none=True,
+)
 async def get_session_status_endpoint(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
