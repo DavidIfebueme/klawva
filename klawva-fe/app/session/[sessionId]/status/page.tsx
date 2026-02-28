@@ -31,16 +31,23 @@ export default function SessionStatusPage() {
 
   const [status, setStatus] = useState<'provisioning' | 'ready' | 'active' | 'completed'>('provisioning');
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sessionToken] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
+  });
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    sessionToken ? null : 'Session token missing. Please restart from checkout.',
+  );
 
   useEffect(() => {
+    if (!sessionToken) return;
     let cancelled = false;
 
     const loadSessionData = async () => {
       try {
         const [sessionStatus, sessionActivity] = await Promise.all([
-          getSessionStatus(sessionId),
-          getSessionActivity(sessionId),
+          getSessionStatus(sessionId, sessionToken),
+          getSessionActivity(sessionId, sessionToken),
         ]);
         if (cancelled) return;
         setStatus(sessionStatus.status);
@@ -59,7 +66,7 @@ export default function SessionStatusPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [sessionId]);
+  }, [sessionId, sessionToken]);
 
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
