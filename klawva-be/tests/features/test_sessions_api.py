@@ -60,6 +60,7 @@ def test_create_session(test_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert "sessionId" in body
+    assert "sessionToken" in body
 
 
 def test_status_activity_report_flow(test_client: TestClient) -> None:
@@ -72,19 +73,21 @@ def test_status_activity_report_flow(test_client: TestClient) -> None:
             "paymentRef": "pay_456",
         },
     )
-    session_id = create_response.json()["sessionId"]
+    payload = create_response.json()
+    session_id = payload["sessionId"]
+    headers = {"x-session-token": payload["sessionToken"]}
 
-    status_response = test_client.get(f"/api/sessions/{session_id}/status")
+    status_response = test_client.get(f"/api/sessions/{session_id}/status", headers=headers)
     assert status_response.status_code == 200
     assert status_response.json()["status"] == "provisioning"
 
     assert status_response.json().get("connected") is None
 
-    activity_response = test_client.get(f"/api/sessions/{session_id}/activity")
+    activity_response = test_client.get(f"/api/sessions/{session_id}/activity", headers=headers)
     assert activity_response.status_code == 200
     assert activity_response.json() == {"activities": []}
 
-    report_response = test_client.get(f"/api/sessions/{session_id}/report")
+    report_response = test_client.get(f"/api/sessions/{session_id}/report", headers=headers)
     assert report_response.status_code == 200
     assert report_response.json()["summary"] == "Mission report is not ready yet."
 
@@ -99,7 +102,9 @@ def test_activity_and_report_entries(test_client: TestClient) -> None:
             "paymentRef": "pay_789",
         },
     )
-    session_id = create_response.json()["sessionId"]
+    payload = create_response.json()
+    session_id = payload["sessionId"]
+    headers = {"x-session-token": payload["sessionToken"]}
 
     import asyncio
 
@@ -125,13 +130,13 @@ def test_activity_and_report_entries(test_client: TestClient) -> None:
 
     asyncio.run(seed_data())
 
-    activity_response = test_client.get(f"/api/sessions/{session_id}/activity")
+    activity_response = test_client.get(f"/api/sessions/{session_id}/activity", headers=headers)
     assert activity_response.status_code == 200
     activities = activity_response.json()["activities"]
     assert len(activities) == 1
     assert activities[0]["text"] == "Agent started"
 
-    report_response = test_client.get(f"/api/sessions/{session_id}/report")
+    report_response = test_client.get(f"/api/sessions/{session_id}/report", headers=headers)
     assert report_response.status_code == 200
     assert report_response.json()["stats"] == [{"label": "Pages", "value": "12"}]
     assert report_response.json()["summary"] == "Work completed"
