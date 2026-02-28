@@ -54,27 +54,29 @@ def test_frontend_session_contract_end_to_end(test_client: TestClient) -> None:
     )
     assert create.status_code == 200
     create_body = create.json()
-    assert set(create_body.keys()) == {"sessionId"}
+    assert set(create_body.keys()) == {"sessionId", "sessionToken"}
     session_id = create_body["sessionId"]
+    session_token = create_body["sessionToken"]
+    headers = {"x-session-token": session_token}
 
-    status = test_client.get(f"/api/sessions/{session_id}/status")
+    status = test_client.get(f"/api/sessions/{session_id}/status", headers=headers)
     assert status.status_code == 200
     status_body = status.json()
     assert "status" in status_body
     assert status_body["status"] in {"provisioning", "ready", "active", "completed"}
 
-    qr = test_client.get(f"/api/sessions/{session_id}/qr")
+    qr = test_client.get(f"/api/sessions/{session_id}/qr", headers=headers)
     assert qr.status_code == 200
     qr_body = qr.json()
     assert set(qr_body.keys()) == {"qr", "expiresIn"}
 
-    activity = test_client.get(f"/api/sessions/{session_id}/activity")
+    activity = test_client.get(f"/api/sessions/{session_id}/activity", headers=headers)
     assert activity.status_code == 200
     activity_body = activity.json()
     assert set(activity_body.keys()) == {"activities"}
     assert isinstance(activity_body["activities"], list)
 
-    report = test_client.get(f"/api/sessions/{session_id}/report")
+    report = test_client.get(f"/api/sessions/{session_id}/report", headers=headers)
     assert report.status_code == 200
     report_body = report.json()
     assert set(report_body.keys()) == {"dateRange", "stats", "summary"}
