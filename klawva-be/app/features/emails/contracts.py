@@ -9,3 +9,7 @@ class ContactEmailRequest(BaseModel):
 
 class SendEmailResponse(BaseModel):
     sent: bool
+
+
+class DispatchDueEmailsResponse(BaseModel):
+    sent_count: int = Field(alias="sentCount")
