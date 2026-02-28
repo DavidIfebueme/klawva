@@ -108,6 +108,16 @@ export interface RequestHistoryLinkResponse {
   sent: boolean;
 }
 
+export interface ContactEmailPayload {
+  subject: string;
+  body: string;
+  replyTo?: string;
+}
+
+export interface SendEmailResponse {
+  sent: boolean;
+}
+
 export interface HistorySessionItem {
   sessionId: string;
   agentId: AgentId;
