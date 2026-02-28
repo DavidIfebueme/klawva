@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     frontend_api_base_url: str = "http://localhost:8000"
     telegram_bot_token_pool: str = ""
+    history_magic_link_secret: str | None = None
+    history_magic_link_ttl_minutes: int = 20
 
     digitalocean_api_token: str | None = None
     digitalocean_api_base_url: str = "https://api.digitalocean.com"
