@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 
 from fastapi import HTTPException
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
 from app.features.reports.models import MissionReport
+from app.features.sessions.auth import generate_session_token, hash_session_token
 from app.features.sessions.models import Session
 
 SessionState = Literal["provisioning", "ready", "active", "completed"]
@@ -26,18 +27,28 @@ async def create_session(
     channel: str,
     brief: dict[str, str],
     payment_ref: str,
-) -> Session:
+) -> tuple[Session, str]:
+    session_token = generate_session_token()
     session = Session(
         agent_id=agent_id,
         channel=channel,
         brief=brief,
         payment_ref=payment_ref,
+        session_token_hash=hash_session_token(session_token),
         status="provisioning",
     )
     db.add(session)
     await db.commit()
     await db.refresh(session)
-    return session
+    return session, session_token
+
+
+def ensure_session_window(session: Session) -> None:
+    now = datetime.now(UTC)
+    if session.started_at is None:
+        session.started_at = now
+    if session.expires_at is None:
+        session.expires_at = session.started_at + timedelta(hours=24)
 
 
 async def get_session_or_404(db: AsyncSession, session_id: str) -> Session:
