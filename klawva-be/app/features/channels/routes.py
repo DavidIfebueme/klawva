@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
+from app.features.sessions.auth import assert_session_access, get_session_token_header
 from app.platform.db.session import get_async_session
 
 router = APIRouter(tags=["channels"])
@@ -24,8 +25,14 @@ class TelegramAssignResponse(BaseModel):
 @router.get("/api/sessions/{session_id}/qr", response_model=SessionQrResponse)
 async def get_session_qr_endpoint(
     session_id: str,
+    session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> SessionQrResponse:
+    await assert_session_access(
+        db,
+        session_id=session_id,
+        session_token=session_token,
+    )
     qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=session_id)
     return SessionQrResponse(qr=qr, expiresIn=expires_in)
 
