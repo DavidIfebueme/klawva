@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
+from app.features.emails.service import send_shift_ended_email
 from app.features.provisioning.service import destroy_provisioning
 from app.features.reports.models import MissionReport
 from app.features.sessions.models import Session
@@ -66,6 +67,8 @@ async def execute_due_terminations(db: AsyncSession) -> int:
         session.completed_at = now
         job.status = "terminated"
         job.executed_at = now
+
+        await send_shift_ended_email(db, session=session)
 
         db.add(
             ActivityEvent(
