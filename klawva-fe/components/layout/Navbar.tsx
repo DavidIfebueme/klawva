@@ -15,6 +15,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-6 mr-4">
             <Link href="/#agents" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Agents</Link>
             <Link href="/#pricing" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Pricing</Link>
+            <Link href="/history" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">History</Link>
           </div>
           <Button variant="primary" size="sm" href="/#agents">Hire an Agent</Button>
         </div>
