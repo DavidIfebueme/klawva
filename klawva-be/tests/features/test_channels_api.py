@@ -38,6 +38,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
     monkeypatch.setattr(settings, "telegram_bot_token_pool", "tokenA,tokenB")
+    monkeypatch.setattr(settings, "internal_service_token", "internal-token")
 
     client = TestClient(app)
     yield client
@@ -45,7 +46,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(drop_models())
 
 
-def _create_session(client: TestClient, *, agent: str, channel: str) -> str:
+def _create_session(client: TestClient, *, agent: str, channel: str) -> tuple[str, str]:
     response = client.post(
         "/api/sessions",
         json={
@@ -56,13 +57,17 @@ def _create_session(client: TestClient, *, agent: str, channel: str) -> str:
         },
     )
     assert response.status_code == 200
-    return response.json()["sessionId"]
+    payload = response.json()
+    return payload["sessionId"], payload["sessionToken"]
 
 
 def test_get_session_qr(test_client: TestClient) -> None:
-    session_id = _create_session(test_client, agent="scrapper", channel="whatsapp")
+    session_id, session_token = _create_session(test_client, agent="scrapper", channel="whatsapp")
 
-    response = test_client.get(f"/api/sessions/{session_id}/qr")
+    response = test_client.get(
+        f"/api/sessions/{session_id}/qr",
+        headers={"x-session-token": session_token},
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -71,18 +76,26 @@ def test_get_session_qr(test_client: TestClient) -> None:
 
 
 def test_assign_telegram_token_non_vendor(test_client: TestClient) -> None:
-    session_id = _create_session(test_client, agent="researcher", channel="telegram")
+    session_id, _ = _create_session(test_client, agent="researcher", channel="telegram")
 
-    response = test_client.post("/api/channels/telegram/assign", json={"sessionId": session_id})
+    response = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
 
     assert response.status_code == 200
     assert response.json()["token"] == "tokenA"
 
 
 def test_assign_telegram_token_vendor_rejected(test_client: TestClient) -> None:
-    session_id = _create_session(test_client, agent="vendor", channel="telegram")
+    session_id, _ = _create_session(test_client, agent="vendor", channel="telegram")
 
-    response = test_client.post("/api/channels/telegram/assign", json={"sessionId": session_id})
+    response = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
 
     assert response.status_code == 409
     assert response.json() == {

@@ -6,6 +6,7 @@ import { agents, AgentId } from '@/lib/agents';
 import { ScrapperIcon } from '@/components/icons/ScrapperIcon';
 import { VendorIcon } from '@/components/icons/VendorIcon';
 import { ResearcherIcon } from '@/components/icons/ResearcherIcon';
+import { HirePriceCardBits } from '@/components/billing/HirePriceCardBits';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 
@@ -101,13 +102,7 @@ export default async function HireAgentPage({ params }: { params: Promise<{ agen
               <h2 className="font-syne font-bold text-2xl text-klawva-text">{agent.name}</h2>
             </div>
 
-            <div className="mb-8">
-              <div className="flex items-baseline gap-4 mb-2">
-                <span className="font-syne font-extrabold text-5xl text-klawva-accent">₦2,500</span>
-                <span className="font-mono text-klawva-muted">or $1.99</span>
-              </div>
-              <p className="font-mono text-klawva-dim text-sm">per 24-hour session</p>
-            </div>
+            <HirePriceCardBits />
 
             <div className="mb-8 p-4 bg-klawva-elevated border border-klawva-border rounded flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-klawva-accent animate-pulse" />
@@ -121,9 +116,6 @@ export default async function HireAgentPage({ params }: { params: Promise<{ agen
             </Button>
 
             <div className="text-center">
-              <p className="font-mono text-klawva-dim text-xs mb-4">
-                Secure payment via Paystack (NG) or Stripe (Global)
-              </p>
               <Badge variant="pending" className="px-3 py-1 text-xs tracking-widest">[ 24HRS ]</Badge>
             </div>
 
