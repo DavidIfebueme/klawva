@@ -3,8 +3,9 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../ui/Card';
+import { useBillingProfile } from '@/hooks/use-billing-profile';
 
-const reasons = [
+const baseReasons = [
   {
     title: 'Destruction by Default',
     desc: 'No data stored. No profiles built. Session ends, everything is wiped. Your data is yours.',
@@ -15,7 +16,7 @@ const reasons = [
   },
   {
     title: 'Costs less than lunch',
-    desc: '₦2,500. No monthly commitment. Pay only when you need it. No hidden fees.',
+    desc: 'No monthly commitment. Pay only when you need it. No hidden fees.',
   },
   {
     title: 'Lives where you already are',
@@ -24,6 +25,16 @@ const reasons = [
 ];
 
 export function WhyKlawva() {
+  const { profile } = useBillingProfile();
+  const reasons = baseReasons.map((reason) =>
+    reason.title === 'Costs less than lunch'
+      ? {
+          ...reason,
+          desc: `${profile.amountDisplay}. No monthly commitment. Pay only when you need it. No hidden fees.`,
+        }
+      : reason,
+  );
+
   return (
     <section id="why" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-7xl mx-auto">
