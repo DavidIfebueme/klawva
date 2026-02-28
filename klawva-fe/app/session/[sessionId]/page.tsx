@@ -8,11 +8,8 @@ import { KlawvaMark } from '../../../components/icons/KlawvaMark';
 import { PulseRing } from '../../../components/icons/PulseRing';
 import { Button } from '../../../components/ui/Button';
 import {
-  assignTelegramToken,
-  bootstrapProvisioning,
+  activateSession,
   getSessionQR,
-  ingestActivity,
-  startProvisioning,
 } from '../../../lib/api';
 
 type HandshakeState = 'provisioning' | 'qr' | 'telegram';
@@ -25,6 +22,7 @@ export default function SessionHandshakePage() {
   const channel = searchParams.get('channel') === 'telegram' ? 'telegram' : 'whatsapp';
   const agent = searchParams.get('agent') || '';
   const endsAt = searchParams.get('endsAt') || '';
+  const [sessionToken, setSessionToken] = useState<string>('');
 
   const [state, setState] = useState<HandshakeState>('provisioning');
   const [progress, setProgress] = useState(0);
@@ -39,59 +37,35 @@ export default function SessionHandshakePage() {
 
     const runHandshake = async () => {
       try {
+        const token = sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
+        if (!token) {
+          setErrorMessage('Session token missing. Please restart checkout.');
+          return;
+        }
+        setSessionToken(token);
         setStatusText('Starting provisioning...');
-        await ingestActivity({
-          sessionId,
-          eventType: 'provisioning_started',
-          text: 'Provisioning started from checkout handoff',
-          payload: { source: 'frontend' },
-        });
 
         setProgress(30);
         setStatusText('Provisioning resources...');
-
-        try {
-          await startProvisioning(sessionId);
-        } catch {
-        }
-
         setProgress(55);
         setStatusText('Bootstrapping worker runtime...');
-
-        try {
-          await bootstrapProvisioning(sessionId);
-        } catch {
-        }
-
         setProgress(75);
 
-        if (channel === 'whatsapp') {
-          const qr = await getSessionQR(sessionId);
-          if (cancelled) return;
-          setQrCode(qr.qr);
-          setQrExpiresIn(qr.expiresIn);
-          await ingestActivity({
-            sessionId,
-            eventType: 'channel_ready',
-            text: 'WhatsApp QR generated',
-            payload: { channel: 'whatsapp' },
-          });
-          setProgress(100);
+        const activation = await activateSession(sessionId, token);
+        if (cancelled) return;
+
+        if (activation.qr) {
+          setQrCode(activation.qr);
+          setQrExpiresIn(activation.expiresIn || 60);
           setState('qr');
-          return;
         }
 
-        const assigned = await assignTelegramToken(sessionId);
-        if (cancelled) return;
-        setTelegramToken(assigned.token);
-        await ingestActivity({
-          sessionId,
-          eventType: 'channel_ready',
-          text: 'Telegram token assigned',
-          payload: { channel: 'telegram' },
-        });
+        if (activation.telegramToken) {
+          setTelegramToken(activation.telegramToken);
+          setState('telegram');
+        }
+
         setProgress(100);
-        setState('telegram');
       } catch {
         if (cancelled) return;
         setErrorMessage('Failed to prepare this session. Please retry from checkout.');
@@ -111,7 +85,8 @@ export default function SessionHandshakePage() {
     const interval = setInterval(() => {
       setQrExpiresIn((prev) => {
         if (prev <= 1) {
-          void getSessionQR(sessionId)
+          if (!sessionToken) return 0;
+          void getSessionQR(sessionId, sessionToken)
             .then((payload) => {
               setQrCode(payload.qr);
               setQrExpiresIn(payload.expiresIn);
@@ -127,19 +102,9 @@ export default function SessionHandshakePage() {
     return () => {
       clearInterval(interval);
     };
-  }, [sessionId, state]);
+  }, [sessionId, sessionToken, state]);
 
   const goToStatus = async () => {
-    try {
-      await ingestActivity({
-        sessionId,
-        eventType: 'bootstrap_completed',
-        text: 'Handshake completed and worker activated',
-        payload: { source: 'frontend' },
-      });
-    } catch {
-    }
-
     const params = new URLSearchParams();
     if (channel) params.set('channel', channel);
     if (agent) params.set('agent', agent);
