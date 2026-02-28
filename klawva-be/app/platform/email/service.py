@@ -20,7 +20,14 @@ def _require_brevo_settings() -> None:
         raise EmailServiceError("CONTACT_RECIPIENT_EMAIL is not configured")
 
 
-async def send_contact_email(*, subject: str, body: str, reply_to: str | None = None) -> None:
+async def send_transactional_email(
+    *,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    reply_to: str | None = None,
+) -> None:
     _require_brevo_settings()
 
     payload: dict = {
@@ -28,10 +35,13 @@ async def send_contact_email(*, subject: str, body: str, reply_to: str | None = 
             "name": settings.brevo_sender_name,
             "email": settings.brevo_sender_email,
         },
-        "to": [{"email": settings.contact_recipient_email}],
+        "to": [{"email": to_email}],
         "subject": subject,
-        "textContent": body,
+        "textContent": text_body,
     }
+
+    if html_body:
+        payload["htmlContent"] = html_body
 
     if reply_to:
         payload["replyTo"] = {"email": reply_to}
@@ -50,3 +60,12 @@ async def send_contact_email(*, subject: str, body: str, reply_to: str | None = 
     if resp.status_code >= 400:
         detail = resp.text
         raise EmailServiceError(f"Brevo API error {resp.status_code}: {detail}")
+
+
+async def send_contact_email(*, subject: str, body: str, reply_to: str | None = None) -> None:
+    await send_transactional_email(
+        to_email=settings.contact_recipient_email or "",
+        subject=subject,
+        text_body=body,
+        reply_to=reply_to,
+    )
