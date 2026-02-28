@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.features.termination.models import TerminationJob
 from app.main import app
+from app.platform.config import settings
 from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
 from app.platform.db.session import get_async_session
@@ -45,6 +46,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
     monkeypatch.setattr("app.features.termination.service.destroy_provisioning", fake_destroy)
+    monkeypatch.setattr(settings, "internal_service_token", "internal-token")
 
     client = TestClient(app)
     yield client
@@ -52,7 +54,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(drop_models())
 
 
-def _create_session(client: TestClient) -> str:
+def _create_session(client: TestClient) -> tuple[str, str]:
     response = client.post(
         "/api/sessions",
         json={
@@ -63,13 +65,18 @@ def _create_session(client: TestClient) -> str:
         },
     )
     assert response.status_code == 200
-    return response.json()["sessionId"]
+    payload = response.json()
+    return payload["sessionId"], payload["sessionToken"]
 
 
 def test_schedule_termination(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
+    session_id, _ = _create_session(test_client)
 
-    response = test_client.post("/api/termination/schedule", json={"sessionId": session_id})
+    response = test_client.post(
+        "/api/termination/schedule",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
 
     assert response.status_code == 200
     assert response.json()["sessionId"] == session_id
@@ -77,8 +84,12 @@ def test_schedule_termination(test_client: TestClient) -> None:
 
 
 def test_execute_due_termination(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
-    schedule = test_client.post("/api/termination/schedule", json={"sessionId": session_id})
+    session_id, session_token = _create_session(test_client)
+    schedule = test_client.post(
+        "/api/termination/schedule",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert schedule.status_code == 200
 
     import asyncio
@@ -96,10 +107,16 @@ def test_execute_due_termination(test_client: TestClient) -> None:
 
     asyncio.run(move_due())
 
-    execute = test_client.post("/api/termination/execute-due")
+    execute = test_client.post(
+        "/api/termination/execute-due",
+        headers={"x-internal-token": "internal-token"},
+    )
     assert execute.status_code == 200
     assert execute.json() == {"terminated": 1}
 
-    status = test_client.get(f"/api/sessions/{session_id}/status")
+    status = test_client.get(
+        f"/api/sessions/{session_id}/status",
+        headers={"x-session-token": session_token},
+    )
     assert status.status_code == 200
     assert status.json()["status"] == "completed"
