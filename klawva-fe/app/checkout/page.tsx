@@ -4,7 +4,8 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { agents, AgentId, Channel } from '../../lib/agents';
-import { createSession, initializePayment } from '../../lib/api';
+import { createSession, getBillingProfile, initializePayment } from '../../lib/api';
+import { BillingProfile } from '../../types';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
@@ -29,6 +30,8 @@ function CheckoutContent() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [channel, setChannel] = useState<Channel | null>(agent?.channels.length === 1 ? agent.channels[0] : null);
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [billingProfile, setBillingProfile] = useState<BillingProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -37,6 +40,32 @@ function CheckoutContent() {
       router.push('/');
     }
   }, [agent, router]);
+
+  useEffect(() => {
+    let active = true;
+    getBillingProfile()
+      .then((profile) => {
+        if (active) {
+          setBillingProfile(profile);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setBillingProfile({
+            provider: 'stripe',
+            amountMinor: 199,
+            currency: 'USD',
+            amountDisplay: '$1.99',
+            region: 'global',
+            countryCode: null,
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (!agent) return null;
 
@@ -65,9 +94,19 @@ function CheckoutContent() {
     setStep(3);
   };
 
-  const handlePayment = async (provider: 'paystack' | 'stripe') => {
+  const handlePayment = async () => {
     if (!channel) {
       setErrorMessage('Please select a channel before payment.');
+      return;
+    }
+
+    if (!billingProfile) {
+      setErrorMessage('Preparing location billing. Please try again in a moment.');
+      return;
+    }
+
+    if (!customerEmail.trim()) {
+      setErrorMessage('Enter your email to receive shift updates and history link.');
       return;
     }
 
@@ -75,24 +114,19 @@ function CheckoutContent() {
     setErrorMessage(null);
 
     try {
-      const paymentRef = `pending_${provider}_${Date.now()}`;
-      const { sessionId } = await createSession({
+      const paymentRef = `pending_${billingProfile.provider}_${Date.now()}`;
+      const { sessionId, sessionToken } = await createSession({
         agentId: agent.id,
         channel,
         brief,
         paymentRef,
       });
-
-      const amountMinor = provider === 'paystack' ? Math.round(agent.priceNGN * 100) : Math.round(agent.priceUSD * 100);
-      const currency = provider === 'paystack' ? 'NGN' : 'USD';
-      const customerEmail = brief.email || brief.customer_email || undefined;
+      sessionStorage.setItem(`klawva_session_token:${sessionId}`, sessionToken);
 
       const payment = await initializePayment({
         sessionId,
-        provider,
-        amountMinor,
-        currency,
-        customerEmail,
+        provider: billingProfile.provider,
+        customerEmail: customerEmail.trim(),
       });
 
       if (payment.checkoutUrl) {
@@ -104,7 +138,7 @@ function CheckoutContent() {
       const params = new URLSearchParams({
         agent: agent.id,
         channel,
-        provider,
+        provider: payment.provider,
         paymentRef: payment.providerReference,
         endsAt,
       });
@@ -263,8 +297,12 @@ function CheckoutContent() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-syne font-bold text-2xl text-klawva-accent">₦2,500</div>
-                  <div className="font-mono text-klawva-muted text-xs">or $1.99</div>
+                  <div className="font-syne font-bold text-2xl text-klawva-accent">
+                    {billingProfile?.amountDisplay ?? '$1.99'}
+                  </div>
+                  <div className="font-mono text-klawva-muted text-xs">
+                    {billingProfile?.provider === 'paystack' ? 'Paystack (Nigeria)' : 'Stripe (Global)'}
+                  </div>
                 </div>
               </div>
               
@@ -277,23 +315,23 @@ function CheckoutContent() {
             </div>
             
             <div className="flex flex-col gap-4 mb-8">
+              <input
+                type="email"
+                value={customerEmail}
+                onChange={(event) => setCustomerEmail(event.target.value)}
+                placeholder="Your email for shift updates"
+                className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
+              />
               <Button 
                 variant="primary" 
                 size="lg" 
                 className="w-full"
                 loading={loading}
-                onClick={() => handlePayment('paystack')}
+                onClick={handlePayment}
               >
-                Pay with Paystack (₦2,500)
-              </Button>
-              <Button 
-                variant="secondary" 
-                size="lg" 
-                className="w-full"
-                loading={loading}
-                onClick={() => handlePayment('stripe')}
-              >
-                Pay with Stripe ($1.99)
+                {billingProfile?.provider === 'paystack'
+                  ? 'Pay with Paystack (₦2,500)'
+                  : 'Pay with Stripe ($1.99)'}
               </Button>
             </div>
 

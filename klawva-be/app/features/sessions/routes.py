@@ -1,7 +1,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
+from app.features.emails.service import send_shift_started_email
+from app.features.provisioning.bootstrap import bootstrap_openclaw_session
+from app.features.provisioning.service import start_provisioning
+from app.features.sessions.auth import assert_session_access, get_session_token_header
 from app.features.sessions.contracts import (
+    ActivateSessionResponse,
     ActivityEntry,
     CreateSessionPayload,
     CreateSessionResponse,
@@ -12,12 +18,13 @@ from app.features.sessions.contracts import (
 )
 from app.features.sessions.service import (
     create_session,
+    ensure_session_window,
     get_connected_flag,
     get_session_activity,
-    get_session_or_404,
     get_session_report,
     normalize_session_status,
 )
+from app.features.termination.service import schedule_termination
 from app.platform.db.session import get_async_session
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -28,14 +35,56 @@ async def create_session_endpoint(
     payload: CreateSessionPayload,
     db: AsyncSession = Depends(get_async_session),
 ) -> CreateSessionResponse:
-    session = await create_session(
+    session, session_token = await create_session(
         db,
         agent_id=payload.agent_id,
         channel=payload.channel,
         brief=payload.brief,
         payment_ref=payload.payment_ref,
     )
-    return CreateSessionResponse(sessionId=session.id)
+    return CreateSessionResponse(sessionId=session.id, sessionToken=session_token)
+
+
+@router.post("/{session_id}/activate", response_model=ActivateSessionResponse)
+async def activate_session_endpoint(
+    session_id: str,
+    session_token: str = Depends(get_session_token_header),
+    db: AsyncSession = Depends(get_async_session),
+) -> ActivateSessionResponse:
+    session = await assert_session_access(
+        db,
+        session_id=session_id,
+        session_token=session_token,
+    )
+
+    await start_provisioning(db, session_id=session.id)
+    await bootstrap_openclaw_session(db, session_id=session.id)
+
+    qr: str | None = None
+    expires_in: int | None = None
+    telegram_token: str | None = None
+
+    if session.channel == "whatsapp":
+        qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=session.id)
+    else:
+        telegram_token = await assign_telegram_bot_token(db, session_id=session.id)
+
+    ensure_session_window(session)
+    session.status = "active"
+    await db.commit()
+    await schedule_termination(db, session_id=session.id)
+
+    if session.customer_email:
+        await send_shift_started_email(db, session=session)
+
+    return ActivateSessionResponse(
+        status=session.status,
+        startedAt=session.started_at.isoformat() if session.started_at else None,
+        endsAt=session.expires_at.isoformat() if session.expires_at else None,
+        qr=qr,
+        expiresIn=expires_in,
+        telegramToken=telegram_token,
+    )
 
 
 @router.get(
@@ -45,9 +94,14 @@ async def create_session_endpoint(
 )
 async def get_session_status_endpoint(
     session_id: str,
+    session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> SessionStatusResponse:
-    session = await get_session_or_404(db, session_id)
+    session = await assert_session_access(
+        db,
+        session_id=session_id,
+        session_token=session_token,
+    )
     normalized_status = normalize_session_status(session.status)
     connected = get_connected_flag(normalized_status)
     return SessionStatusResponse(status=normalized_status, connected=connected)
@@ -56,8 +110,14 @@ async def get_session_status_endpoint(
 @router.get("/{session_id}/activity", response_model=SessionActivityResponse)
 async def get_session_activity_endpoint(
     session_id: str,
+    session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> SessionActivityResponse:
+    await assert_session_access(
+        db,
+        session_id=session_id,
+        session_token=session_token,
+    )
     events = await get_session_activity(db, session_id)
     activities = [
         ActivityEntry(
@@ -73,8 +133,14 @@ async def get_session_activity_endpoint(
 @router.get("/{session_id}/report", response_model=SessionReportResponse)
 async def get_session_report_endpoint(
     session_id: str,
+    session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> SessionReportResponse:
+    await assert_session_access(
+        db,
+        session_id=session_id,
+        session_token=session_token,
+    )
     date_range, stats, summary = await get_session_report(db, session_id)
     return SessionReportResponse(
         dateRange=date_range,

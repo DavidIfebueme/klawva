@@ -59,6 +59,8 @@ async def initialize_payment(
     )
 
     db.add(payment)
+    if customer_email:
+        session.customer_email = customer_email.strip().lower()
     if init_result.status == "confirmed":
         session.status = "ready"
 
