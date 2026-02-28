@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+from app.platform.config import settings
 from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
 from app.platform.db.session import get_async_session
@@ -63,6 +64,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "app.features.provisioning.service.DigitalOceanClient",
         lambda: FakeDigitalOceanClient(),
     )
+    monkeypatch.setattr(settings, "internal_service_token", "internal-token")
 
     client = TestClient(app)
     yield client
@@ -70,7 +72,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(drop_models())
 
 
-def _create_session(client: TestClient) -> str:
+def _create_session(client: TestClient) -> tuple[str, str]:
     response = client.post(
         "/api/sessions",
         json={
@@ -81,13 +83,18 @@ def _create_session(client: TestClient) -> str:
         },
     )
     assert response.status_code == 200
-    return response.json()["sessionId"]
+    payload = response.json()
+    return payload["sessionId"], payload["sessionToken"]
 
 
 def test_start_provisioning_success(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
+    session_id, session_token = _create_session(test_client)
 
-    response = test_client.post("/api/provisioning/start", json={"sessionId": session_id})
+    response = test_client.post(
+        "/api/provisioning/start",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -95,7 +102,10 @@ def test_start_provisioning_success(test_client: TestClient) -> None:
     assert payload["dropletId"] == "12345"
     assert payload["attemptCount"] == 1
 
-    status = test_client.get(f"/api/sessions/{session_id}/status")
+    status = test_client.get(
+        f"/api/sessions/{session_id}/status",
+        headers={"x-session-token": session_token},
+    )
     assert status.status_code == 200
     assert status.json()["status"] == "ready"
 
@@ -103,48 +113,78 @@ def test_start_provisioning_success(test_client: TestClient) -> None:
 def test_start_provisioning_failure_retry(
     test_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session_id = _create_session(test_client)
+    session_id, _ = _create_session(test_client)
     monkeypatch.setattr(
         "app.features.provisioning.service.DigitalOceanClient",
         lambda: FakeDigitalOceanClient(should_fail=True),
     )
 
-    response = test_client.post("/api/provisioning/start", json={"sessionId": session_id})
+    response = test_client.post(
+        "/api/provisioning/start",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert response.status_code == 502
 
 
 def test_destroy_provisioning(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
-    start = test_client.post("/api/provisioning/start", json={"sessionId": session_id})
+    session_id, _ = _create_session(test_client)
+    start = test_client.post(
+        "/api/provisioning/start",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert start.status_code == 200
 
-    destroy = test_client.post("/api/provisioning/destroy", json={"sessionId": session_id})
+    destroy = test_client.post(
+        "/api/provisioning/destroy",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert destroy.status_code == 200
     assert destroy.json() == {"destroyed": True}
 
 
 def test_bootstrap_provisioned_session(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
-    start = test_client.post("/api/provisioning/start", json={"sessionId": session_id})
+    session_id, session_token = _create_session(test_client)
+    start = test_client.post(
+        "/api/provisioning/start",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert start.status_code == 200
 
-    bootstrap = test_client.post("/api/provisioning/bootstrap", json={"sessionId": session_id})
+    bootstrap = test_client.post(
+        "/api/provisioning/bootstrap",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert bootstrap.status_code == 200
     assert bootstrap.json()["status"] == "bootstrapped"
 
-    status = test_client.get(f"/api/sessions/{session_id}/status")
+    status = test_client.get(
+        f"/api/sessions/{session_id}/status",
+        headers={"x-session-token": session_token},
+    )
     assert status.status_code == 200
     assert status.json()["status"] == "active"
     assert status.json()["connected"] is True
 
-    activity = test_client.get(f"/api/sessions/{session_id}/activity")
+    activity = test_client.get(
+        f"/api/sessions/{session_id}/activity",
+        headers={"x-session-token": session_token},
+    )
     assert activity.status_code == 200
     activities = activity.json()["activities"]
     assert any(item["text"] == "OpenClaw bootstrap completed" for item in activities)
 
 
 def test_bootstrap_requires_provisioning(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
+    session_id, _ = _create_session(test_client)
 
-    bootstrap = test_client.post("/api/provisioning/bootstrap", json={"sessionId": session_id})
+    bootstrap = test_client.post(
+        "/api/provisioning/bootstrap",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
     assert bootstrap.status_code == 409
