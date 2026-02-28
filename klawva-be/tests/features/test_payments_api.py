@@ -105,7 +105,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(drop_models())
 
 
-def _create_session(client: TestClient, channel: str = "whatsapp") -> str:
+def _create_session(client: TestClient, channel: str = "whatsapp") -> tuple[str, str]:
     response = client.post(
         "/api/sessions",
         json={
@@ -116,11 +116,12 @@ def _create_session(client: TestClient, channel: str = "whatsapp") -> str:
         },
     )
     assert response.status_code == 200
-    return response.json()["sessionId"]
+    payload = response.json()
+    return payload["sessionId"], payload["sessionToken"]
 
 
 def test_initialize_payment_paystack(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
+    session_id, _ = _create_session(test_client)
 
     response = test_client.post(
         "/api/payments/initialize",
@@ -131,6 +132,7 @@ def test_initialize_payment_paystack(test_client: TestClient) -> None:
             "currency": "NGN",
             "customerEmail": "owner@example.com",
         },
+        headers={"cf-ipcountry": "NG"},
     )
 
     assert response.status_code == 200
@@ -138,10 +140,12 @@ def test_initialize_payment_paystack(test_client: TestClient) -> None:
     assert payload["provider"] == "paystack"
     assert payload["providerReference"] == "pay_ref_123"
     assert payload["checkoutUrl"] == "https://paystack.local/checkout"
+    assert payload["amountMinor"] == 250000
+    assert payload["currency"] == "NGN"
 
 
 def test_initialize_payment_stripe(test_client: TestClient) -> None:
-    session_id = _create_session(test_client)
+    session_id, _ = _create_session(test_client)
 
     response = test_client.post(
         "/api/payments/initialize",
@@ -158,12 +162,40 @@ def test_initialize_payment_stripe(test_client: TestClient) -> None:
     assert payload["provider"] == "stripe"
     assert payload["providerReference"] == "pi_123"
     assert payload["clientSecret"] == "cs_test_123"
+    assert payload["amountMinor"] == 199
+    assert payload["currency"] == "USD"
+
+
+def test_get_billing_profile_nigeria(test_client: TestClient) -> None:
+    response = test_client.get("/api/payments/billing-profile", headers={"cf-ipcountry": "NG"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "paystack",
+        "amountMinor": 250000,
+        "currency": "NGN",
+        "amountDisplay": "₦2,500",
+        "region": "nigeria",
+        "countryCode": "NG",
+    }
+
+
+def test_get_billing_profile_global_default(test_client: TestClient) -> None:
+    response = test_client.get("/api/payments/billing-profile")
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "stripe",
+        "amountMinor": 199,
+        "currency": "USD",
+        "amountDisplay": "$1.99",
+        "region": "global",
+        "countryCode": None,
+    }
 
 
 def test_webhook_idempotent_and_unlock_session(
     test_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session_id = _create_session(test_client)
+    session_id, session_token = _create_session(test_client)
 
     class SessionAwareFakeProvider(FakeProvider):
         async def verify_transaction(self, provider_reference: str) -> ProviderVerificationResult:
@@ -196,7 +228,10 @@ def test_webhook_idempotent_and_unlock_session(
     assert second.status_code == 200
     assert second.json() == {"processed": False}
 
-    status = test_client.get(f"/api/sessions/{session_id}/status")
+    status = test_client.get(
+        f"/api/sessions/{session_id}/status",
+        headers={"x-session-token": session_token},
+    )
     assert status.status_code == 200
     assert status.json()["status"] == "ready"
     assert status.json()["connected"] is True
