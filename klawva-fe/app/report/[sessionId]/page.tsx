@@ -29,14 +29,21 @@ export default function MissionReportCardPage() {
     stats: { label: string; value: string }[];
     summary: string;
   } | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sessionToken] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
+  });
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    sessionToken ? null : 'Session token missing. Please restart from checkout.',
+  );
 
   React.useEffect(() => {
+    if (!sessionToken) return;
     let cancelled = false;
 
     const loadReport = async () => {
       try {
-        const payload = await getSessionReport(sessionId);
+        const payload = await getSessionReport(sessionId, sessionToken);
         if (cancelled) return;
         setReport(payload);
         setErrorMessage(null);
@@ -51,7 +58,7 @@ export default function MissionReportCardPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, sessionToken]);
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
