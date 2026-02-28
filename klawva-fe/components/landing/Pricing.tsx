@@ -4,9 +4,46 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../ui/Card';
 import { useBillingProfile } from '@/hooks/use-billing-profile';
+import { sendContactEmail } from '@/lib/api';
+import { Button } from '../ui/Button';
 
 export function Pricing() {
   const { profile } = useBillingProfile();
+  const [email, setEmail] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleCustomRequest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    setSending(true);
+    setError(null);
+    setSent(false);
+
+    try {
+      await sendContactEmail({
+        subject: 'Custom Klawva Employee request',
+        body: [
+          'A user requested a custom Klawva employee from the landing page.',
+          '',
+          `Reply email: ${email.trim()}`,
+          `Billing profile shown: ${profile.provider} ${profile.amountDisplay}`,
+        ].join('\n'),
+        replyTo: email.trim(),
+      });
+      setSent(true);
+      setEmail('');
+    } catch {
+      setError('Could not send request right now. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <section id="pricing" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
@@ -79,12 +116,27 @@ export function Pricing() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="bg-klawva-surface/50 border border-dashed border-klawva-border rounded-lg p-6 hover:border-klawva-accent/50 transition-colors duration-300 cursor-pointer group"
+          className="bg-klawva-surface/50 border border-dashed border-klawva-border rounded-lg p-6 hover:border-klawva-accent/50 transition-colors duration-300"
         >
-          <p className="font-mono text-klawva-muted text-sm">
-            Need something custom? <strong className="text-klawva-text font-syne font-bold">Custom Klawva Employee</strong> — $30/day.{' '}
-            <span className="text-klawva-accent group-hover:underline">[Get in touch →]</span>
-          </p>
+          <form onSubmit={handleCustomRequest} className="flex flex-col gap-3">
+            <p className="font-mono text-klawva-muted text-sm text-left">
+              Need something custom? <strong className="text-klawva-text font-syne font-bold">Custom Klawva Employee</strong> — $30/day.{' '}
+              <span className="text-klawva-accent">[Get in touch →]</span>
+            </p>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Your email address"
+              className="w-full rounded border border-klawva-border bg-klawva-bg px-3 py-2 text-sm font-mono text-klawva-text outline-none focus:border-klawva-accent"
+              required
+            />
+            <Button type="submit" variant="secondary" size="sm" loading={sending} className="w-full md:w-auto">
+              Send request
+            </Button>
+            {sent && <p className="font-mono text-xs text-klawva-accent text-left">Request sent. We’ll contact you shortly.</p>}
+            {error && <p className="font-mono text-xs text-klawva-muted text-left">{error}</p>}
+          </form>
         </motion.div>
       </div>
     </section>
