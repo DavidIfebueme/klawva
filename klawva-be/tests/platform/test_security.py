@@ -11,6 +11,23 @@ from app.platform.db.session import get_async_session
 from app.platform.security.redaction import redact_sensitive
 
 
+class FakeDigitalOceanClient:
+    async def create_openclaw_droplet(self, *, session_id: str):
+        _ = session_id
+
+        class Result:
+            droplet_id = "12345"
+            status = "new"
+
+        return Result()
+
+    async def add_droplet_tag(self, *, droplet_id: str, tag: str) -> None:
+        _ = droplet_id, tag
+
+    async def destroy_droplet(self, *, droplet_id: str) -> None:
+        _ = droplet_id
+
+
 @pytest.fixture
 def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     load_model_registry()
@@ -40,6 +57,10 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     app.dependency_overrides[get_async_session] = override_get_async_session
     monkeypatch.setattr(settings, "internal_service_token", "secret-token")
     monkeypatch.setattr(settings, "rate_limit_per_minute", 200)
+    monkeypatch.setattr(
+        "app.features.provisioning.service.DigitalOceanClient",
+        lambda: FakeDigitalOceanClient(),
+    )
 
     client = TestClient(app)
     yield client
@@ -77,4 +98,4 @@ def test_internal_auth_success(test_client: TestClient) -> None:
         json={"sessionId": session_id},
         headers={"x-internal-token": "secret-token"},
     )
-    assert response.status_code in {200, 502}
+    assert response.status_code == 200
