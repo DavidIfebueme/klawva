@@ -26,13 +26,22 @@ export interface SessionReportResponse {
   summary: string;
 }
 
+export interface ActivateSessionResponse {
+  status: string;
+  startedAt?: string;
+  endsAt?: string;
+  qr?: string;
+  expiresIn?: number;
+  telegramToken?: string;
+}
+
 export type PaymentProvider = 'paystack' | 'stripe';
 
 export interface InitializePaymentPayload {
   sessionId: string;
-  provider: PaymentProvider;
-  amountMinor: number;
-  currency: string;
+  provider?: PaymentProvider;
+  amountMinor?: number;
+  currency?: string;
   customerEmail?: string;
 }
 
@@ -41,8 +50,19 @@ export interface InitializePaymentResponse {
   provider: PaymentProvider;
   providerReference: string;
   status: string;
+  amountMinor: number;
+  currency: string;
   checkoutUrl?: string;
   clientSecret?: string;
+}
+
+export interface BillingProfile {
+  provider: PaymentProvider;
+  amountMinor: number;
+  currency: string;
+  amountDisplay: string;
+  region: 'nigeria' | 'global';
+  countryCode?: string | null;
 }
 
 export interface ProvisioningResponse {
@@ -81,4 +101,23 @@ export interface CreateSessionPayload {
 
 export interface CreateSessionResponse {
   sessionId: string;
+  sessionToken: string;
+}
+
+export interface RequestHistoryLinkResponse {
+  sent: boolean;
+}
+
+export interface HistorySessionItem {
+  sessionId: string;
+  agentId: AgentId;
+  channel: 'whatsapp' | 'telegram';
+  status: string;
+  startedAt?: string;
+  endsAt?: string;
+  completedAt?: string;
+}
+
+export interface HistorySessionsResponse {
+  sessions: HistorySessionItem[];
 }
