@@ -192,6 +192,41 @@ def test_get_billing_profile_global_default(test_client: TestClient) -> None:
     }
 
 
+def test_get_billing_profile_nigeria_from_timezone_fallback(test_client: TestClient) -> None:
+    response = test_client.get(
+        "/api/payments/billing-profile",
+        headers={"x-klawva-timezone": "Africa/Lagos"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "paystack",
+        "amountMinor": 250000,
+        "currency": "NGN",
+        "amountDisplay": "₦2,500",
+        "region": "nigeria",
+        "countryCode": "NG",
+    }
+
+
+def test_get_billing_profile_nigeria_from_hint_and_language(test_client: TestClient) -> None:
+    response = test_client.get(
+        "/api/payments/billing-profile",
+        headers={
+            "x-klawva-country-hint": "NG",
+            "x-klawva-languages": "en-NG,en;q=0.9",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "paystack",
+        "amountMinor": 250000,
+        "currency": "NGN",
+        "amountDisplay": "₦2,500",
+        "region": "nigeria",
+        "countryCode": "NG",
+    }
+
+
 def test_webhook_idempotent_and_unlock_session(
     test_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
