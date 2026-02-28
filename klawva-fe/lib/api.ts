@@ -1,17 +1,16 @@
 import {
-  ActivityIngestPayload,
-  ActivityIngestResponse,
-  BootstrapResponse,
+  ActivateSessionResponse,
+  BillingProfile,
   CreateSessionPayload,
   CreateSessionResponse,
+  HistorySessionsResponse,
   InitializePaymentPayload,
   InitializePaymentResponse,
-  ProvisioningResponse,
+  RequestHistoryLinkResponse,
   SessionStatusResponse,
   SessionQRResponse,
   SessionActivityResponse,
   SessionReportResponse,
-  TelegramAssignResponse,
 } from '../types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -38,66 +37,75 @@ export async function initializePayment(
   return res.json();
 }
 
-export async function startProvisioning(sessionId: string): Promise<ProvisioningResponse> {
-  const res = await fetch(`${BASE}/api/provisioning/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId }),
-  });
-  if (!res.ok) throw new Error('Failed to start provisioning');
+export async function getBillingProfile(): Promise<BillingProfile> {
+  const res = await fetch(`${BASE}/api/payments/billing-profile`);
+  if (!res.ok) throw new Error('Failed to fetch billing profile');
   return res.json();
 }
 
-export async function bootstrapProvisioning(sessionId: string): Promise<BootstrapResponse> {
-  const res = await fetch(`${BASE}/api/provisioning/bootstrap`, {
+function sessionTokenHeaders(sessionToken?: string): HeadersInit {
+  return sessionToken ? { 'x-session-token': sessionToken } : {};
+}
+
+export async function activateSession(
+  sessionId: string,
+  sessionToken: string,
+): Promise<ActivateSessionResponse> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/activate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId }),
+    headers: {
+      'Content-Type': 'application/json',
+      ...sessionTokenHeaders(sessionToken),
+    },
   });
-  if (!res.ok) throw new Error('Failed to bootstrap provisioning');
+  if (!res.ok) throw new Error('Failed to activate session');
   return res.json();
 }
 
-export async function assignTelegramToken(sessionId: string): Promise<TelegramAssignResponse> {
-  const res = await fetch(`${BASE}/api/channels/telegram/assign`, {
+export async function requestHistoryLink(email: string): Promise<RequestHistoryLinkResponse> {
+  const res = await fetch(`${BASE}/api/history/request-link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId }),
+    body: JSON.stringify({ email }),
   });
-  if (!res.ok) throw new Error('Failed to assign telegram token');
+  if (!res.ok) throw new Error('Failed to request history link');
   return res.json();
 }
 
-export async function ingestActivity(payload: ActivityIngestPayload): Promise<ActivityIngestResponse> {
-  const res = await fetch(`${BASE}/api/activity/ingest`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error('Failed to ingest activity');
+export async function getHistorySessions(token: string): Promise<HistorySessionsResponse> {
+  const res = await fetch(`${BASE}/api/history/sessions?token=${encodeURIComponent(token)}`);
+  if (!res.ok) throw new Error('Failed to fetch history sessions');
   return res.json();
 }
 
-export async function getSessionStatus(sessionId: string): Promise<SessionStatusResponse> {
-  const res = await fetch(`${BASE}/api/sessions/${sessionId}/status`);
+export async function getSessionStatus(sessionId: string, sessionToken: string): Promise<SessionStatusResponse> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/status`, {
+    headers: sessionTokenHeaders(sessionToken),
+  });
   if (!res.ok) throw new Error('Failed to fetch status');
   return res.json();
 }
 
-export async function getSessionQR(sessionId: string): Promise<SessionQRResponse> {
-  const res = await fetch(`${BASE}/api/sessions/${sessionId}/qr`);
+export async function getSessionQR(sessionId: string, sessionToken: string): Promise<SessionQRResponse> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/qr`, {
+    headers: sessionTokenHeaders(sessionToken),
+  });
   if (!res.ok) throw new Error('Failed to fetch QR');
   return res.json();
 }
 
-export async function getSessionActivity(sessionId: string): Promise<SessionActivityResponse> {
-  const res = await fetch(`${BASE}/api/sessions/${sessionId}/activity`);
+export async function getSessionActivity(sessionId: string, sessionToken: string): Promise<SessionActivityResponse> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/activity`, {
+    headers: sessionTokenHeaders(sessionToken),
+  });
   if (!res.ok) throw new Error('Failed to fetch activity');
   return res.json();
 }
 
-export async function getSessionReport(sessionId: string): Promise<SessionReportResponse> {
-  const res = await fetch(`${BASE}/api/sessions/${sessionId}/report`);
+export async function getSessionReport(sessionId: string, sessionToken: string): Promise<SessionReportResponse> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/report`, {
+    headers: sessionTokenHeaders(sessionToken),
+  });
   if (!res.ok) throw new Error('Failed to fetch report');
   return res.json();
 }
