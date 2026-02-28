@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { KlawvaMark } from '../icons/KlawvaMark';
+import { useBillingProfile } from '@/hooks/use-billing-profile';
 
-const steps = [
+const baseSteps = [
   {
     num: '01',
     title: 'Choose your worker',
@@ -18,7 +19,7 @@ const steps = [
   {
     num: '03',
     title: 'Pay the flat fee',
-    desc: '₦2,500 or $1.99. No subscriptions. No hidden costs. One price for a 24-hour shift.',
+    desc: 'No subscriptions. No hidden costs. One price for a 24-hour shift.',
   },
   {
     num: '04',
@@ -40,6 +41,16 @@ const steps = [
 
 export function HowItWorks() {
   const [isMobile, setIsMobile] = useState(false);
+  const { profile } = useBillingProfile();
+
+  const steps = baseSteps.map((step) =>
+    step.num === '03'
+      ? {
+          ...step,
+          desc: `${profile.amountDisplay} via ${profile.provider === 'paystack' ? 'Paystack' : 'Stripe'}. No subscriptions. No hidden costs. One price for a 24-hour shift.`,
+        }
+      : step,
+  );
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);

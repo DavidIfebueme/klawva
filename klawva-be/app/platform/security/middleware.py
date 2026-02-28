@@ -15,9 +15,12 @@ _INTERNAL_PREFIXES = (
     "/api/provisioning/start",
     "/api/provisioning/bootstrap",
     "/api/provisioning/destroy",
+    "/api/channels/telegram/assign",
     "/api/activity/ingest",
     "/api/reports/upsert",
+    "/api/termination/schedule",
     "/api/termination/execute-due",
+    "/api/emails/dispatch-due",
 )
 
 
@@ -53,10 +56,17 @@ def register_security_middleware(app: FastAPI) -> None:
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         token = settings.internal_service_token
-        if not token:
-            return await call_next(request)
-
         if _is_internal_path(request.url.path):
+            if not token:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": {
+                            "code": "misconfigured",
+                            "message": "internal_service_token_not_configured",
+                        }
+                    },
+                )
             provided = request.headers.get("x-internal-token")
             if provided != token:
                 return JSONResponse(
