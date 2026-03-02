@@ -56,23 +56,24 @@ async def activate_session_endpoint(
         session_id=session_id,
         session_token=session_token,
     )
+    current_session_id = session.id
 
-    await start_provisioning(db, session_id=session.id)
-    await bootstrap_openclaw_session(db, session_id=session.id)
+    await start_provisioning(db, session_id=current_session_id)
+    await bootstrap_openclaw_session(db, session_id=current_session_id)
 
     qr: str | None = None
     expires_in: int | None = None
     telegram_token: str | None = None
 
     if session.channel == "whatsapp":
-        qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=session.id)
+        qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=current_session_id)
     else:
-        telegram_token = await assign_telegram_bot_token(db, session_id=session.id)
+        telegram_token = await assign_telegram_bot_token(db, session_id=current_session_id)
 
     ensure_session_window(session)
     session.status = "active"
     await db.commit()
-    await schedule_termination(db, session_id=session.id)
+    await schedule_termination(db, session_id=current_session_id)
 
     if session.customer_email:
         await send_shift_started_email(db, session=session)
