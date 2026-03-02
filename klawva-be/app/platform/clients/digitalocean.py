@@ -28,6 +28,19 @@ class DigitalOceanClient:
             "Content-Type": "application/json",
         }
 
+    @staticmethod
+    def _error_detail(response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict):
+            message = payload.get("message")
+            if message:
+                return str(message)
+        text = response.text.strip()
+        return text[:240] if text else "unknown_error"
+
     async def create_openclaw_droplet(self, *, session_id: str) -> DropletCreateResult:
         payload = {
             "name": f"klawva-{session_id[:8]}",
@@ -45,7 +58,8 @@ class DigitalOceanClient:
             )
 
         if response.status_code >= 400:
-            raise DigitalOceanClientError(f"do_create_failed:{response.status_code}")
+            detail = self._error_detail(response)
+            raise DigitalOceanClientError(f"do_create_failed:{response.status_code}:{detail}")
 
         data = response.json().get("droplet", {})
         droplet_id = str(data.get("id"))
@@ -62,7 +76,8 @@ class DigitalOceanClient:
             )
 
         if response.status_code >= 400:
-            raise DigitalOceanClientError(f"do_destroy_failed:{response.status_code}")
+            detail = self._error_detail(response)
+            raise DigitalOceanClientError(f"do_destroy_failed:{response.status_code}:{detail}")
 
     async def add_droplet_tag(self, *, droplet_id: str, tag: str) -> None:
         payload = {"resources": [{"resource_id": droplet_id, "resource_type": "droplet"}]}
@@ -74,4 +89,5 @@ class DigitalOceanClient:
             )
 
         if response.status_code >= 400:
-            raise DigitalOceanClientError(f"do_tag_failed:{response.status_code}")
+            detail = self._error_detail(response)
+            raise DigitalOceanClientError(f"do_tag_failed:{response.status_code}:{detail}")
