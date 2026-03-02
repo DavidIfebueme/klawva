@@ -38,7 +38,8 @@ async def start_provisioning(db: AsyncSession, *, session_id: str) -> Provisioni
     try:
         created = await client.create_openclaw_droplet(session_id=session_id)
     except Exception as exc:
-        job.attempt_count = int(job.attempt_count or 0) + 1
+        current_attempts = job.__dict__.get("attempt_count")
+        job.attempt_count = int(current_attempts or 0) + 1
         job.status = "failed"
         job.error_message = str(exc)
         await db.commit()
