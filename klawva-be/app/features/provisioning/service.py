@@ -22,14 +22,22 @@ async def start_provisioning(db: AsyncSession, *, session_id: str) -> Provisioni
         db.add(job)
         await db.commit()
         await db.refresh(job)
+    elif job.status == "active" and job.droplet_id:
+        if session.status != "ready":
+            session.status = "ready"
+            await db.commit()
+        return job
 
     if job.attempt_count >= settings.provisioning_max_retries and job.status != "active":
         raise HTTPException(status_code=409, detail="provisioning_retry_exhausted")
 
+    job.status = "provisioning"
+    job.error_message = None
+    await db.commit()
+
     client = DigitalOceanClient()
     try:
         created = await client.create_openclaw_droplet(session_id=session_id)
-        await client.add_droplet_tag(droplet_id=created.droplet_id, tag="openclaw")
     except Exception as exc:
         job.attempt_count += 1
         job.status = "failed"
