@@ -32,6 +32,11 @@ class FakeDigitalOceanClient:
         _ = droplet_id
 
 
+class FakeOpenClawRuntimeClient:
+    async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
+        _ = payload
+
+
 @pytest.fixture
 def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     load_model_registry()
@@ -63,6 +68,10 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(
         "app.features.provisioning.service.DigitalOceanClient",
         lambda: FakeDigitalOceanClient(),
+    )
+    monkeypatch.setattr(
+        "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
+        lambda: FakeOpenClawRuntimeClient(),
     )
     monkeypatch.setattr(settings, "internal_service_token", "internal-token")
 
