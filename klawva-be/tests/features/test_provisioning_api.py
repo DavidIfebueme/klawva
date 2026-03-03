@@ -31,11 +31,31 @@ class FakeDigitalOceanClient:
 
         return Result()
 
-    async def add_droplet_tag(self, *, droplet_id: str, tag: str) -> None:
-        _ = droplet_id, tag
+    async def get_droplet(self, *, droplet_id: str) -> dict:
+        return {
+            "id": droplet_id,
+            "networks": {
+                "v4": [{"ip_address": "10.0.0.99", "type": "public"}]
+            },
+        }
 
     async def destroy_droplet(self, *, droplet_id: str) -> None:
         _ = droplet_id
+
+    @staticmethod
+    def extract_public_ipv4(droplet_data: dict) -> str | None:
+        for net in droplet_data.get("networks", {}).get("v4", []):
+            if net.get("type") == "public":
+                return net["ip_address"]
+        return None
+
+
+class FakeDropletAgentClient:
+    async def push_session(self, *, droplet_ip, session_config):
+        pass
+
+    async def remove_session(self, *, droplet_ip, session_id):
+        pass
 
 
 class FakeOpenClawRuntimeClient:
@@ -72,14 +92,22 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     app.dependency_overrides[get_async_session] = override_get_async_session
 
     monkeypatch.setattr(
-        "app.features.provisioning.service.DigitalOceanClient",
+        "app.features.provisioning.pool.DigitalOceanClient",
         lambda: FakeDigitalOceanClient(),
+    )
+    monkeypatch.setattr(
+        "app.features.provisioning.pool.DropletAgentClient",
+        lambda: FakeDropletAgentClient(),
     )
     monkeypatch.setattr(
         "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
         lambda: FakeOpenClawRuntimeClient(),
     )
     monkeypatch.setattr(settings, "internal_service_token", "internal-token")
+    monkeypatch.setattr(settings, "droplet_agent_gateway_port", 9090)
+    monkeypatch.setattr(settings, "droplet_max_sessions", 5)
+    monkeypatch.setattr(settings, "digitalocean_region", "nyc1")
+    monkeypatch.setattr(settings, "digitalocean_ssh_key_fingerprints", "")
 
     client = TestClient(app)
     yield client
@@ -102,12 +130,20 @@ def _create_session(client: TestClient) -> tuple[str, str]:
     return payload["sessionId"], payload["sessionToken"]
 
 
+def _sample_config(session_id: str) -> dict:
+    return {
+        "session_id": session_id,
+        "agent_id": "scrapper",
+        "channel": {"type": "whatsapp"},
+    }
+
+
 def test_start_provisioning_success(test_client: TestClient) -> None:
     session_id, session_token = _create_session(test_client)
 
     response = test_client.post(
         "/api/provisioning/start",
-        json={"sessionId": session_id},
+        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
         headers={"x-internal-token": "internal-token"},
     )
 
@@ -130,13 +166,13 @@ def test_start_provisioning_failure_retry(
 ) -> None:
     session_id, _ = _create_session(test_client)
     monkeypatch.setattr(
-        "app.features.provisioning.service.DigitalOceanClient",
+        "app.features.provisioning.pool.DigitalOceanClient",
         lambda: FakeDigitalOceanClient(should_fail=True),
     )
 
     response = test_client.post(
         "/api/provisioning/start",
-        json={"sessionId": session_id},
+        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
         headers={"x-internal-token": "internal-token"},
     )
     assert response.status_code == 502
@@ -146,7 +182,7 @@ def test_destroy_provisioning(test_client: TestClient) -> None:
     session_id, _ = _create_session(test_client)
     start = test_client.post(
         "/api/provisioning/start",
-        json={"sessionId": session_id},
+        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
         headers={"x-internal-token": "internal-token"},
     )
     assert start.status_code == 200
@@ -164,7 +200,7 @@ def test_bootstrap_provisioned_session(test_client: TestClient) -> None:
     session_id, session_token = _create_session(test_client)
     start = test_client.post(
         "/api/provisioning/start",
-        json={"sessionId": session_id},
+        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
         headers={"x-internal-token": "internal-token"},
     )
     assert start.status_code == 200
