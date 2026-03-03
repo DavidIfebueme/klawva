@@ -142,7 +142,7 @@ export default function MissionReportCardPage() {
                   Final Summary
                 </div>
                 <p className="font-mono text-klawva-text text-base leading-relaxed">
-                  {report?.summary || 'Mission report is not ready yet.'}
+                  {report?.summary || 'Mission report is still compiling and will appear here after final delivery.'}
                 </p>
               </div>
               
