@@ -86,6 +86,7 @@ def test_assign_telegram_token_non_vendor(test_client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["token"] == "tokenA"
+    assert "deepLink" in response.json()
 
 
 def test_assign_telegram_token_vendor_rejected(test_client: TestClient) -> None:
@@ -101,3 +102,39 @@ def test_assign_telegram_token_vendor_rejected(test_client: TestClient) -> None:
     assert response.json() == {
         "error": {"code": "http_error", "message": "vendor_telegram_not_allowed"}
     }
+
+
+def test_onboarding_event_updates_channel_link(test_client: TestClient) -> None:
+    session_id, _ = _create_session(test_client, agent="researcher", channel="telegram")
+
+    assign = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert assign.status_code == 200
+
+    linked = test_client.post(
+        "/api/channels/onboarding/event",
+        json={
+            "sessionId": session_id,
+            "channel": "telegram",
+            "eventType": "linked",
+            "target": "@user123",
+        },
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert linked.status_code == 200
+    assert linked.json() == {"status": "linked", "target": "@user123"}
+
+    intro = test_client.post(
+        "/api/channels/onboarding/event",
+        json={
+            "sessionId": session_id,
+            "channel": "telegram",
+            "eventType": "intro_sent",
+        },
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert intro.status_code == 200
+    assert intro.json()["status"] == "intro_sent"
