@@ -58,11 +58,6 @@ class FakeDropletAgentClient:
         pass
 
 
-class FakeOpenClawRuntimeClient:
-    async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
-        _ = payload
-
-
 @pytest.fixture
 def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     load_model_registry()
@@ -97,10 +92,6 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(
         "app.features.provisioning.pool.DropletAgentClient",
         lambda: FakeDropletAgentClient(),
-    )
-    monkeypatch.setattr(
-        "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
-        lambda: FakeOpenClawRuntimeClient(),
     )
     monkeypatch.setattr(settings, "telegram_bot_token_pool", "tokenA,tokenB")
     monkeypatch.setattr(settings, "droplet_agent_gateway_port", 9090)
