@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.channels.models import ChannelLink
 from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
 from app.features.emails.service import send_shift_started_email
 from app.features.payments.service import require_confirmed_session_payment
-from app.features.provisioning.bootstrap import bootstrap_openclaw_session
 from app.features.provisioning.service import start_provisioning
+from app.features.provisioning.user_data import build_session_config
 from app.features.sessions.auth import assert_session_access, get_session_token_header
 from app.features.sessions.contracts import (
     ActivateSessionResponse,
@@ -62,9 +64,6 @@ async def activate_session_endpoint(
     await require_confirmed_session_payment(db, session_id=current_session_id)
     ensure_session_window(session)
 
-    await start_provisioning(db, session_id=current_session_id)
-    await bootstrap_openclaw_session(db, session_id=current_session_id)
-
     qr: str | None = None
     expires_in: int | None = None
     telegram_deep_link: str | None = None
@@ -76,6 +75,14 @@ async def activate_session_endpoint(
             db,
             session_id=current_session_id,
         )
+
+    stmt = select(ChannelLink).where(ChannelLink.session_id == current_session_id)
+    channel_link = (await db.execute(stmt)).scalar_one_or_none()
+
+    session_config = build_session_config(session, channel_link)
+    await start_provisioning(
+        db, session_id=current_session_id, session_config=session_config
+    )
 
     session.status = "active"
     await db.commit()
