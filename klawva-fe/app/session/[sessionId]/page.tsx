@@ -29,7 +29,7 @@ export default function SessionHandshakePage() {
   const [statusText, setStatusText] = useState('Preparing your worker...');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrExpiresIn, setQrExpiresIn] = useState(60);
-  const [telegramToken, setTelegramToken] = useState<string | null>(null);
+  const [telegramDeepLink, setTelegramDeepLink] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,15 +60,20 @@ export default function SessionHandshakePage() {
           setState('qr');
         }
 
-        if (activation.telegramToken) {
-          setTelegramToken(activation.telegramToken);
+        if (activation.telegramDeepLink || activation.telegramToken) {
+          setTelegramDeepLink(activation.telegramDeepLink || null);
           setState('telegram');
         }
 
         setProgress(100);
-      } catch {
+      } catch (error) {
         if (cancelled) return;
-        setErrorMessage('Failed to prepare this session. Please retry from checkout.');
+        const message = error instanceof Error ? error.message : 'Failed to prepare this session.';
+        if (message === 'payment_not_confirmed') {
+          setErrorMessage('Payment is not confirmed yet. Complete payment and retry activation.');
+        } else {
+          setErrorMessage(message || 'Failed to prepare this session. Please retry from checkout.');
+        }
       }
     };
 
@@ -202,12 +207,23 @@ export default function SessionHandshakePage() {
           
           <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your agent is ready</h2>
           <p className="font-mono text-klawva-muted text-sm mb-8">
-            Telegram token assigned for this session.
+            Connect your Telegram bot to begin receiving updates for this session.
           </p>
 
-          {telegramToken && (
-            <div className="font-mono text-klawva-dim text-xs break-all mb-6">
-              {telegramToken}
+          {telegramDeepLink ? (
+            <a
+              href={telegramDeepLink}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full mb-6"
+            >
+              <Button variant="secondary" size="lg" className="w-full">
+                Open Telegram bot ↗
+              </Button>
+            </a>
+          ) : (
+            <div className="font-mono text-klawva-orange text-xs mb-6">
+              Bot link is still preparing. Continue to session while provisioning finalizes.
             </div>
           )}
           
