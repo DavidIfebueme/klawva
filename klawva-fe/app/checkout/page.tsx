@@ -245,7 +245,7 @@ function CheckoutContent() {
                 <WhatsAppIcon size={48} className="text-klawva-accent mb-6" />
                 <h3 className="font-syne font-bold text-xl text-klawva-text mb-2">WhatsApp</h3>
                 <p className="font-mono text-klawva-muted text-sm">
-                  You&apos;ll scan a QR code to connect. Your agent will message you on this number.
+                  You&apos;ll scan a QR code to connect first, then your agent sends intro and report updates to this number.
                 </p>
               </button>
               
@@ -258,7 +258,7 @@ function CheckoutContent() {
                 <TelegramIcon size={48} className="text-klawva-accent mb-6" />
                 <h3 className="font-syne font-bold text-xl text-klawva-text mb-2">Telegram</h3>
                 <p className="font-mono text-klawva-muted text-sm">
-                  You&apos;ll receive a bot link. Click to connect instantly. No QR needed.
+                  You&apos;ll receive a bot link after payment confirmation. Open it to connect instantly.
                 </p>
               </button>
             </div>
@@ -342,7 +342,7 @@ function CheckoutContent() {
             )}
             
             <div className="text-center font-mono text-klawva-dim text-xs">
-              [ Secure payment · No subscription · Session starts immediately ]
+              [ Secure payment · No subscription · Session starts after payment confirmation ]
             </div>
             
             <div className="mt-8 flex justify-start">
