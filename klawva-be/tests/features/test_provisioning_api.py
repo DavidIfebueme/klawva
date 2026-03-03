@@ -14,8 +14,14 @@ class FakeDigitalOceanClient:
     def __init__(self, should_fail: bool = False) -> None:
         self.should_fail = should_fail
 
-    async def create_openclaw_droplet(self, *, session_id: str):
-        _ = session_id
+    async def create_openclaw_droplet(
+        self,
+        *,
+        session_id: str,
+        user_data: str | None = None,
+        ssh_keys: list[str] | None = None,
+    ):
+        _ = session_id, user_data, ssh_keys
         if self.should_fail:
             raise RuntimeError("create_failed")
 
