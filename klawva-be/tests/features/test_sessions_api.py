@@ -35,6 +35,13 @@ class FakeOpenClawRuntimeClient:
         _ = payload
 
 
+class CapturingOpenClawRuntimeClient:
+    last_payload: dict[str, object] | None = None
+
+    async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
+        CapturingOpenClawRuntimeClient.last_payload = payload
+
+
 class FailingOpenClawRuntimeClient:
     async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
         _ = payload
@@ -323,6 +330,65 @@ def test_activate_records_bootstrap_dispatch_activity(test_client: TestClient) -
     assert activity.status_code == 200
     texts = [entry["text"] for entry in activity.json()["activities"]]
     assert "OpenClaw bootstrap dispatched to runtime" in texts
+
+
+def test_activate_dispatch_includes_window_and_intro_template(
+    monkeypatch: pytest.MonkeyPatch,
+    test_client: TestClient,
+) -> None:
+    monkeypatch.setattr(
+        "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
+        lambda: CapturingOpenClawRuntimeClient(),
+    )
+
+    create_response = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "researcher",
+            "channel": "telegram",
+            "brief": {"topic": "fintech"},
+            "paymentRef": "pay_gate_5",
+        },
+    )
+    payload = create_response.json()
+    session_id = payload["sessionId"]
+    headers = {"x-session-token": payload["sessionToken"]}
+
+    import asyncio
+
+    async def seed_payment() -> None:
+        override = app.dependency_overrides[get_async_session]
+        async for db in override():
+            db.add(
+                Payment(
+                    session_id=session_id,
+                    provider="paystack",
+                    provider_reference="pay_ref_confirmed_5",
+                    amount_minor=250000,
+                    currency="NGN",
+                    status="confirmed",
+                    confirmed_at=datetime.now(UTC),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed_payment())
+
+    activation = test_client.post(f"/api/sessions/{session_id}/activate", headers=headers)
+    assert activation.status_code == 200
+
+    dispatched_payload = CapturingOpenClawRuntimeClient.last_payload
+    assert isinstance(dispatched_payload, dict)
+    session_window = dispatched_payload.get("session_window")
+    assert isinstance(session_window, dict)
+    assert isinstance(session_window.get("started_at"), str)
+    assert isinstance(session_window.get("expires_at"), str)
+    assert session_window.get("duration_hours") == 24
+
+    intro_template = dispatched_payload.get("intro_message_template")
+    assert isinstance(intro_template, dict)
+    assert intro_template.get("key") == "intro_telegram_v1"
+    assert intro_template.get("required") is True
 
 
 def test_activate_fails_when_bootstrap_dispatch_fails(
