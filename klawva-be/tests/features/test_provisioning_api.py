@@ -58,11 +58,6 @@ class FakeDropletAgentClient:
         pass
 
 
-class FakeOpenClawRuntimeClient:
-    async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
-        _ = payload
-
-
 @pytest.fixture
 def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     load_model_registry()
@@ -98,10 +93,6 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(
         "app.features.provisioning.pool.DropletAgentClient",
         lambda: FakeDropletAgentClient(),
-    )
-    monkeypatch.setattr(
-        "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
-        lambda: FakeOpenClawRuntimeClient(),
     )
     monkeypatch.setattr(settings, "internal_service_token", "internal-token")
     monkeypatch.setattr(settings, "droplet_agent_gateway_port", 9090)
@@ -194,48 +185,3 @@ def test_destroy_provisioning(test_client: TestClient) -> None:
     )
     assert destroy.status_code == 200
     assert destroy.json() == {"destroyed": True}
-
-
-def test_bootstrap_provisioned_session(test_client: TestClient) -> None:
-    session_id, session_token = _create_session(test_client)
-    start = test_client.post(
-        "/api/provisioning/start",
-        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
-        headers={"x-internal-token": "internal-token"},
-    )
-    assert start.status_code == 200
-
-    bootstrap = test_client.post(
-        "/api/provisioning/bootstrap",
-        json={"sessionId": session_id},
-        headers={"x-internal-token": "internal-token"},
-    )
-    assert bootstrap.status_code == 200
-    assert bootstrap.json()["status"] == "bootstrapped"
-
-    status = test_client.get(
-        f"/api/sessions/{session_id}/status",
-        headers={"x-session-token": session_token},
-    )
-    assert status.status_code == 200
-    assert status.json()["status"] == "active"
-    assert status.json()["connected"] is True
-
-    activity = test_client.get(
-        f"/api/sessions/{session_id}/activity",
-        headers={"x-session-token": session_token},
-    )
-    assert activity.status_code == 200
-    activities = activity.json()["activities"]
-    assert any(item["text"] == "OpenClaw bootstrap completed" for item in activities)
-
-
-def test_bootstrap_requires_provisioning(test_client: TestClient) -> None:
-    session_id, _ = _create_session(test_client)
-
-    bootstrap = test_client.post(
-        "/api/provisioning/bootstrap",
-        json={"sessionId": session_id},
-        headers={"x-internal-token": "internal-token"},
-    )
-    assert bootstrap.status_code == 409
