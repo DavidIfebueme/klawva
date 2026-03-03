@@ -60,6 +60,7 @@ async def activate_session_endpoint(
     current_session_id = session.id
 
     await require_confirmed_session_payment(db, session_id=current_session_id)
+    ensure_session_window(session)
 
     await start_provisioning(db, session_id=current_session_id)
     await bootstrap_openclaw_session(db, session_id=current_session_id)
@@ -76,7 +77,6 @@ async def activate_session_endpoint(
             session_id=current_session_id,
         )
 
-    ensure_session_window(session)
     session.status = "active"
     await db.commit()
     await schedule_termination(db, session_id=current_session_id)
