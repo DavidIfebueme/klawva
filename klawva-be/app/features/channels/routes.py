@@ -31,13 +31,41 @@ class TelegramAssignResponse(BaseModel):
 class ChannelOnboardingEventRequest(BaseModel):
     session_id: str = Field(alias="sessionId")
     channel: Literal["telegram", "whatsapp"]
-    event_type: Literal["linked", "intro_sent", "report_sent"] = Field(alias="eventType")
+    event_type: Literal["linked", "intro_sent", "report_sent", "terminated"] = Field(alias="eventType")
     target: str | None = None
+    callback_event_id: str | None = Field(default=None, alias="callbackEventId")
+
+
+class LinkConfirmedRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    channel: Literal["telegram", "whatsapp"]
+    target: str | None = None
+    callback_event_id: str | None = Field(default=None, alias="callbackEventId")
+
+
+class IntroDeliveredRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    channel: Literal["telegram", "whatsapp"]
+    target: str | None = None
+    callback_event_id: str | None = Field(default=None, alias="callbackEventId")
 
 
 class ChannelOnboardingEventResponse(BaseModel):
     status: str
     target: str | None = None
+    callback_event_id: str | None = Field(default=None, alias="callbackEventId")
+
+
+def _callback_event_id_for_status(link, status: str) -> str | None:
+    if status == "linked":
+        return link.worker_link_callback_id
+    if status == "intro_sent":
+        return link.worker_intro_callback_id
+    if status == "report_sent":
+        return link.worker_report_callback_id
+    if status == "terminated":
+        return link.worker_terminated_callback_id
+    return None
 
 
 @router.get("/api/sessions/{session_id}/qr", response_model=SessionQrResponse)
@@ -75,5 +103,50 @@ async def record_channel_onboarding_event_endpoint(
         channel=payload.channel,
         event_type=payload.event_type,
         target=payload.target,
+        callback_event_id=payload.callback_event_id,
     )
-    return ChannelOnboardingEventResponse(status=link.status, target=link.link_target)
+    return ChannelOnboardingEventResponse(
+        status=link.status,
+        target=link.link_target,
+        callbackEventId=_callback_event_id_for_status(link, link.status),
+    )
+
+
+@router.post("/api/channels/onboarding/link-confirmed", response_model=ChannelOnboardingEventResponse)
+async def record_link_confirmed_endpoint(
+    payload: LinkConfirmedRequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> ChannelOnboardingEventResponse:
+    link = await record_channel_onboarding_event(
+        db,
+        session_id=payload.session_id,
+        channel=payload.channel,
+        event_type="linked",
+        target=payload.target,
+        callback_event_id=payload.callback_event_id,
+    )
+    return ChannelOnboardingEventResponse(
+        status=link.status,
+        target=link.link_target,
+        callbackEventId=link.worker_link_callback_id,
+    )
+
+
+@router.post("/api/channels/onboarding/intro-delivered", response_model=ChannelOnboardingEventResponse)
+async def record_intro_delivered_endpoint(
+    payload: IntroDeliveredRequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> ChannelOnboardingEventResponse:
+    link = await record_channel_onboarding_event(
+        db,
+        session_id=payload.session_id,
+        channel=payload.channel,
+        event_type="intro_sent",
+        target=payload.target,
+        callback_event_id=payload.callback_event_id,
+    )
+    return ChannelOnboardingEventResponse(
+        status=link.status,
+        target=link.link_target,
+        callbackEventId=link.worker_intro_callback_id,
+    )
