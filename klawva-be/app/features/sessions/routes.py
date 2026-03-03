@@ -1,7 +1,10 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
 from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
 from app.features.emails.service import send_shift_started_email
@@ -82,6 +85,18 @@ async def activate_session_endpoint(
     session_config = build_session_config(session, channel_link)
     await start_provisioning(
         db, session_id=current_session_id, session_config=session_config
+    )
+
+    db.add(
+        ActivityEvent(
+            session_id=current_session_id,
+            event_type="bootstrap_completed",
+            payload={
+                "text": "Session bootstrapped via pool assignment",
+                "details": {"session_id": current_session_id},
+            },
+            occurred_at=datetime.now(UTC),
+        )
     )
 
     session.status = "active"
