@@ -179,7 +179,7 @@ def test_activity_and_report_entries(test_client: TestClient) -> None:
     assert report_response.json()["summary"] == "Work completed"
 
 
-def test_activate_requires_confirmed_payment(test_client: TestClient) -> None:
+def test_activate_requires_initialized_payment(test_client: TestClient) -> None:
     create_response = test_client.post(
         "/api/sessions",
         json={
@@ -192,6 +192,46 @@ def test_activate_requires_confirmed_payment(test_client: TestClient) -> None:
     payload = create_response.json()
     session_id = payload["sessionId"]
     headers = {"x-session-token": payload["sessionToken"]}
+
+    activation = test_client.post(f"/api/sessions/{session_id}/activate", headers=headers)
+    assert activation.status_code == 422
+    assert activation.json() == {
+        "error": {"code": "http_error", "message": "payment_not_initialized"}
+    }
+
+
+def test_activate_rejects_unconfirmed_payment(test_client: TestClient) -> None:
+    create_response = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "researcher",
+            "channel": "telegram",
+            "brief": {"topic": "fintech"},
+            "paymentRef": "pay_gate_pending",
+        },
+    )
+    payload = create_response.json()
+    session_id = payload["sessionId"]
+    headers = {"x-session-token": payload["sessionToken"]}
+
+    import asyncio
+
+    async def seed_pending_payment() -> None:
+        override = app.dependency_overrides[get_async_session]
+        async for db in override():
+            db.add(
+                Payment(
+                    session_id=session_id,
+                    provider="paystack",
+                    provider_reference="pay_ref_pending_1",
+                    amount_minor=250000,
+                    currency="NGN",
+                    status="pending",
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed_pending_payment())
 
     activation = test_client.post(f"/api/sessions/{session_id}/activate", headers=headers)
     assert activation.status_code == 409
