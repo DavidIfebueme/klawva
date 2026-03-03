@@ -31,6 +31,8 @@ export default function SessionStatusPage() {
 
   const [status, setStatus] = useState<'provisioning' | 'ready' | 'active' | 'completed'>('provisioning');
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
+  const [channelLinked, setChannelLinked] = useState(false);
+  const [introSent, setIntroSent] = useState(false);
   const [sessionToken] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     return sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
@@ -51,7 +53,11 @@ export default function SessionStatusPage() {
         ]);
         if (cancelled) return;
         setStatus(sessionStatus.status);
-        setActivities(sessionActivity.activities.slice().reverse());
+        const orderedActivities = sessionActivity.activities.slice().reverse();
+        const onboardingSignals = sessionActivity.activities.map((entry) => entry.text.toLowerCase());
+        setChannelLinked(onboardingSignals.some((text) => text.includes('channel connected')));
+        setIntroSent(onboardingSignals.some((text) => text.includes('intro message sent')));
+        setActivities(orderedActivities);
         setErrorMessage(null);
       } catch {
         if (cancelled) return;
@@ -117,7 +123,9 @@ export default function SessionStatusPage() {
                 ) : (
                   <TelegramIcon size={20} className="text-klawva-accent" />
                 )}
-                <span className="font-mono text-klawva-text text-sm">Connected</span>
+                <span className="font-mono text-klawva-text text-sm">
+                  {introSent ? 'Connected · Intro sent' : channelLinked ? 'Connected · Intro pending' : 'Connection pending'}
+                </span>
               </div>
               
               <Button 
@@ -136,7 +144,7 @@ export default function SessionStatusPage() {
             )}
             
             <p className="font-mono text-klawva-dim text-xs text-center max-w-sm mx-auto">
-              When your 24 hours are complete, your Mission Report will be delivered here and to your {channel === 'whatsapp' ? 'WhatsApp' : 'Telegram'}.
+              When your 24 hours are complete, your Mission Report appears here. It is also sent to your connected {channel === 'whatsapp' ? 'WhatsApp' : 'Telegram'} once delivery completes.
             </p>
           </div>
           
