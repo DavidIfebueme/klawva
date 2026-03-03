@@ -33,6 +33,23 @@ def _runtime_policy() -> dict[str, str]:
     }
 
 
+def _intro_message_template(channel: str) -> dict[str, object]:
+    if channel == "telegram":
+        return {
+            "key": "intro_telegram_v1",
+            "text": "Your Klawva session is live. I am starting your mission now and will send updates here.",
+            "delivery_channel": "telegram",
+            "required": True,
+        }
+
+    return {
+        "key": "intro_whatsapp_v1",
+        "text": "Your Klawva session is live. I am starting your mission now and will send updates here.",
+        "delivery_channel": "whatsapp",
+        "required": True,
+    }
+
+
 async def bootstrap_openclaw_session(db: AsyncSession, *, session_id: str) -> ProvisioningJob:
     session = await db.get(Session, session_id)
     if session is None:
@@ -59,8 +76,14 @@ async def bootstrap_openclaw_session(db: AsyncSession, *, session_id: str) -> Pr
         "agent_profile": profile,
         "channel": session.channel,
         "brief": brief_payload,
+        "session_window": {
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+            "duration_hours": 24,
+        },
         "runtime_policy": _runtime_policy(),
         "inference": {"provider": "gradient", "mode": "serverless_or_fallback"},
+        "intro_message_template": _intro_message_template(session.channel),
         "onboarding": {
             "welcome_required": True,
             "session_duration_hours": 24,
