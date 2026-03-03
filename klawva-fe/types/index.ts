@@ -33,6 +33,7 @@ export interface ActivateSessionResponse {
   qr?: string;
   expiresIn?: number;
   telegramToken?: string;
+  telegramDeepLink?: string;
 }
 
 export type PaymentProvider = 'paystack' | 'stripe';
