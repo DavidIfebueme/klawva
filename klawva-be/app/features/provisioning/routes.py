@@ -20,7 +20,9 @@ async def start_provisioning_endpoint(
     payload: StartProvisioningRequest,
     db: AsyncSession = Depends(get_async_session),
 ) -> ProvisioningResponse:
-    job = await start_provisioning(db, session_id=payload.session_id)
+    job = await start_provisioning(
+        db, session_id=payload.session_id, session_config=payload.session_config
+    )
     return ProvisioningResponse(
         jobId=job.id,
         status=job.status,
