@@ -161,3 +161,18 @@ async def process_webhook(
 
     await db.commit()
     return True
+
+
+async def require_confirmed_session_payment(db: AsyncSession, *, session_id: str) -> Payment:
+    payment_statement = select(Payment).where(Payment.session_id == session_id)
+    payment_result = await db.execute(payment_statement)
+    payments = list(payment_result.scalars().all())
+
+    if not payments:
+        raise HTTPException(status_code=422, detail="payment_not_initialized")
+
+    for payment in payments:
+        if payment.status == "confirmed":
+            return payment
+
+    raise HTTPException(status_code=409, detail="payment_not_confirmed")
