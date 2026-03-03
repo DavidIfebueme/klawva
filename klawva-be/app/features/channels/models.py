@@ -24,3 +24,8 @@ class ChannelLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     intro_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     report_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terminated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_link_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    worker_intro_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    worker_report_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    worker_terminated_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
