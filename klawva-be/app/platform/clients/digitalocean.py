@@ -41,14 +41,24 @@ class DigitalOceanClient:
         text = response.text.strip()
         return text[:240] if text else "unknown_error"
 
-    async def create_openclaw_droplet(self, *, session_id: str) -> DropletCreateResult:
-        payload = {
+    async def create_openclaw_droplet(
+        self,
+        *,
+        session_id: str,
+        user_data: str | None = None,
+        ssh_keys: list[str] | None = None,
+    ) -> DropletCreateResult:
+        payload: dict[str, object] = {
             "name": f"klawva-{session_id[:8]}",
             "region": settings.digitalocean_region,
             "size": settings.digitalocean_droplet_size,
             "image": settings.digitalocean_openclaw_image,
-            "tags": ["klawva", f"session-{session_id}"],
+            "tags": ["klawva", "klawva-pool"],
         }
+        if user_data is not None:
+            payload["user_data"] = user_data
+        if ssh_keys is not None:
+            payload["ssh_keys"] = ssh_keys
 
         async with httpx.AsyncClient(timeout=25.0) as client:
             response = await client.post(
@@ -91,3 +101,26 @@ class DigitalOceanClient:
         if response.status_code >= 400:
             detail = self._error_detail(response)
             raise DigitalOceanClientError(f"do_tag_failed:{response.status_code}:{detail}")
+
+    async def get_droplet(self, *, droplet_id: str) -> dict:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.get(
+                f"{self.base_url}/v2/droplets/{droplet_id}",
+                headers=self._headers(),
+            )
+
+        if response.status_code >= 400:
+            detail = self._error_detail(response)
+            raise DigitalOceanClientError(
+                f"do_get_droplet_failed:{response.status_code}:{detail}"
+            )
+
+        return response.json().get("droplet", {})
+
+    @staticmethod
+    def extract_public_ipv4(droplet_data: dict) -> str | None:
+        networks = droplet_data.get("networks", {})
+        for iface in networks.get("v4", []):
+            if iface.get("type") == "public":
+                return iface.get("ip_address")
+        return None
