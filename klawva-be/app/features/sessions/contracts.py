@@ -22,6 +22,7 @@ class ActivateSessionResponse(BaseModel):
     qr: str | None = None
     expires_in: int | None = Field(default=None, alias="expiresIn")
     telegram_token: str | None = Field(default=None, alias="telegramToken")
+    telegram_deep_link: str | None = Field(default=None, alias="telegramDeepLink")
 
 
 class SessionStatusResponse(BaseModel):
