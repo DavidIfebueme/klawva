@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.activity.models import ActivityEvent
 from app.features.provisioning.models import ProvisioningJob
 from app.features.sessions.models import Session
+from app.platform.clients.openclaw_runtime import OpenClawRuntimeClient, OpenClawRuntimeClientError
 
 AGENT_BOOTSTRAP_PROFILE = {
     "scrapper": {
@@ -60,7 +61,19 @@ async def bootstrap_openclaw_session(db: AsyncSession, *, session_id: str) -> Pr
         "brief": brief_payload,
         "runtime_policy": _runtime_policy(),
         "inference": {"provider": "gradient", "mode": "serverless_or_fallback"},
+        "onboarding": {
+            "welcome_required": True,
+            "session_duration_hours": 24,
+            "final_report_delivery": "end_of_shift",
+            "termination_behavior": "auto_terminate_after_report",
+        },
     }
+
+    runtime_client = OpenClawRuntimeClient()
+    try:
+        await runtime_client.dispatch_bootstrap(boot_payload)
+    except OpenClawRuntimeClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     job.status = "bootstrapped"
     session.status = "active"
@@ -72,6 +85,21 @@ async def bootstrap_openclaw_session(db: AsyncSession, *, session_id: str) -> Pr
             payload={
                 "text": "OpenClaw bootstrap completed",
                 "details": boot_payload,
+            },
+            occurred_at=datetime.now(UTC),
+        )
+    )
+    db.add(
+        ActivityEvent(
+            session_id=session.id,
+            event_type="bootstrap_dispatched",
+            payload={
+                "text": "OpenClaw bootstrap dispatched to runtime",
+                "details": {
+                    "session_id": session.id,
+                    "droplet_id": job.droplet_id,
+                    "channel": session.channel,
+                },
             },
             occurred_at=datetime.now(UTC),
         )
