@@ -17,8 +17,14 @@ from app.platform.db.session import get_async_session
 
 
 class FakeDigitalOceanClient:
-    async def create_openclaw_droplet(self, *, session_id: str):
-        _ = session_id
+    async def create_openclaw_droplet(
+        self,
+        *,
+        session_id: str,
+        user_data: str | None = None,
+        ssh_keys: list[str] | None = None,
+    ):
+        _ = session_id, user_data, ssh_keys
 
         class Result:
             droplet_id = "12345"
