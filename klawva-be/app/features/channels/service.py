@@ -130,8 +130,9 @@ async def record_channel_onboarding_event(
     *,
     session_id: str,
     channel: Literal["telegram", "whatsapp"],
-    event_type: Literal["linked", "intro_sent", "report_sent"],
+    event_type: Literal["linked", "intro_sent", "report_sent", "terminated"],
     target: str | None,
+    callback_event_id: str | None = None,
 ) -> ChannelLink:
     session = await db.get(Session, session_id)
     if session is None:
@@ -152,15 +153,27 @@ async def record_channel_onboarding_event(
     if event_type == "linked":
         link.status = "linked"
         link.connected_at = now
+        if callback_event_id:
+            link.worker_link_callback_id = callback_event_id
         text = f"{channel.capitalize()} channel connected"
     elif event_type == "intro_sent":
         link.status = "intro_sent"
         link.intro_sent_at = now
+        if callback_event_id:
+            link.worker_intro_callback_id = callback_event_id
         text = f"{channel.capitalize()} intro message sent"
-    else:
+    elif event_type == "report_sent":
         link.status = "report_sent"
         link.report_sent_at = now
+        if callback_event_id:
+            link.worker_report_callback_id = callback_event_id
         text = f"{channel.capitalize()} final report sent"
+    else:
+        link.status = "terminated"
+        link.terminated_at = now
+        if callback_event_id:
+            link.worker_terminated_callback_id = callback_event_id
+        text = f"{channel.capitalize()} channel session terminated"
 
     db.add(
         ActivityEvent(
@@ -170,6 +183,7 @@ async def record_channel_onboarding_event(
                 "text": text,
                 "channel": channel,
                 "target": target,
+                "callback_event_id": callback_event_id,
             },
             occurred_at=now,
         )
