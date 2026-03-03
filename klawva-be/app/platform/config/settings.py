@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     digitalocean_droplet_size: str = "s-2vcpu-4gb"
     digitalocean_openclaw_image: str = "openclaw"
     provisioning_max_retries: int = 3
+    openclaw_bootstrap_dispatch_url: str | None = None
+    openclaw_bootstrap_dispatch_timeout_seconds: int = 15
+    openclaw_bootstrap_dispatch_token: str | None = None
 
     gradient_model_access_key: str | None = None
     gradient_base_url: str = "https://inference.do-ai.run"
