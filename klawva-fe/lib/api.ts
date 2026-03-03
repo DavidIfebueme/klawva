@@ -128,7 +128,15 @@ export async function activateSession(
       ...sessionTokenHeaders(sessionToken),
     },
   });
-  if (!res.ok) throw new Error('Failed to activate session');
+  if (!res.ok) {
+    let message = 'Failed to activate session';
+    try {
+      const payload = await res.json();
+      message = payload?.error?.message || payload?.detail || message;
+    } catch {
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 
