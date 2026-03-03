@@ -9,7 +9,9 @@ import { PulseRing } from '../../../components/icons/PulseRing';
 import { Button } from '../../../components/ui/Button';
 import {
   activateSession,
+  getSessionActivity,
   getSessionQR,
+  getSessionStatus,
 } from '../../../lib/api';
 
 type HandshakeState = 'provisioning' | 'qr' | 'telegram';
@@ -30,6 +32,7 @@ export default function SessionHandshakePage() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrExpiresIn, setQrExpiresIn] = useState(60);
   const [telegramDeepLink, setTelegramDeepLink] = useState<string | null>(null);
+  const [telegramOnboardingState, setTelegramOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -108,6 +111,48 @@ export default function SessionHandshakePage() {
       clearInterval(interval);
     };
   }, [sessionId, sessionToken, state]);
+
+  useEffect(() => {
+    if (channel !== 'telegram' || !sessionToken) return;
+    let cancelled = false;
+
+    const loadTelegramOnboardingState = async () => {
+      try {
+        const [sessionStatus, sessionActivity] = await Promise.all([
+          getSessionStatus(sessionId, sessionToken),
+          getSessionActivity(sessionId, sessionToken),
+        ]);
+        if (cancelled) return;
+
+        const activityTexts = sessionActivity.activities.map((entry) => entry.text.toLowerCase());
+        const introSent = activityTexts.some((text) => text.includes('intro message sent'));
+        const linked = activityTexts.some((text) => text.includes('channel connected'));
+
+        if (introSent) {
+          setTelegramOnboardingState('intro_sent');
+          return;
+        }
+
+        if (linked || sessionStatus.connected) {
+          setTelegramOnboardingState('linked');
+          return;
+        }
+
+        setTelegramOnboardingState('pending');
+      } catch {
+      }
+    };
+
+    void loadTelegramOnboardingState();
+    const interval = setInterval(() => {
+      void loadTelegramOnboardingState();
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [channel, sessionId, sessionToken]);
 
   const goToStatus = async () => {
     const params = new URLSearchParams();
@@ -209,6 +254,14 @@ export default function SessionHandshakePage() {
           <p className="font-mono text-klawva-muted text-sm mb-8">
             Connect your Telegram bot to begin receiving updates for this session.
           </p>
+
+          <div className="font-mono text-xs text-klawva-dim mb-6">
+            {telegramOnboardingState === 'intro_sent'
+              ? 'Telegram onboarding: Intro sent'
+              : telegramOnboardingState === 'linked'
+                ? 'Telegram onboarding: Linked · Intro pending'
+                : 'Telegram onboarding: Waiting for link confirmation'}
+          </div>
 
           {telegramDeepLink ? (
             <a
