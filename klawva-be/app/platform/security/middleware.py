@@ -17,6 +17,8 @@ _INTERNAL_PREFIXES = (
     "/api/provisioning/destroy",
     "/api/channels/telegram/assign",
     "/api/channels/onboarding/event",
+    "/api/channels/onboarding/link-confirmed",
+    "/api/channels/onboarding/intro-delivered",
     "/api/activity/ingest",
     "/api/reports/upsert",
     "/api/termination/schedule",
