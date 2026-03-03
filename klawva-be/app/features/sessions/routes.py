@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
 from app.features.emails.service import send_shift_started_email
+from app.features.payments.models import Payment
 from app.features.provisioning.bootstrap import bootstrap_openclaw_session
 from app.features.provisioning.service import start_provisioning
 from app.features.sessions.auth import assert_session_access, get_session_token_header
@@ -58,17 +60,26 @@ async def activate_session_endpoint(
     )
     current_session_id = session.id
 
+    payment_statement = select(Payment).where(Payment.session_id == current_session_id)
+    payment_result = await db.execute(payment_statement)
+    payments = list(payment_result.scalars().all())
+    if not any(item.status == "confirmed" for item in payments):
+        raise HTTPException(status_code=409, detail="payment_not_confirmed")
+
     await start_provisioning(db, session_id=current_session_id)
     await bootstrap_openclaw_session(db, session_id=current_session_id)
 
     qr: str | None = None
     expires_in: int | None = None
-    telegram_token: str | None = None
+    telegram_deep_link: str | None = None
 
     if session.channel == "whatsapp":
         qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=current_session_id)
     else:
-        telegram_token = await assign_telegram_bot_token(db, session_id=current_session_id)
+        _, telegram_deep_link = await assign_telegram_bot_token(
+            db,
+            session_id=current_session_id,
+        )
 
     ensure_session_window(session)
     session.status = "active"
@@ -84,7 +95,8 @@ async def activate_session_endpoint(
         endsAt=session.expires_at.isoformat() if session.expires_at else None,
         qr=qr,
         expiresIn=expires_in,
-        telegramToken=telegram_token,
+        telegramToken=None,
+        telegramDeepLink=telegram_deep_link,
     )
 
 
