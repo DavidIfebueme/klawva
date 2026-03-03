@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
 from app.features.emails.service import send_shift_started_email
-from app.features.payments.models import Payment
+from app.features.payments.service import require_confirmed_session_payment
 from app.features.provisioning.bootstrap import bootstrap_openclaw_session
 from app.features.provisioning.service import start_provisioning
 from app.features.sessions.auth import assert_session_access, get_session_token_header
@@ -60,11 +59,7 @@ async def activate_session_endpoint(
     )
     current_session_id = session.id
 
-    payment_statement = select(Payment).where(Payment.session_id == current_session_id)
-    payment_result = await db.execute(payment_statement)
-    payments = list(payment_result.scalars().all())
-    if not any(item.status == "confirmed" for item in payments):
-        raise HTTPException(status_code=409, detail="payment_not_confirmed")
+    await require_confirmed_session_payment(db, session_id=current_session_id)
 
     await start_provisioning(db, session_id=current_session_id)
     await bootstrap_openclaw_session(db, session_id=current_session_id)
