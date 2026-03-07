@@ -83,6 +83,7 @@ async def _assign_to_existing_node(
     session_id: str,
 ) -> ProvisioningJob:
     agent_client = DropletAgentClient()
+    await agent_client.health_check(droplet_ip=node.ipv4_address)
     await agent_client.push_session(
         droplet_ip=node.ipv4_address,
         session_config=session_config,
