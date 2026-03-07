@@ -122,12 +122,22 @@ async def assign_droplet_from_pool(
     node = result.scalar_one_or_none()
 
     if node is not None:
-        job = await _assign_to_existing_node(
-            db,
-            node=node,
-            session_config=session_config,
-            session_id=session_id,
-        )
+        try:
+            job = await _assign_to_existing_node(
+                db,
+                node=node,
+                session_config=session_config,
+                session_id=session_id,
+            )
+        except Exception as exc:
+            node.status = "unreachable"
+            node.error_message = str(exc)[:500]
+            node.session_count = max(0, node.session_count)
+            node, job = await _create_new_node(
+                db,
+                session_config=session_config,
+                session_id=session_id,
+            )
     else:
         node, job = await _create_new_node(
             db,
