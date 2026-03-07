@@ -217,3 +217,46 @@ def test_onboarding_event_supports_terminated_state(test_client: TestClient) -> 
         "target": assign.json().get("deepLink"),
         "callbackEventId": "cb_terminated_1",
     }
+
+
+def test_onboarding_event_is_idempotent_for_replayed_callback_id(test_client: TestClient) -> None:
+    session_id, session_token = _create_session(test_client, agent="researcher", channel="telegram")
+
+    assign = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert assign.status_code == 200
+
+    payload = {
+        "sessionId": session_id,
+        "channel": "telegram",
+        "eventType": "linked",
+        "target": "@idempotent_user",
+        "callbackEventId": "cb_replay_linked_1",
+    }
+    first = test_client.post(
+        "/api/channels/onboarding/event",
+        json=payload,
+        headers={"x-internal-token": "internal-token"},
+    )
+    second = test_client.post(
+        "/api/channels/onboarding/event",
+        json=payload,
+        headers={"x-internal-token": "internal-token"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+    activity = test_client.get(
+        f"/api/sessions/{session_id}/activity",
+        headers={"x-session-token": session_token},
+    )
+    assert activity.status_code == 200
+    connected_events = [
+        item for item in activity.json()["activities"] if item.get("text") == "Telegram channel connected"
+    ]
+    assert len(connected_events) == 1
