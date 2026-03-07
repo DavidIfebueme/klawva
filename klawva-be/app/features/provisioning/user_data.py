@@ -45,9 +45,11 @@ def build_session_config(session: Session, channel_link: ChannelLink | None) -> 
             "base_url": settings.frontend_api_base_url,
             "internal_token": settings.internal_service_token,
             "endpoints": {
+                "onboarding_event": "/api/channels/onboarding/event",
                 "link_confirmed": "/api/channels/onboarding/link-confirmed",
                 "intro_delivered": "/api/channels/onboarding/intro-delivered",
-                "activity": "/api/sessions/{session_id}/activity",
+                "activity_ingest": "/api/activity/ingest",
+                "report_upsert": "/api/reports/upsert",
             },
         },
         "inference": {
