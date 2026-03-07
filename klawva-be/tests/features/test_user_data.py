@@ -142,7 +142,11 @@ def test_build_session_config_callbacks(monkeypatch):
 
     assert cb["base_url"] == "https://api.klawva.xyz"
     assert cb["internal_token"] == "secret_token"
+    assert cb["endpoints"]["onboarding_event"] == "/api/channels/onboarding/event"
     assert "/api/channels/onboarding/link-confirmed" in cb["endpoints"]["link_confirmed"]
+    assert cb["endpoints"]["intro_delivered"] == "/api/channels/onboarding/intro-delivered"
+    assert cb["endpoints"]["activity_ingest"] == "/api/activity/ingest"
+    assert cb["endpoints"]["report_upsert"] == "/api/reports/upsert"
 
 
 def test_build_session_config_inference(monkeypatch):
