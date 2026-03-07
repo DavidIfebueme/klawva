@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.features.payments.models import Payment
 from app.features.activity.models import ActivityEvent
+from app.features.provisioning.models import DropletNode, ProvisioningJob
 from app.features.reports.models import MissionReport
 from app.main import app
 from app.platform.config import settings
@@ -51,6 +52,9 @@ class FakeDigitalOceanClient:
 
 
 class FakeDropletAgentClient:
+    async def health_check(self, *, droplet_ip):
+        return {"ok": True, "dropletIp": droplet_ip}
+
     async def push_session(self, *, droplet_ip, session_config):
         pass
 
@@ -301,3 +305,94 @@ def test_activate_with_confirmed_payment(test_client: TestClient) -> None:
     assert body["status"] == "active"
     assert body["telegramToken"] is None
     assert "telegramDeepLink" in body
+
+
+def test_activate_reuses_existing_pooled_node_for_second_session(test_client: TestClient) -> None:
+    first_create = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "researcher",
+            "channel": "telegram",
+            "brief": {"topic": "fintech"},
+            "paymentRef": "pay_reuse_1",
+        },
+    )
+    second_create = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "researcher",
+            "channel": "telegram",
+            "brief": {"topic": "retail"},
+            "paymentRef": "pay_reuse_2",
+        },
+    )
+
+    first_payload = first_create.json()
+    second_payload = second_create.json()
+    first_session_id = first_payload["sessionId"]
+    second_session_id = second_payload["sessionId"]
+
+    import asyncio
+
+    async def seed_confirmed_payments() -> None:
+        override = app.dependency_overrides[get_async_session]
+        async for db in override():
+            db.add(
+                Payment(
+                    session_id=first_session_id,
+                    provider="paystack",
+                    provider_reference="pay_ref_reuse_1",
+                    amount_minor=250000,
+                    currency="NGN",
+                    status="confirmed",
+                    confirmed_at=datetime.now(UTC),
+                )
+            )
+            db.add(
+                Payment(
+                    session_id=second_session_id,
+                    provider="paystack",
+                    provider_reference="pay_ref_reuse_2",
+                    amount_minor=250000,
+                    currency="NGN",
+                    status="confirmed",
+                    confirmed_at=datetime.now(UTC),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(seed_confirmed_payments())
+
+    first_activate = test_client.post(
+        f"/api/sessions/{first_session_id}/activate",
+        headers={"x-session-token": first_payload["sessionToken"]},
+    )
+    second_activate = test_client.post(
+        f"/api/sessions/{second_session_id}/activate",
+        headers={"x-session-token": second_payload["sessionToken"]},
+    )
+
+    assert first_activate.status_code == 200
+    assert second_activate.status_code == 200
+
+    async def assert_reused_node() -> None:
+        override = app.dependency_overrides[get_async_session]
+        async for db in override():
+            all_nodes = (await db.execute(select(DropletNode))).scalars().all()
+            assert len(all_nodes) == 1
+            node = all_nodes[0]
+            assert node.session_count == 2
+
+            first_job = (
+                await db.execute(select(ProvisioningJob).where(ProvisioningJob.session_id == first_session_id))
+            ).scalar_one()
+            second_job = (
+                await db.execute(select(ProvisioningJob).where(ProvisioningJob.session_id == second_session_id))
+            ).scalar_one()
+
+            assert first_job.droplet_id == second_job.droplet_id
+            assert first_job.droplet_node_id == second_job.droplet_node_id
+
+    from sqlalchemy import select
+
+    asyncio.run(assert_reused_node())
