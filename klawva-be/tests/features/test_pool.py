@@ -118,6 +118,11 @@ class FakeAgentClient:
         self.removed.append((droplet_ip, session_id))
 
 
+class FailingAgentClient(FakeAgentClient):
+    async def push_session(self, *, droplet_ip, session_config):
+        raise RuntimeError("gateway_unreachable")
+
+
 def test_assign_creates_new_node_when_pool_empty(db_session, patch_settings, monkeypatch):
     fake_do = FakeDOClient()
     monkeypatch.setattr(
@@ -189,6 +194,60 @@ def test_assign_reuses_existing_node(db_session, patch_settings, monkeypatch):
             assert node.status == "ready"
             assert len(fake_agent.pushed) == 1
             assert fake_agent.pushed[0] == ("10.0.0.50", config)
+
+    asyncio.run(run())
+
+
+def test_assign_falls_back_to_new_node_when_existing_push_fails(
+    db_session, patch_settings, monkeypatch
+):
+    fake_agent = FailingAgentClient()
+    fake_do = FakeDOClient()
+    monkeypatch.setattr(
+        "app.features.provisioning.pool.DropletAgentClient", lambda: fake_agent
+    )
+    monkeypatch.setattr(
+        "app.features.provisioning.pool.DigitalOceanClient", lambda: fake_do
+    )
+
+    async def run():
+        async with db_session() as db:
+            node = DropletNode(
+                droplet_id="existing-err-1",
+                ipv4_address="10.0.0.51",
+                region="nyc1",
+                status="ready",
+                session_count=2,
+                max_sessions=5,
+            )
+            db.add(node)
+            session = _make_session(db, "reuse-fallback-1")
+            await db.commit()
+            await db.refresh(node)
+            await db.refresh(session)
+
+            job = await assign_droplet_from_pool(
+                db,
+                session_config=_sample_config(session.id),
+                session_id=session.id,
+            )
+            await db.commit()
+            await db.refresh(node)
+
+            assert job.status == "active"
+            assert job.droplet_id == "drop-new-1"
+            assert job.droplet_node_id is not None
+            assert node.status == "unreachable"
+            assert node.error_message == "gateway_unreachable"
+            assert node.session_count == 2
+            assert len(fake_do.created) == 1
+
+            new_node_stmt = select(DropletNode).where(DropletNode.droplet_id == "drop-new-1")
+            new_node_result = await db.execute(new_node_stmt)
+            new_node = new_node_result.scalar_one_or_none()
+            assert new_node is not None
+            assert new_node.session_count == 1
+            assert new_node.status == "ready"
 
     asyncio.run(run())
 
