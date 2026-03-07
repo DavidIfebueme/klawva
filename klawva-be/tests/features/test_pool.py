@@ -110,6 +110,11 @@ class FakeAgentClient:
     def __init__(self):
         self.pushed = []
         self.removed = []
+        self.health_checked = []
+
+    async def health_check(self, *, droplet_ip):
+        self.health_checked.append(droplet_ip)
+        return {"ok": True}
 
     async def push_session(self, *, droplet_ip, session_config):
         self.pushed.append((droplet_ip, session_config))
@@ -121,6 +126,11 @@ class FakeAgentClient:
 class FailingAgentClient(FakeAgentClient):
     async def push_session(self, *, droplet_ip, session_config):
         raise RuntimeError("gateway_unreachable")
+
+
+class UnhealthyAgentClient(FakeAgentClient):
+    async def health_check(self, *, droplet_ip):
+        raise RuntimeError("gateway_unhealthy")
 
 
 def test_assign_creates_new_node_when_pool_empty(db_session, patch_settings, monkeypatch):
@@ -193,7 +203,54 @@ def test_assign_reuses_existing_node(db_session, patch_settings, monkeypatch):
             assert node.session_count == 3
             assert node.status == "ready"
             assert len(fake_agent.pushed) == 1
+            assert fake_agent.health_checked == ["10.0.0.50"]
             assert fake_agent.pushed[0] == ("10.0.0.50", config)
+
+    asyncio.run(run())
+
+
+def test_assign_falls_back_to_new_node_when_existing_health_fails(
+    db_session, patch_settings, monkeypatch
+):
+    fake_agent = UnhealthyAgentClient()
+    fake_do = FakeDOClient()
+    monkeypatch.setattr(
+        "app.features.provisioning.pool.DropletAgentClient", lambda: fake_agent
+    )
+    monkeypatch.setattr(
+        "app.features.provisioning.pool.DigitalOceanClient", lambda: fake_do
+    )
+
+    async def run():
+        async with db_session() as db:
+            node = DropletNode(
+                droplet_id="existing-unhealthy-1",
+                ipv4_address="10.0.0.52",
+                region="nyc1",
+                status="ready",
+                session_count=3,
+                max_sessions=5,
+            )
+            db.add(node)
+            session = _make_session(db, "reuse-health-fallback-1")
+            await db.commit()
+            await db.refresh(node)
+            await db.refresh(session)
+
+            job = await assign_droplet_from_pool(
+                db,
+                session_config=_sample_config(session.id),
+                session_id=session.id,
+            )
+            await db.commit()
+            await db.refresh(node)
+
+            assert job.status == "active"
+            assert job.droplet_id == "drop-new-1"
+            assert node.status == "unreachable"
+            assert node.error_message == "gateway_unhealthy"
+            assert node.session_count == 3
+            assert len(fake_do.created) == 1
 
     asyncio.run(run())
 
