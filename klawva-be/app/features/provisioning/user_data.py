@@ -92,6 +92,15 @@ chmod 600 /etc/openclaw/gateway_token
 
 echo '{gateway_port}' > /etc/openclaw/gateway_port
 
+cat > /etc/openclaw/runtime-bridge.env << 'KLAWVA_RUNTIME_BRIDGE_ENV_EOF'
+BRIDGE_INTERNAL_TOKEN_FILE=/etc/openclaw/gateway_token
+BRIDGE_SESSIONS_DIR=/etc/openclaw/sessions
+BRIDGE_GATEWAY_PORT={gateway_port}
+KLAWVA_RUNTIME_BRIDGE_ENV_EOF
+
+chmod 600 /etc/openclaw/runtime-bridge.env
+
 systemctl restart openclaw-gateway || true
 systemctl restart openclaw-agent || true
+systemctl restart klawva-runtime-bridge || true
 """
