@@ -2,8 +2,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
+from datetime import UTC, datetime
 
 from app.main import app
+from app.features.sessions.models import Session
 from app.platform.config import settings
 from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
@@ -260,3 +262,38 @@ def test_onboarding_event_is_idempotent_for_replayed_callback_id(test_client: Te
         item for item in activity.json()["activities"] if item.get("text") == "Telegram channel connected"
     ]
     assert len(connected_events) == 1
+
+
+def test_assign_telegram_reuses_token_from_completed_session(test_client: TestClient) -> None:
+    first_session_id, _ = _create_session(test_client, agent="researcher", channel="telegram")
+
+    first_assign = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": first_session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert first_assign.status_code == 200
+    assert first_assign.json()["token"] == "tokenA"
+
+    import asyncio
+
+    async def mark_first_session_completed() -> None:
+        override = app.dependency_overrides[get_async_session]
+        async for db in override():
+            session = await db.get(Session, first_session_id)
+            assert session is not None
+            session.status = "completed"
+            session.completed_at = datetime.now(UTC)
+            await db.commit()
+
+    asyncio.run(mark_first_session_completed())
+
+    second_session_id, _ = _create_session(test_client, agent="researcher", channel="telegram")
+
+    second_assign = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": second_session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert second_assign.status_code == 200
+    assert second_assign.json()["token"] == "tokenA"
