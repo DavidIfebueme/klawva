@@ -220,6 +220,7 @@ def test_build_user_data_script_gateway_port():
     config = {"session_id": "x", "callbacks": {"internal_token": "t"}}
     script = build_user_data_script(config, gateway_port=8888)
     assert "8888" in script
+    assert "BRIDGE_GATEWAY_PORT=8888" in script
 
 
 def test_build_user_data_script_gateway_token(monkeypatch):
@@ -241,3 +242,4 @@ def test_build_user_data_script_systemd_restarts():
 
     assert "systemctl restart openclaw-gateway" in script
     assert "systemctl restart openclaw-agent" in script
+    assert "systemctl restart klawva-runtime-bridge" in script
