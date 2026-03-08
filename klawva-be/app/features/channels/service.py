@@ -93,10 +93,15 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
     if not tokens:
         raise HTTPException(status_code=503, detail="telegram_token_pool_empty")
 
-    in_use_statement = select(ChannelLink).where(ChannelLink.channel == "telegram")
+    in_use_statement = (
+        select(ChannelLink.external_id)
+        .join(Session, Session.id == ChannelLink.session_id)
+        .where(ChannelLink.channel == "telegram")
+        .where(ChannelLink.external_id.is_not(None))
+        .where(Session.completed_at.is_(None))
+    )
     in_use_result = await db.execute(in_use_statement)
-    in_use_links = list(in_use_result.scalars().all())
-    in_use = {item.external_id for item in in_use_links if item.external_id}
+    in_use = {item for item in in_use_result.scalars().all() if item}
 
     available = [token for token in tokens if token not in in_use]
     if not available:
