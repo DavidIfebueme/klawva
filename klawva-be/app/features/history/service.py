@@ -12,9 +12,7 @@ async def request_history_link(db: AsyncSession, *, email: str) -> None:
 async def get_history_sessions(db: AsyncSession, *, token: str) -> list[Session]:
     email = decode_history_token(token)
     statement = (
-        select(Session)
-        .where(Session.customer_email == email)
-        .order_by(Session.created_at.desc())
+        select(Session).where(Session.customer_email == email).order_by(Session.created_at.desc())
     )
     result = await db.execute(statement)
     return list(result.scalars().all())
