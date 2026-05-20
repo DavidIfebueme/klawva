@@ -6,7 +6,6 @@ from app.features.channels.routes import router as channels_router
 from app.features.emails.routes import router as emails_router
 from app.features.history.routes import router as history_router
 from app.features.payments.routes import router as payments_router
-from app.features.provisioning.inference_routes import router as inference_router
 from app.features.provisioning.routes import router as provisioning_router
 from app.features.reports.routes import router as reports_router
 from app.features.sessions.routes import router as sessions_router
@@ -41,7 +40,6 @@ def create_app() -> FastAPI:
     app.include_router(history_router)
     app.include_router(payments_router)
     app.include_router(provisioning_router)
-    app.include_router(inference_router)
     app.include_router(reports_router)
     app.include_router(termination_router)
     app.include_router(observability_router)

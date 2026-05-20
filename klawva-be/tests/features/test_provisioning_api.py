@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -8,54 +11,6 @@ from app.platform.config import settings
 from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
 from app.platform.db.session import get_async_session
-
-
-class FakeDigitalOceanClient:
-    def __init__(self, should_fail: bool = False) -> None:
-        self.should_fail = should_fail
-
-    async def create_openclaw_droplet(
-        self,
-        *,
-        session_id: str,
-        user_data: str | None = None,
-        ssh_keys: list[str] | None = None,
-    ):
-        _ = session_id, user_data, ssh_keys
-        if self.should_fail:
-            raise RuntimeError("create_failed")
-
-        class Result:
-            droplet_id = "12345"
-            status = "new"
-
-        return Result()
-
-    async def get_droplet(self, *, droplet_id: str) -> dict:
-        return {
-            "id": droplet_id,
-            "networks": {
-                "v4": [{"ip_address": "10.0.0.99", "type": "public"}]
-            },
-        }
-
-    async def destroy_droplet(self, *, droplet_id: str) -> None:
-        _ = droplet_id
-
-    @staticmethod
-    def extract_public_ipv4(droplet_data: dict) -> str | None:
-        for net in droplet_data.get("networks", {}).get("v4", []):
-            if net.get("type") == "public":
-                return net["ip_address"]
-        return None
-
-
-class FakeDropletAgentClient:
-    async def push_session(self, *, droplet_ip, session_config):
-        pass
-
-    async def remove_session(self, *, droplet_ip, session_id):
-        pass
 
 
 @pytest.fixture
@@ -86,19 +41,24 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
 
-    monkeypatch.setattr(
-        "app.features.provisioning.pool.DigitalOceanClient",
-        lambda: FakeDigitalOceanClient(),
-    )
-    monkeypatch.setattr(
-        "app.features.provisioning.pool.DropletAgentClient",
-        lambda: FakeDropletAgentClient(),
-    )
     monkeypatch.setattr(settings, "internal_service_token", "internal-token")
-    monkeypatch.setattr(settings, "droplet_agent_gateway_port", 9090)
-    monkeypatch.setattr(settings, "droplet_max_sessions", 5)
-    monkeypatch.setattr(settings, "digitalocean_region", "nyc1")
-    monkeypatch.setattr(settings, "digitalocean_ssh_key_fingerprints", "")
+    monkeypatch.setattr(settings, "openclaw_config_path", "/tmp/test_prov_openclaw.json")
+    monkeypatch.setattr(settings, "openclaw_workspaces_dir", "/tmp/test_prov_workspaces")
+    monkeypatch.setattr(settings, "zai_api_key", "test-zai-key")
+    monkeypatch.setattr(settings, "zai_base_url", "https://api.z.ai/api/paas/v4/")
+    monkeypatch.setattr(settings, "zai_model", "glm-4.7")
+    monkeypatch.setattr(settings, "zai_fallback_model", "glm-4.7-flash")
+
+    config_path = Path("/tmp/test_prov_openclaw.json")
+    config_path.write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
+
+    workspace_dir = Path("/tmp/test_prov_workspaces")
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    async def fake_read_config():
+        return json.loads(config_path.read_text())
+
+    monkeypatch.setattr("app.platform.clients.openclaw_gateway.read_config", fake_read_config)
 
     client = TestClient(app)
     yield client
@@ -121,27 +81,18 @@ def _create_session(client: TestClient) -> tuple[str, str]:
     return payload["sessionId"], payload["sessionToken"]
 
 
-def _sample_config(session_id: str) -> dict:
-    return {
-        "session_id": session_id,
-        "agent_id": "scrapper",
-        "channel": {"type": "whatsapp"},
-    }
-
-
 def test_start_provisioning_success(test_client: TestClient) -> None:
     session_id, session_token = _create_session(test_client)
 
     response = test_client.post(
         "/api/provisioning/start",
-        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
-        headers={"x-internal-token": "internal-token"},
+        json={"sessionId": session_id},
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "active"
-    assert payload["dropletId"] == "12345"
+    assert payload["agentIdInGateway"] is not None
     assert payload["attemptCount"] == 1
 
     status = test_client.get(
@@ -152,36 +103,17 @@ def test_start_provisioning_success(test_client: TestClient) -> None:
     assert status.json()["status"] == "ready"
 
 
-def test_start_provisioning_failure_retry(
-    test_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    session_id, _ = _create_session(test_client)
-    monkeypatch.setattr(
-        "app.features.provisioning.pool.DigitalOceanClient",
-        lambda: FakeDigitalOceanClient(should_fail=True),
-    )
-
-    response = test_client.post(
-        "/api/provisioning/start",
-        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
-        headers={"x-internal-token": "internal-token"},
-    )
-    assert response.status_code == 502
-
-
 def test_destroy_provisioning(test_client: TestClient) -> None:
     session_id, _ = _create_session(test_client)
     start = test_client.post(
         "/api/provisioning/start",
-        json={"sessionId": session_id, "sessionConfig": _sample_config(session_id)},
-        headers={"x-internal-token": "internal-token"},
+        json={"sessionId": session_id},
     )
     assert start.status_code == 200
 
     destroy = test_client.post(
         "/api/provisioning/destroy",
         json={"sessionId": session_id},
-        headers={"x-internal-token": "internal-token"},
     )
     assert destroy.status_code == 200
     assert destroy.json() == {"destroyed": True}
