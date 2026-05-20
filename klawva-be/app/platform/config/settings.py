@@ -17,20 +17,19 @@ class Settings(BaseSettings):
     history_magic_link_secret: str | None = None
     history_magic_link_ttl_minutes: int = 20
 
-    digitalocean_api_token: str | None = None
-    digitalocean_api_base_url: str = "https://api.digitalocean.com"
-    digitalocean_region: str = "nyc1"
-    digitalocean_droplet_size: str = "s-2vcpu-4gb"
-    digitalocean_openclaw_image: str = "openclaw"
-    digitalocean_ssh_key_fingerprints: str = ""
-    provisioning_max_retries: int = 3
-    droplet_max_sessions: int = 5
-    droplet_agent_gateway_port: int = 9090
+    openclaw_gateway_url: str = "http://localhost:9090"
+    openclaw_gateway_ws_url: str = "ws://localhost:18789"
+    openclaw_gateway_token: str | None = None
+    openclaw_config_path: str = "/etc/openclaw/openclaw.json"
+    openclaw_workspaces_dir: str = "/opt/openclaw/workspaces"
 
-    gradient_model_access_key: str | None = None
-    gradient_base_url: str = "https://inference.do-ai.run"
-    gradient_preferred_model: str = "openai-gpt-oss-120b"
-    gradient_fallback_model: str = "openai-gpt-oss-20b"
+    zai_base_url: str = "https://api.z.ai/api/paas/v4/"
+    zai_api_key: str | None = None
+    zai_model: str = "glm-4.7"
+    zai_fallback_model: str = "glm-4.7-flash"
+
+    whatsapp_klawva_account_pool: str = ""
+    whatsapp_numbers_map_path: str = "/etc/openclaw/whatsapp_numbers.json"
 
     paystack_secret_key: str | None = None
     paystack_webhook_secret: str | None = None
