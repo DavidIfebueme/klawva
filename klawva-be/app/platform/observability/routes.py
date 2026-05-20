@@ -21,8 +21,7 @@ class AlertResponse(BaseModel):
 @router.get("/metrics", response_model=list[MetricResponse])
 async def metrics_endpoint() -> list[MetricResponse]:
     return [
-        MetricResponse(name=item.name, value=item.value)
-        for item in metrics_registry.snapshot()
+        MetricResponse(name=item.name, value=item.value) for item in metrics_registry.snapshot()
     ]
 
 
