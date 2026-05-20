@@ -18,13 +18,11 @@ async def start_provisioning_endpoint(
     payload: StartProvisioningRequest,
     db: AsyncSession = Depends(get_async_session),
 ) -> ProvisioningResponse:
-    job = await start_provisioning(
-        db, session_id=payload.session_id, session_config=payload.session_config
-    )
+    job = await start_provisioning(db, session_id=payload.session_id)
     return ProvisioningResponse(
         jobId=job.id,
         status=job.status,
-        dropletId=job.droplet_id,
+        agentIdInGateway=job.agent_id_in_gateway,
         attemptCount=job.attempt_count,
     )
 
