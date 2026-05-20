@@ -134,9 +134,7 @@ class PaystackProvider:
     def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool:
         if not self._webhook_secret or not signature_header:
             return False
-        digest = hmac.new(
-            self._webhook_secret.encode("utf-8"), body, hashlib.sha512
-        ).hexdigest()
+        digest = hmac.new(self._webhook_secret.encode("utf-8"), body, hashlib.sha512).hexdigest()
         return hmac.compare_digest(digest, signature_header)
 
     def parse_webhook(self, body: bytes) -> WebhookParseResult:
