@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
+from app.features.channels.models import ChannelLink
 from app.features.emails.service import send_shift_ended_email
 from app.features.provisioning.service import destroy_provisioning
 from app.features.reports.models import MissionReport
@@ -62,6 +63,13 @@ async def execute_due_terminations(db: AsyncSession) -> int:
             db.add(report)
 
         await destroy_provisioning(db, session_id=session.id)
+
+        channel_link_stmt = select(ChannelLink).where(ChannelLink.session_id == session.id)
+        channel_link_result = await db.execute(channel_link_stmt)
+        channel_link = channel_link_result.scalar_one_or_none()
+        if channel_link is not None:
+            channel_link.status = "terminated"
+            channel_link.terminated_at = now
 
         session.status = "completed"
         session.completed_at = now
