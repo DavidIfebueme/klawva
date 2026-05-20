@@ -1,16 +1,17 @@
-import base64
-import secrets
+import json
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
-from datetime import UTC, datetime, timedelta
 
-from fastapi import HTTPException
 import httpx
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
 from app.features.sessions.models import Session
+from app.platform.clients import openclaw_gateway
 from app.platform.config import settings
 
 
@@ -18,9 +19,19 @@ def _parse_token_pool(raw_pool: str) -> list[str]:
     return [item.strip() for item in raw_pool.split(",") if item.strip()]
 
 
-def _new_qr_payload(session_id: str) -> str:
-    raw = f"{session_id}:{secrets.token_urlsafe(24)}"
-    return base64.urlsafe_b64encode(raw.encode()).decode()
+def _parse_account_pool(raw_pool: str) -> list[str]:
+    return [item.strip() for item in raw_pool.split(",") if item.strip()]
+
+
+def _load_whatsapp_numbers_map() -> dict[str, str]:
+    map_path = Path(settings.whatsapp_numbers_map_path)
+    if not map_path.exists():
+        return {}
+    try:
+        data = json.loads(map_path.read_text(encoding="utf-8"))
+        return dict(data) if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 async def _telegram_username_from_token(token: str) -> str | None:
@@ -41,12 +52,16 @@ async def _telegram_username_from_token(token: str) -> str | None:
     return None
 
 
-async def get_or_refresh_whatsapp_qr(db: AsyncSession, *, session_id: str) -> tuple[str, int]:
+async def get_vendor_whatsapp_qr(db: AsyncSession, *, session_id: str) -> tuple[str, int]:
     session = await db.get(Session, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
     if session.channel != "whatsapp":
         raise HTTPException(status_code=409, detail="channel_not_whatsapp")
+    if session.agent_id != "vendor":
+        raise HTTPException(status_code=409, detail="vendor_qr_requires_vendor_agent")
+
+    account_id = f"vendor-{session_id[:8]}"
 
     statement = select(ChannelLink).where(ChannelLink.session_id == session_id)
     result = await db.execute(statement)
@@ -56,30 +71,91 @@ async def get_or_refresh_whatsapp_qr(db: AsyncSession, *, session_id: str) -> tu
         link = ChannelLink(
             session_id=session_id,
             channel="whatsapp",
-            status="qr_ready",
-            qr_payload=_new_qr_payload(session_id),
+            status="qr_pending",
+            external_id=account_id,
         )
         db.add(link)
         await db.commit()
         await db.refresh(link)
-        return str(link.qr_payload), 60
 
-    if link.channel != "whatsapp":
-        raise HTTPException(status_code=409, detail="channel_link_mismatch")
+    try:
+        qr_data, expires_in = await openclaw_gateway.get_whatsapp_qr(account_id=account_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="whatsapp_qr_unavailable") from exc
 
-    link.qr_payload = _new_qr_payload(session_id)
+    link.qr_payload = qr_data
     link.status = "qr_ready"
     await db.commit()
-    await db.refresh(link)
-    return str(link.qr_payload), 60
+
+    return qr_data, expires_in
+
+
+async def assign_klawva_whatsapp_number(db: AsyncSession, *, session_id: str) -> tuple[str, str]:
+    session = await db.get(Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    if session.channel != "whatsapp":
+        raise HTTPException(status_code=409, detail="channel_not_whatsapp")
+    if session.agent_id == "vendor":
+        raise HTTPException(status_code=409, detail="vendor_uses_own_number")
+
+    statement = select(ChannelLink).where(ChannelLink.session_id == session_id)
+    result = await db.execute(statement)
+    existing = result.scalar_one_or_none()
+    if existing is not None and existing.external_id and existing.link_target:
+        numbers_map = _load_whatsapp_numbers_map()
+        phone = numbers_map.get(existing.external_id, existing.external_id)
+        wa_link = existing.link_target
+        return phone, wa_link
+
+    accounts = _parse_account_pool(settings.whatsapp_klawva_account_pool)
+    if not accounts:
+        raise HTTPException(status_code=503, detail="whatsapp_account_pool_empty")
+
+    in_use_statement = (
+        select(ChannelLink.external_id)
+        .join(Session, Session.id == ChannelLink.session_id)
+        .where(ChannelLink.channel == "whatsapp")
+        .where(ChannelLink.external_id.is_not(None))
+        .where(Session.completed_at.is_(None))
+    )
+    in_use_result = await db.execute(in_use_statement)
+    in_use = {item for item in in_use_result.scalars().all() if item}
+
+    available = [acct for acct in accounts if acct not in in_use]
+    if not available:
+        raise HTTPException(status_code=503, detail="whatsapp_account_pool_exhausted")
+
+    assigned_account = available[0]
+    numbers_map = _load_whatsapp_numbers_map()
+    phone_number = numbers_map.get(assigned_account, assigned_account)
+    wa_link = f"https://wa.me/{phone_number.lstrip('+')}?text={session_id}"
+
+    now = datetime.now(UTC)
+    if existing is None:
+        existing = ChannelLink(
+            session_id=session_id,
+            channel="whatsapp",
+            status="assigned",
+            external_id=assigned_account,
+            link_target=wa_link,
+            connected_at=now,
+        )
+        db.add(existing)
+    else:
+        existing.external_id = assigned_account
+        existing.link_target = wa_link
+        existing.status = "assigned"
+        existing.connected_at = now
+
+    await db.commit()
+    return phone_number, wa_link
 
 
 async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tuple[str, str | None]:
     session = await db.get(Session, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
-    if session.agent_id == "vendor":
-        raise HTTPException(status_code=409, detail="vendor_telegram_not_allowed")
     if session.channel != "telegram":
         raise HTTPException(status_code=409, detail="channel_not_telegram")
 
@@ -110,6 +186,7 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
     assigned = available[0]
     bot_username = await _telegram_username_from_token(assigned)
     deep_link = f"https://t.me/{bot_username}?start={session_id}" if bot_username else None
+    now = datetime.now(UTC)
     if existing is None:
         existing = ChannelLink(
             session_id=session_id,
@@ -117,14 +194,14 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
             status="assigned",
             external_id=assigned,
             link_target=deep_link,
-            connected_at=datetime.now(UTC) + timedelta(seconds=0),
+            connected_at=now,
         )
         db.add(existing)
     else:
         existing.external_id = assigned
         existing.link_target = deep_link
         existing.status = "assigned"
-        existing.connected_at = datetime.now(UTC)
+        existing.connected_at = now
 
     await db.commit()
     return assigned, deep_link
