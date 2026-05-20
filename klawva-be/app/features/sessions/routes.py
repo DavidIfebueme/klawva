@@ -6,11 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
-from app.features.channels.service import assign_telegram_bot_token, get_or_refresh_whatsapp_qr
+from app.features.channels.service import (
+    assign_klawva_whatsapp_number,
+    assign_telegram_bot_token,
+    get_vendor_whatsapp_qr,
+)
 from app.features.emails.service import send_shift_started_email
 from app.features.payments.service import require_confirmed_session_payment
 from app.features.provisioning.service import start_provisioning
-from app.features.provisioning.user_data import build_session_config
 from app.features.sessions.auth import assert_session_access, get_session_token_header
 from app.features.sessions.contracts import (
     ActivateSessionResponse,
@@ -70,9 +73,16 @@ async def activate_session_endpoint(
     qr: str | None = None
     expires_in: int | None = None
     telegram_deep_link: str | None = None
+    whatsapp_number: str | None = None
+    wa_me_link: str | None = None
 
     if session.channel == "whatsapp":
-        qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=current_session_id)
+        if session.agent_id == "vendor":
+            qr, expires_in = await get_vendor_whatsapp_qr(db, session_id=current_session_id)
+        else:
+            whatsapp_number, wa_me_link = await assign_klawva_whatsapp_number(
+                db, session_id=current_session_id
+            )
     else:
         _, telegram_deep_link = await assign_telegram_bot_token(
             db,
@@ -82,9 +92,11 @@ async def activate_session_endpoint(
     stmt = select(ChannelLink).where(ChannelLink.session_id == current_session_id)
     channel_link = (await db.execute(stmt)).scalar_one_or_none()
 
-    session_config = build_session_config(session, channel_link)
     await start_provisioning(
-        db, session_id=current_session_id, session_config=session_config
+        db,
+        session_id=current_session_id,
+        channel_link=channel_link,
+        whatsapp_account=channel_link.external_id if channel_link else None,
     )
 
     db.add(
@@ -92,7 +104,7 @@ async def activate_session_endpoint(
             session_id=current_session_id,
             event_type="bootstrap_completed",
             payload={
-                "text": "Session bootstrapped via pool assignment",
+                "text": "Session bootstrapped via OpenClaw Gateway",
                 "details": {"session_id": current_session_id},
             },
             occurred_at=datetime.now(UTC),
@@ -114,6 +126,8 @@ async def activate_session_endpoint(
         expiresIn=expires_in,
         telegramToken=None,
         telegramDeepLink=telegram_deep_link,
+        whatsappNumber=whatsapp_number,
+        waMeLink=wa_me_link,
     )
 
 
