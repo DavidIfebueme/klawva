@@ -1,11 +1,14 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Literal
 
+from app.features.channels.models import ChannelLink
 from app.features.channels.service import (
+    assign_klawva_whatsapp_number,
     assign_telegram_bot_token,
-    get_or_refresh_whatsapp_qr,
+    get_vendor_whatsapp_qr,
     record_channel_onboarding_event,
 )
 from app.features.sessions.auth import assert_session_access, get_session_token_header
@@ -17,6 +20,8 @@ router = APIRouter(tags=["channels"])
 class SessionQrResponse(BaseModel):
     qr: str
     expires_in: int = Field(alias="expiresIn")
+    whatsapp_number: str | None = Field(default=None, alias="whatsappNumber")
+    wa_me_link: str | None = Field(default=None, alias="waMeLink")
 
 
 class TelegramAssignRequest(BaseModel):
@@ -31,7 +36,9 @@ class TelegramAssignResponse(BaseModel):
 class ChannelOnboardingEventRequest(BaseModel):
     session_id: str = Field(alias="sessionId")
     channel: Literal["telegram", "whatsapp"]
-    event_type: Literal["linked", "intro_sent", "report_sent", "terminated"] = Field(alias="eventType")
+    event_type: Literal["linked", "intro_sent", "report_sent", "terminated"] = Field(
+        alias="eventType"
+    )
     target: str | None = None
     callback_event_id: str | None = Field(default=None, alias="callbackEventId")
 
@@ -56,7 +63,7 @@ class ChannelOnboardingEventResponse(BaseModel):
     callback_event_id: str | None = Field(default=None, alias="callbackEventId")
 
 
-def _callback_event_id_for_status(link, status: str) -> str | None:
+def _callback_event_id_for_status(link: ChannelLink, status: str) -> str | None:
     if status == "linked":
         return link.worker_link_callback_id
     if status == "intro_sent":
@@ -74,13 +81,22 @@ async def get_session_qr_endpoint(
     session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> SessionQrResponse:
-    await assert_session_access(
+    session = await assert_session_access(
         db,
         session_id=session_id,
         session_token=session_token,
     )
-    qr, expires_in = await get_or_refresh_whatsapp_qr(db, session_id=session_id)
-    return SessionQrResponse(qr=qr, expiresIn=expires_in)
+    if session.agent_id == "vendor":
+        qr, expires_in = await get_vendor_whatsapp_qr(db, session_id=session_id)
+        return SessionQrResponse(qr=qr, expiresIn=expires_in)
+
+    phone_number, wa_link = await assign_klawva_whatsapp_number(db, session_id=session_id)
+    return SessionQrResponse(
+        qr="",
+        expiresIn=0,
+        whatsappNumber=phone_number,
+        waMeLink=wa_link,
+    )
 
 
 @router.post("/api/channels/telegram/assign", response_model=TelegramAssignResponse)
@@ -112,7 +128,10 @@ async def record_channel_onboarding_event_endpoint(
     )
 
 
-@router.post("/api/channels/onboarding/link-confirmed", response_model=ChannelOnboardingEventResponse)
+@router.post(
+    "/api/channels/onboarding/link-confirmed",
+    response_model=ChannelOnboardingEventResponse,
+)
 async def record_link_confirmed_endpoint(
     payload: LinkConfirmedRequest,
     db: AsyncSession = Depends(get_async_session),
@@ -132,7 +151,10 @@ async def record_link_confirmed_endpoint(
     )
 
 
-@router.post("/api/channels/onboarding/intro-delivered", response_model=ChannelOnboardingEventResponse)
+@router.post(
+    "/api/channels/onboarding/intro-delivered",
+    response_model=ChannelOnboardingEventResponse,
+)
 async def record_intro_delivered_endpoint(
     payload: IntroDeliveredRequest,
     db: AsyncSession = Depends(get_async_session),
