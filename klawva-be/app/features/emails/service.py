@@ -28,9 +28,9 @@ def _render_template(
     cta = ""
     if cta_label and cta_href:
         cta = (
-            f"<a href=\"{cta_href}\" style=\"display:inline-block;padding:12px 20px;"
+            f'<a href="{cta_href}" style="display:inline-block;padding:12px 20px;'
             "background:#E8FF47;color:#0A0A0A;text-decoration:none;border-radius:8px;"
-            "font-family:Inter,system-ui,sans-serif;font-weight:700;\">"
+            'font-family:Inter,system-ui,sans-serif;font-weight:700;">'
             f"{cta_label}</a>"
         )
     return (
@@ -336,10 +336,7 @@ def _encode_history_token(email: str) -> str:
     if not secret:
         raise HTTPException(status_code=503, detail="history_magic_link_secret_not_configured")
     exp = int(
-        (
-            datetime.now(UTC)
-            + timedelta(minutes=settings.history_magic_link_ttl_minutes)
-        ).timestamp()
+        (datetime.now(UTC) + timedelta(minutes=settings.history_magic_link_ttl_minutes)).timestamp()
     )
     payload = json.dumps({"email": email, "exp": exp}, separators=(",", ":")).encode("utf-8")
     body = base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
