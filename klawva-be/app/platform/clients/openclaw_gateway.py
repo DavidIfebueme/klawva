@@ -84,8 +84,10 @@ def add_agent_to_config(
     if channel_type and account_id:
         channel_section = config.setdefault("channels", {}).setdefault(channel_type, {})
         channel_section["enabled"] = True
-        accounts = channel_section.setdefault("accounts", {})
-        accounts[account_id] = account_config or {"enabled": True}
+
+        if account_config is not None:
+            accounts = channel_section.setdefault("accounts", {})
+            accounts[account_id] = account_config
 
         binding = {
             "type": "route",
@@ -107,6 +109,7 @@ def remove_agent_from_config(
     agent_id: str,
     channel_type: str | None = None,
     account_id: str | None = None,
+    remove_account: bool = False,
 ) -> dict:
     agents_list = config.get("agents", {}).get("list", [])
     config.setdefault("agents", {})["list"] = [a for a in agents_list if a.get("id") != agent_id]
@@ -114,7 +117,7 @@ def remove_agent_from_config(
     bindings = config.get("bindings", [])
     config["bindings"] = [b for b in bindings if b.get("agentId") != agent_id]
 
-    if channel_type and account_id:
+    if remove_account and channel_type and account_id:
         channel_section = config.get("channels", {}).get(channel_type, {})
         accounts = channel_section.get("accounts", {})
         accounts.pop(account_id, None)
