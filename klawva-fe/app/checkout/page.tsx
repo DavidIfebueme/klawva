@@ -4,8 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { agents, AgentId, Channel } from '../../lib/agents';
-import { createSession, getBillingProfile, initializePayment } from '../../lib/api';
-import { BillingProfile } from '../../types';
+import { createSession } from '../../lib/api';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
@@ -30,8 +29,6 @@ function CheckoutContent() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [channel, setChannel] = useState<Channel | null>(agent?.channels.length === 1 ? agent.channels[0] : null);
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [billingProfile, setBillingProfile] = useState<BillingProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -40,32 +37,6 @@ function CheckoutContent() {
       router.push('/');
     }
   }, [agent, router]);
-
-  useEffect(() => {
-    let active = true;
-    getBillingProfile()
-      .then((profile) => {
-        if (active) {
-          setBillingProfile(profile);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setBillingProfile({
-            provider: 'stripe',
-            amountMinor: 199,
-            currency: 'USD',
-            amountDisplay: '$1.99',
-            region: 'global',
-            countryCode: null,
-          });
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   if (!agent) return null;
 
@@ -96,17 +67,7 @@ function CheckoutContent() {
 
   const handlePayment = async () => {
     if (!channel) {
-      setErrorMessage('Please select a channel before payment.');
-      return;
-    }
-
-    if (!billingProfile) {
-      setErrorMessage('Preparing location billing. Please try again in a moment.');
-      return;
-    }
-
-    if (!customerEmail.trim()) {
-      setErrorMessage('Enter your email to receive shift updates and history link.');
+      setErrorMessage('Please select a channel.');
       return;
     }
 
@@ -114,37 +75,24 @@ function CheckoutContent() {
     setErrorMessage(null);
 
     try {
-      const paymentRef = `pending_${billingProfile.provider}_${Date.now()}`;
+      // PAYWALL DISABLED — skip payment, create session directly
       const { sessionId, sessionToken } = await createSession({
         agentId: agent.id,
         channel,
         brief,
-        paymentRef,
       });
       sessionStorage.setItem(`klawva_session_token:${sessionId}`, sessionToken);
-
-      const payment = await initializePayment({
-        sessionId,
-        provider: billingProfile.provider,
-        customerEmail: customerEmail.trim(),
-      });
-
-      if (payment.checkoutUrl) {
-        window.open(payment.checkoutUrl, '_blank', 'noopener,noreferrer');
-      }
 
       const endsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
       const params = new URLSearchParams({
         agent: agent.id,
         channel,
-        provider: payment.provider,
-        paymentRef: payment.providerReference,
         endsAt,
       });
       router.push(`/session/${sessionId}?${params.toString()}`);
     } catch {
-      setErrorMessage('Unable to start payment. Please check backend and try again.');
+      setErrorMessage('Unable to start session. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -283,7 +231,7 @@ function CheckoutContent() {
             exit={{ opacity: 0, x: -20 }}
             className="bg-klawva-surface border border-klawva-border rounded-lg p-8 md:p-12"
           >
-            <h2 className="font-syne font-bold text-3xl text-klawva-text mb-8">Confirm & Pay</h2>
+            <h2 className="font-syne font-bold text-3xl text-klawva-text mb-8">Confirm & Launch</h2>
             
             <div className="bg-[#0A0A0A] border border-klawva-border rounded-lg p-6 mb-8">
               <div className="flex items-center justify-between mb-6 pb-6 border-b border-klawva-border">
@@ -294,14 +242,6 @@ function CheckoutContent() {
                     <div className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
                       {channel}
                     </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-syne font-bold text-2xl text-klawva-accent">
-                    {billingProfile?.amountDisplay ?? '$1.99'}
-                  </div>
-                  <div className="font-mono text-klawva-muted text-xs">
-                    {billingProfile?.provider === 'paystack' ? 'Paystack (Nigeria)' : 'Stripe (Global)'}
                   </div>
                 </div>
               </div>
@@ -315,13 +255,6 @@ function CheckoutContent() {
             </div>
             
             <div className="flex flex-col gap-4 mb-8">
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(event) => setCustomerEmail(event.target.value)}
-                placeholder="Your email for shift updates"
-                className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
-              />
               <Button 
                 variant="primary" 
                 size="lg" 
@@ -329,9 +262,7 @@ function CheckoutContent() {
                 loading={loading}
                 onClick={handlePayment}
               >
-                {billingProfile?.provider === 'paystack'
-                  ? 'Pay with Paystack (₦2,500)'
-                  : 'Pay with Stripe ($1.99)'}
+                Launch session
               </Button>
             </div>
 
@@ -340,10 +271,6 @@ function CheckoutContent() {
                 {errorMessage}
               </div>
             )}
-            
-            <div className="text-center font-mono text-klawva-dim text-xs">
-              [ Secure payment · No subscription · Session starts after payment confirmation ]
-            </div>
             
             <div className="mt-8 flex justify-start">
               <Button variant="ghost" onClick={() => setStep(agent.channels.length === 1 ? 1 : 2)} disabled={loading}>
