@@ -18,10 +18,12 @@ class Settings(BaseSettings):
     history_magic_link_ttl_minutes: int = 20
 
     openclaw_gateway_url: str = "http://localhost:9090"
-    openclaw_gateway_ws_url: str = "ws://localhost:18789"
+    openclaw_gateway_ws_url: str = "ws://localhost:9090"
     openclaw_gateway_token: str | None = None
-    openclaw_config_path: str = "/etc/openclaw/openclaw.json"
-    openclaw_workspaces_dir: str = "/opt/openclaw/workspaces"
+    openclaw_config_path: str = "/home/klawva/.openclaw/openclaw.json"
+    openclaw_workspaces_dir: str = "/home/klawva/.openclaw/workspaces"
+    openclaw_agents_dir: str = "/home/klawva/.openclaw/agents"
+    openclaw_restart_command: str = ""
 
     zai_base_url: str = "https://api.z.ai/api/paas/v4/"
     zai_api_key: str | None = None
