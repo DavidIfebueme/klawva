@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     frontend_api_base_url: str = "http://localhost:8000"
     telegram_bot_token_pool: str = ""
+    telegram_accounts_map_path: str = "/home/klawva/.openclaw/telegram_accounts.json"
     history_magic_link_secret: str | None = None
     history_magic_link_ttl_minutes: int = 20
 
@@ -27,8 +28,8 @@ class Settings(BaseSettings):
 
     zai_base_url: str = "https://api.z.ai/api/paas/v4/"
     zai_api_key: str | None = None
-    zai_model: str = "glm-4.7"
-    zai_fallback_model: str = "glm-4.7-flash"
+    zai_model: str = "zai/glm-4.7"
+    zai_fallback_model: str = "zai/glm-4.7-flash"
 
     whatsapp_klawva_account_pool: str = ""
     whatsapp_numbers_map_path: str = "/etc/openclaw/whatsapp_numbers.json"
