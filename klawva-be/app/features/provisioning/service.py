@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,26 +14,38 @@ from app.features.provisioning.models import ProvisioningJob
 from app.features.provisioning.workspace import create_agent_workspace, delete_agent_workspace
 from app.features.sessions.models import Session
 from app.platform.clients import openclaw_gateway
+from app.platform.config import settings
 
 
-def _build_channel_account(
+def _load_telegram_accounts_map() -> dict[str, str]:
+    map_path = Path(settings.telegram_accounts_map_path)
+    if not map_path.exists():
+        return {}
+    try:
+        data = json.loads(map_path.read_text(encoding="utf-8"))
+        return dict(data) if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _resolve_channel_binding(
     session: Session,
     channel_link: ChannelLink | None,
-) -> tuple[str, str, dict]:
+) -> tuple[str, str, dict | None]:
     if session.channel == "telegram" and channel_link is not None and channel_link.external_id:
-        account_id = _agent_gateway_id(session.id)
-        account_config = {
-            "enabled": True,
-            "botToken": channel_link.external_id,
-        }
-        return "telegram", account_id, account_config
+        token = channel_link.external_id
+        accounts_map = _load_telegram_accounts_map()
+        account_id = accounts_map.get(token, "")
+        if not account_id:
+            return "telegram", "", None
+        return "telegram", account_id, None
 
     if session.channel == "whatsapp" and channel_link is not None and channel_link.external_id:
         account_id = channel_link.external_id
         account_config = {"enabled": True}
         return "whatsapp", account_id, account_config
 
-    return "", "", {}
+    return "", "", None
 
 
 async def start_provisioning(
@@ -59,7 +74,7 @@ async def start_provisioning(
 
         create_agent_workspace(session)
 
-        channel_type, account_id, account_config = _build_channel_account(session, channel_link)
+        channel_type, account_id, account_config = _resolve_channel_binding(session, channel_link)
 
         config = await openclaw_gateway.read_config()
         config = openclaw_gateway.add_agent_to_config(
@@ -67,11 +82,11 @@ async def start_provisioning(
             agent_fragment,
             channel_type=channel_type or None,
             account_id=account_id or None,
-            account_config=account_config or None,
+            account_config=account_config,
         )
         openclaw_gateway.write_config(config)
 
-        if channel_type:
+        if channel_type and account_id:
             openclaw_gateway.restart_gateway()
     except Exception as exc:
         if existing is not None:
@@ -119,7 +134,8 @@ async def destroy_provisioning(db: AsyncSession, *, session_id: str) -> bool:
     account_id = ""
     if channel_link and channel_link.external_id:
         if channel_type == "telegram":
-            account_id = _agent_gateway_id(session_id)
+            accounts_map = _load_telegram_accounts_map()
+            account_id = accounts_map.get(channel_link.external_id, "")
         elif channel_type == "whatsapp":
             account_id = channel_link.external_id
 
