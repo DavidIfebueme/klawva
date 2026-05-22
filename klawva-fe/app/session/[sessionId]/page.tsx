@@ -12,6 +12,7 @@ import {
   getSessionActivity,
   getSessionQR,
   getSessionStatus,
+  lockTelegramAccess,
 } from '../../../lib/api';
 
 type HandshakeState = 'provisioning' | 'qr' | 'whatsapp-number' | 'telegram';
@@ -180,6 +181,11 @@ export default function SessionHandshakePage() {
       clearInterval(interval);
     };
   }, [channel, sessionId, sessionToken]);
+
+  useEffect(() => {
+    if (channel !== 'telegram' || !sessionToken || telegramOnboardingState !== 'linked') return;
+    void lockTelegramAccess(sessionId, sessionToken);
+  }, [channel, sessionId, sessionToken, telegramOnboardingState]);
 
   const goToStatus = async () => {
     const params = new URLSearchParams();
