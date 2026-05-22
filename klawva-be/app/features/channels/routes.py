@@ -192,13 +192,13 @@ class TelegramLockAccessResponse(BaseModel):
 )
 async def lock_telegram_access_endpoint(
     payload: TelegramLockAccessRequest,
+    session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> TelegramLockAccessResponse:
-    session_token_header = get_session_token_header(None)
     await assert_session_access(
         db,
         session_id=payload.session_id,
-        session_token=session_token_header,
+        session_token=session_token,
     )
 
     agent_id = _agent_gateway_id(payload.session_id)
