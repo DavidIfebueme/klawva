@@ -187,3 +187,19 @@ export async function getSessionReport(sessionId: string, sessionToken: string):
   if (!res.ok) throw new Error('Failed to fetch report');
   return res.json();
 }
+
+export async function lockTelegramAccess(
+  sessionId: string,
+  sessionToken: string,
+): Promise<{ locked: boolean; telegramUserId?: string }> {
+  const res = await fetch(`${BASE}/api/channels/telegram/lock-access`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...sessionTokenHeaders(sessionToken),
+    },
+    body: JSON.stringify({ sessionId }),
+  });
+  if (!res.ok) return { locked: false };
+  return res.json();
+}
