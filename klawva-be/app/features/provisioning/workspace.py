@@ -10,8 +10,12 @@ from .agent_config import AGENT_BOOTSTRAP_PROFILE, _agent_gateway_id
 def create_agent_workspace(session: Session) -> str:
     profile = AGENT_BOOTSTRAP_PROFILE.get(session.agent_id, {})
     agent_id = _agent_gateway_id(session.id)
+
     workspace_dir = Path(settings.openclaw_workspaces_dir) / agent_id
     workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    agent_dir = Path(settings.openclaw_agents_dir) / agent_id / "agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
 
     soul_content = str(profile.get("soul_md", ""))
     brief_payload = session.brief if isinstance(session.brief, dict) else {}
@@ -26,8 +30,16 @@ def create_agent_workspace(session: Session) -> str:
 
 def delete_agent_workspace(session_id: str) -> bool:
     agent_id = _agent_gateway_id(session_id)
+
     workspace_dir = Path(settings.openclaw_workspaces_dir) / agent_id
+    agent_dir = Path(settings.openclaw_agents_dir) / agent_id
+
+    removed = False
     if workspace_dir.exists():
         shutil.rmtree(workspace_dir, ignore_errors=True)
-        return True
-    return False
+        removed = True
+    if agent_dir.exists():
+        shutil.rmtree(agent_dir, ignore_errors=True)
+        removed = True
+
+    return removed

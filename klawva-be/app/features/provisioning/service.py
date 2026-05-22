@@ -6,12 +6,31 @@ from app.features.channels.models import ChannelLink
 from app.features.provisioning.agent_config import (
     _agent_gateway_id,
     build_agent_fragment,
-    build_binding_fragment,
 )
 from app.features.provisioning.models import ProvisioningJob
 from app.features.provisioning.workspace import create_agent_workspace, delete_agent_workspace
 from app.features.sessions.models import Session
 from app.platform.clients import openclaw_gateway
+
+
+def _build_channel_account(
+    session: Session,
+    channel_link: ChannelLink | None,
+) -> tuple[str, str, dict]:
+    if session.channel == "telegram" and channel_link is not None and channel_link.external_id:
+        account_id = _agent_gateway_id(session.id)
+        account_config = {
+            "enabled": True,
+            "botToken": channel_link.external_id,
+        }
+        return "telegram", account_id, account_config
+
+    if session.channel == "whatsapp" and channel_link is not None and channel_link.external_id:
+        account_id = channel_link.external_id
+        account_config = {"enabled": True}
+        return "whatsapp", account_id, account_config
+
+    return "", "", {}
 
 
 async def start_provisioning(
@@ -36,18 +55,24 @@ async def start_provisioning(
     agent_id = _agent_gateway_id(session_id)
 
     try:
-        agent_fragment = build_agent_fragment(
-            session,
-            channel_link=channel_link,
-            whatsapp_account=whatsapp_account,
-        )
-        binding_fragment = build_binding_fragment(session)
+        agent_fragment = build_agent_fragment(session)
 
         create_agent_workspace(session)
 
+        channel_type, account_id, account_config = _build_channel_account(session, channel_link)
+
         config = await openclaw_gateway.read_config()
-        config = openclaw_gateway.add_agent_to_config(config, agent_fragment, binding_fragment)
+        config = openclaw_gateway.add_agent_to_config(
+            config,
+            agent_fragment,
+            channel_type=channel_type or None,
+            account_id=account_id or None,
+            account_config=account_config or None,
+        )
         openclaw_gateway.write_config(config)
+
+        if channel_type:
+            openclaw_gateway.restart_gateway()
     except Exception as exc:
         if existing is not None:
             existing.attempt_count += 1
@@ -85,10 +110,31 @@ async def destroy_provisioning(db: AsyncSession, *, session_id: str) -> bool:
 
     agent_id = job.agent_id_in_gateway
 
+    stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
+    link_result = await db.execute(stmt)
+    channel_link = link_result.scalar_one_or_none()
+
+    session = await db.get(Session, session_id)
+    channel_type = session.channel if session else ""
+    account_id = ""
+    if channel_link and channel_link.external_id:
+        if channel_type == "telegram":
+            account_id = _agent_gateway_id(session_id)
+        elif channel_type == "whatsapp":
+            account_id = channel_link.external_id
+
     try:
         config = await openclaw_gateway.read_config()
-        config = openclaw_gateway.remove_agent_from_config(config, agent_id)
+        config = openclaw_gateway.remove_agent_from_config(
+            config,
+            agent_id,
+            channel_type=channel_type or None,
+            account_id=account_id or None,
+        )
         openclaw_gateway.write_config(config)
+
+        if channel_type:
+            openclaw_gateway.restart_gateway()
     except Exception:
         pass
 
