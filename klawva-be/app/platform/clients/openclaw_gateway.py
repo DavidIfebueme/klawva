@@ -136,6 +136,36 @@ def restart_gateway() -> None:
     subprocess.run(cmd, shell=True, check=True, timeout=30)
 
 
+def read_telegram_peer_id(agent_id: str) -> str | None:
+    sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
+    if not sessions_path.exists():
+        return None
+    try:
+        data = json.loads(sessions_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for _key, value in data.items():
+        if not isinstance(value, dict):
+            continue
+        origin = value.get("origin", {})
+        if origin.get("provider") == "telegram" and origin.get("chatType") == "direct":
+            from_id = str(origin.get("from", ""))
+            if from_id.startswith("telegram:"):
+                return from_id.split(":", 1)[1]
+    return None
+
+
+def lock_telegram_account(config: dict, account_id: str, telegram_user_id: str) -> dict:
+    tg = config.setdefault("channels", {}).setdefault("telegram", {})
+    account = tg.get("accounts", {}).get(account_id, {})
+    account["dmPolicy"] = "allowlist"
+    account["allowFrom"] = [telegram_user_id]
+    tg.setdefault("accounts", {})[account_id] = account
+    return config
+
+
 async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
     request_id = str(uuid.uuid4())
     payload = {
