@@ -7,7 +7,7 @@ class CreateSessionPayload(BaseModel):
     agent_id: str = Field(alias="agentId")
     channel: Literal["whatsapp", "telegram"]
     brief: dict[str, str]
-    payment_ref: str = Field(alias="paymentRef")
+    payment_ref: str | None = Field(default=None, alias="paymentRef")
 
 
 class CreateSessionResponse(BaseModel):
