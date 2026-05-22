@@ -67,7 +67,7 @@ async def activate_session_endpoint(
     )
     current_session_id = session.id
 
-    await require_confirmed_session_payment(db, session_id=current_session_id)
+    # await require_confirmed_session_payment(db, session_id=current_session_id)
     ensure_session_window(session)
 
     qr: str | None = None
