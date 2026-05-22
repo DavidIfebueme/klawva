@@ -1,5 +1,6 @@
 import asyncio
 import json
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -60,26 +61,76 @@ def write_config(config: dict) -> None:
             pass
 
 
-def add_agent_to_config(config: dict, agent_fragment: dict, binding_fragment: dict) -> dict:
+def add_agent_to_config(
+    config: dict,
+    agent_fragment: dict,
+    channel_type: str | None = None,
+    account_id: str | None = None,
+    account_config: dict | None = None,
+) -> dict:
+    agent_id = agent_fragment["id"]
+    fragment = {
+        "id": agent_fragment["id"],
+        "name": agent_fragment.get("name", agent_id),
+        "workspace": agent_fragment["workspace"],
+        "agentDir": agent_fragment["agentDir"],
+        "model": agent_fragment["model"],
+    }
+
     agents_list = list(config.get("agents", {}).get("list", []))
-    agents_list.append(agent_fragment)
+    agents_list.append(fragment)
     config.setdefault("agents", {})["list"] = agents_list
 
-    bindings = list(config.get("bindings", []))
-    bindings.append(binding_fragment)
-    config["bindings"] = bindings
+    if channel_type and account_id:
+        channel_section = config.setdefault("channels", {}).setdefault(channel_type, {})
+        channel_section["enabled"] = True
+        accounts = channel_section.setdefault("accounts", {})
+        accounts[account_id] = account_config or {"enabled": True}
+
+        binding = {
+            "type": "route",
+            "agentId": agent_id,
+            "match": {
+                "channel": channel_type,
+                "accountId": account_id,
+            },
+        }
+        bindings = list(config.get("bindings", []))
+        bindings.append(binding)
+        config["bindings"] = bindings
 
     return config
 
 
-def remove_agent_from_config(config: dict, agent_id: str) -> dict:
+def remove_agent_from_config(
+    config: dict,
+    agent_id: str,
+    channel_type: str | None = None,
+    account_id: str | None = None,
+) -> dict:
     agents_list = config.get("agents", {}).get("list", [])
     config.setdefault("agents", {})["list"] = [a for a in agents_list if a.get("id") != agent_id]
 
     bindings = config.get("bindings", [])
-    config["bindings"] = [b for b in bindings if b.get("agent") != agent_id]
+    config["bindings"] = [b for b in bindings if b.get("agentId") != agent_id]
+
+    if channel_type and account_id:
+        channel_section = config.get("channels", {}).get(channel_type, {})
+        accounts = channel_section.get("accounts", {})
+        accounts.pop(account_id, None)
+        if not accounts:
+            channel_section.pop("accounts", None)
+        if not channel_section:
+            config.get("channels", {}).pop(channel_type, None)
 
     return config
+
+
+def restart_gateway() -> None:
+    cmd = settings.openclaw_restart_command
+    if not cmd:
+        return
+    subprocess.run(cmd, shell=True, check=True, timeout=30)
 
 
 async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
