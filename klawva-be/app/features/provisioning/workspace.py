@@ -19,11 +19,38 @@ def create_agent_workspace(session: Session) -> str:
 
     soul_content = str(profile.get("soul_md", ""))
     brief_payload = session.brief if isinstance(session.brief, dict) else {}
+    worker_name = str(brief_payload.get("workerName", session.agent_id))
+
     brief_section = "\n\n## Employer Brief\n"
     for key, value in brief_payload.items():
         brief_section += f"- **{key}**: {value}\n"
 
     (workspace_dir / "SOUL.md").write_text(soul_content + brief_section, encoding="utf-8")
+
+    identity_lines = [
+        "# IDENTITY.md",
+        "",
+        f"- **Name:** {worker_name}",
+        f"- **Creature:** Klawva {session.agent_id.capitalize()} — an AI specialist agent",
+        "- **Vibe:** Professional, concise, task-focused",
+        "- **Emoji:** ⚡",
+    ]
+    (workspace_dir / "IDENTITY.md").write_text("\n".join(identity_lines) + "\n", encoding="utf-8")
+
+    user_lines = [
+        "# USER.md — Your Employer",
+        "",
+        f"- **Name:** {worker_name}",
+        "- **What to call them:** Employer",
+        "- **Timezone:** UTC",
+        f"- **Notes:** Klawva {session.agent_id} session. "
+        "Read SOUL.md for your full identity and instructions.",
+    ]
+    (workspace_dir / "USER.md").write_text("\n".join(user_lines) + "\n", encoding="utf-8")
+
+    bootstrap_path = workspace_dir / "BOOTSTRAP.md"
+    if bootstrap_path.exists():
+        bootstrap_path.unlink()
 
     return str(workspace_dir)
 
