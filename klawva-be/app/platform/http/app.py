@@ -24,7 +24,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Klawva Backend", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_base_url, "http://127.0.0.1:3000"],
+        allow_origins=[settings.frontend_base_url, "http://127.0.0.1:3000", "https://www.klawva.xyz"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
