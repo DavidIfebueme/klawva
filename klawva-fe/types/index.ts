@@ -101,7 +101,7 @@ export interface CreateSessionPayload {
   agentId: AgentId;
   channel: 'whatsapp' | 'telegram';
   brief: Record<string, string>;
-  paymentRef: string;
+  paymentRef?: string;
 }
 
 export interface CreateSessionResponse {
