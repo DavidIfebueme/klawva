@@ -2,6 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.channels.models import ChannelLink
@@ -11,7 +12,9 @@ from app.features.channels.service import (
     get_vendor_whatsapp_qr,
     record_channel_onboarding_event,
 )
+from app.features.provisioning.agent_config import _agent_gateway_id
 from app.features.sessions.auth import assert_session_access, get_session_token_header
+from app.platform.clients import openclaw_gateway
 from app.platform.db.session import get_async_session
 
 router = APIRouter(tags=["channels"])
@@ -172,3 +175,51 @@ async def record_intro_delivered_endpoint(
         target=link.link_target,
         callbackEventId=link.worker_intro_callback_id,
     )
+
+
+class TelegramLockAccessRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+
+
+class TelegramLockAccessResponse(BaseModel):
+    locked: bool
+    telegram_user_id: str | None = Field(default=None, alias="telegramUserId")
+
+
+@router.post(
+    "/api/channels/telegram/lock-access",
+    response_model=TelegramLockAccessResponse,
+)
+async def lock_telegram_access_endpoint(
+    payload: TelegramLockAccessRequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> TelegramLockAccessResponse:
+    session_token_header = get_session_token_header(None)
+    await assert_session_access(
+        db,
+        session_id=payload.session_id,
+        session_token=session_token_header,
+    )
+
+    agent_id = _agent_gateway_id(payload.session_id)
+    telegram_user_id = openclaw_gateway.read_telegram_peer_id(agent_id)
+    if not telegram_user_id:
+        return TelegramLockAccessResponse(locked=False, telegramUserId=None)
+
+    stmt = select(ChannelLink).where(ChannelLink.session_id == payload.session_id)
+    link = (await db.execute(stmt)).scalar_one_or_none()
+    if not link or not link.external_id:
+        return TelegramLockAccessResponse(locked=False, telegramUserId=None)
+
+    from app.features.provisioning.service import _load_telegram_accounts_map
+    accounts_map = _load_telegram_accounts_map()
+    account_id = accounts_map.get(link.external_id, "")
+    if not account_id:
+        return TelegramLockAccessResponse(locked=False, telegramUserId=telegram_user_id)
+
+    config = await openclaw_gateway.read_config()
+    config = openclaw_gateway.lock_telegram_account(config, account_id, telegram_user_id)
+    openclaw_gateway.write_config(config)
+    openclaw_gateway.restart_gateway()
+
+    return TelegramLockAccessResponse(locked=True, telegramUserId=telegram_user_id)
