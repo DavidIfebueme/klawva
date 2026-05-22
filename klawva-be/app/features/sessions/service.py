@@ -26,7 +26,7 @@ async def create_session(
     agent_id: str,
     channel: str,
     brief: dict[str, str],
-    payment_ref: str,
+    payment_ref: str | None,
 ) -> tuple[Session, str]:
     session_token = generate_session_token()
     session = Session(
