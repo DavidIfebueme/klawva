@@ -201,5 +201,9 @@ export async function lockTelegramAccess(
     body: JSON.stringify({ sessionId }),
   });
   if (!res.ok) return { locked: false };
-  return res.json();
+  const data = await res.json();
+  return {
+    locked: data.locked ?? false,
+    telegramUserId: data.telegramUserId,
+  };
 }
