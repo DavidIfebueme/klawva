@@ -78,12 +78,9 @@ async def activate_session_endpoint(
     wa_me_link: str | None = None
 
     if session.channel == "whatsapp":
-        if session.agent_id == "vendor":
-            qr, expires_in = await get_vendor_whatsapp_qr(db, session_id=current_session_id)
-        else:
-            whatsapp_number, wa_me_link = await assign_klawva_whatsapp_number(
-                db, session_id=current_session_id
-            )
+        whatsapp_number, wa_me_link = await assign_klawva_whatsapp_number(
+            db, session_id=current_session_id
+        )
     else:
         _, telegram_deep_link = await assign_telegram_bot_token(
             db,
