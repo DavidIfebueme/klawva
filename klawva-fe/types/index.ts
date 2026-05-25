@@ -139,3 +139,9 @@ export interface HistorySessionItem {
 export interface HistorySessionsResponse {
   sessions: HistorySessionItem[];
 }
+
+export interface WhatsAppLockAccessResponse {
+  locked: boolean;
+  whatsappPhoneNumber?: string;
+  overlapWarning?: boolean;
+}
