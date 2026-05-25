@@ -49,6 +49,7 @@ async def create_session_endpoint(
         agent_id=payload.agent_id,
         channel=payload.channel,
         brief=payload.brief,
+        customer_email=payload.customer_email,
         payment_ref=payload.payment_ref,
     )
     return CreateSessionResponse(sessionId=session.id, sessionToken=session_token)
@@ -185,9 +186,10 @@ async def get_session_report_endpoint(
         session_id=session_id,
         session_token=session_token,
     )
-    date_range, stats, summary = await get_session_report(db, session_id)
+    date_range, stats, summary, share_token = await get_session_report(db, session_id)
     return SessionReportResponse(
         dateRange=date_range,
         stats=[StatEntry(label=item["label"], value=item["value"]) for item in stats],
         summary=summary,
+        shareToken=share_token,
     )
