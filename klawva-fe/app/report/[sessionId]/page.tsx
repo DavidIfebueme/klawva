@@ -11,7 +11,7 @@ import { ScrapperIcon } from '../../../components/icons/ScrapperIcon';
 import { VendorIcon } from '../../../components/icons/VendorIcon';
 import { ResearcherIcon } from '../../../components/icons/ResearcherIcon';
 import { Button } from '../../../components/ui/Button';
-import { getSessionReport } from '../../../lib/api';
+import { getSessionReport, getSharedSessionReport } from '../../../lib/api';
 import { agents, AgentId } from '../../../lib/agents';
 
 export default function MissionReportCardPage() {
@@ -19,6 +19,7 @@ export default function MissionReportCardPage() {
   const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
   const agentId = (searchParams.get('agent') as AgentId) || 'scrapper';
+  const shareTokenFromUrl = searchParams.get('shareToken');
   const agent = agents[agentId] || agents.scrapper;
   const AgentIcon =
     agent.id === 'vendor' ? VendorIcon : agent.id === 'researcher' ? ResearcherIcon : ScrapperIcon;
@@ -28,22 +29,29 @@ export default function MissionReportCardPage() {
     dateRange: string;
     stats: { label: string; value: string }[];
     summary: string;
+    shareToken?: string;
   } | null>(null);
   const [sessionToken] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     return sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
   });
+  const canLoad = shareTokenFromUrl || sessionToken;
   const [errorMessage, setErrorMessage] = useState<string | null>(
-    sessionToken ? null : 'Session token missing. Please restart from checkout.',
+    canLoad ? null : 'Session token missing. Please restart from checkout.',
   );
 
   React.useEffect(() => {
-    if (!sessionToken) return;
+    if (!canLoad) return;
     let cancelled = false;
 
     const loadReport = async () => {
       try {
-        const payload = await getSessionReport(sessionId, sessionToken);
+        let payload: { dateRange: string; stats: { label: string; value: string }[]; summary: string; shareToken?: string };
+        if (shareTokenFromUrl) {
+          payload = await getSharedSessionReport(sessionId, shareTokenFromUrl);
+        } else {
+          payload = await getSessionReport(sessionId, sessionToken);
+        }
         if (cancelled) return;
         setReport(payload);
         setErrorMessage(null);
@@ -58,10 +66,15 @@ export default function MissionReportCardPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionToken]);
+  }, [sessionId, sessionToken, shareTokenFromUrl]);
 
   const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const token = report?.shareToken || shareTokenFromUrl;
+    let url = window.location.origin + window.location.pathname + `?agent=${agent.id}`;
+    if (token) {
+      url += `&shareToken=${encodeURIComponent(token)}`;
+    }
+    navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
