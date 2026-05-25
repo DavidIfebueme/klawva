@@ -166,6 +166,15 @@ def lock_telegram_account(config: dict, account_id: str, telegram_user_id: str) 
     return config
 
 
+def reset_telegram_account_access(config: dict, account_id: str) -> dict:
+    tg = config.get("channels", {}).get("telegram", {})
+    account = tg.get("accounts", {}).get(account_id, {})
+    account["dmPolicy"] = "allowlist"
+    account["allowFrom"] = []
+    tg.setdefault("accounts", {})[account_id] = account
+    return config
+
+
 async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
