@@ -29,6 +29,7 @@ function CheckoutContent() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [channel, setChannel] = useState<Channel | null>(agent?.channels.length === 1 ? agent.channels[0] : null);
+  const [customerEmail, setCustomerEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -80,6 +81,7 @@ function CheckoutContent() {
         agentId: agent.id,
         channel,
         brief,
+        customerEmail: customerEmail.trim() || undefined,
       });
       sessionStorage.setItem(`klawva_session_token:${sessionId}`, sessionToken);
 
@@ -255,6 +257,13 @@ function CheckoutContent() {
             </div>
             
             <div className="flex flex-col gap-4 mb-8">
+              <input
+                type="email"
+                value={customerEmail}
+                onChange={(event) => setCustomerEmail(event.target.value)}
+                placeholder="Your email for shift updates and mission report"
+                className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
+              />
               <Button 
                 variant="primary" 
                 size="lg" 
