@@ -1,3 +1,4 @@
+import secrets
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -6,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.reports.models import MissionReport
 from app.features.sessions.models import Session
+
+
+def _generate_share_token() -> str:
+    return secrets.token_urlsafe(32)
 
 
 async def upsert_mission_report(
@@ -30,6 +35,7 @@ async def upsert_mission_report(
             summary=summary,
             report_data=report_data,
             report_card_url=report_card_url,
+            share_token=_generate_share_token(),
             delivered_at=datetime.now(UTC),
         )
         db.add(report)
