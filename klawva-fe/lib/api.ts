@@ -13,6 +13,7 @@ import {
   SessionQRResponse,
   SessionActivityResponse,
   SessionReportResponse,
+  WhatsAppLockAccessResponse,
 } from '../types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -211,5 +212,26 @@ export async function lockTelegramAccess(
   return {
     locked: data.locked ?? false,
     telegramUserId: data.telegramUserId,
+  };
+}
+
+export async function lockWhatsAppAccess(
+  sessionId: string,
+  sessionToken: string,
+): Promise<WhatsAppLockAccessResponse> {
+  const res = await fetch(`${BASE}/api/channels/whatsapp/lock-access`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...sessionTokenHeaders(sessionToken),
+    },
+    body: JSON.stringify({ sessionId }),
+  });
+  if (!res.ok) return { locked: false };
+  const data = await res.json();
+  return {
+    locked: data.locked ?? false,
+    whatsappPhoneNumber: data.whatsappPhoneNumber,
+    overlapWarning: data.overlapWarning,
   };
 }

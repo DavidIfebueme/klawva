@@ -157,6 +157,51 @@ def read_telegram_peer_id(agent_id: str) -> str | None:
     return None
 
 
+def read_whatsapp_peer_id(agent_id: str) -> str | None:
+    sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
+    if not sessions_path.exists():
+        return None
+    try:
+        data = json.loads(sessions_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for _key, value in data.items():
+        if not isinstance(value, dict):
+            continue
+        origin = value.get("origin", {})
+        if origin.get("provider") == "whatsapp" and origin.get("chatType") == "direct":
+            from_id = str(origin.get("from", ""))
+            if from_id.startswith("whatsapp:"):
+                raw = from_id.split(":", 1)[1]
+                phone = raw.split("@")[0]
+                if phone and not phone.startswith("+"):
+                    phone = "+" + phone
+                return phone
+    return None
+
+
+def lock_whatsapp_account(config: dict, account_id: str, phone_number: str) -> dict:
+    wa = config.setdefault("channels", {}).setdefault("whatsapp", {})
+    account = wa.get("accounts", {}).get(account_id, {})
+    account["dmPolicy"] = "allowlist"
+    account["allowFrom"] = [phone_number]
+    account["groupPolicy"] = "disabled"
+    account["sendReadReceipts"] = False
+    wa.setdefault("accounts", {})[account_id] = account
+    return config
+
+
+def reset_whatsapp_account_access(config: dict, account_id: str) -> dict:
+    wa = config.get("channels", {}).get("whatsapp", {})
+    account = wa.get("accounts", {}).get(account_id, {})
+    account["dmPolicy"] = "allowlist"
+    account["allowFrom"] = []
+    wa.setdefault("accounts", {})[account_id] = account
+    return config
+
+
 def lock_telegram_account(config: dict, account_id: str, telegram_user_id: str) -> dict:
     tg = config.setdefault("channels", {}).setdefault("telegram", {})
     account = tg.get("accounts", {}).get(account_id, {})
