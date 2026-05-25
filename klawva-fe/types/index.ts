@@ -116,9 +116,10 @@ export interface RequestHistoryLinkResponse {
 }
 
 export interface ContactEmailPayload {
-  subject: string;
-  body: string;
-  replyTo?: string;
+  name: string;
+  email: string;
+  employeeType?: string;
+  description: string;
 }
 
 export interface SendEmailResponse {
