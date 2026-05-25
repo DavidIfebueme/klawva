@@ -26,6 +26,7 @@ export interface SessionReportResponse {
   dateRange: string;
   stats: { label: string; value: string }[];
   summary: string;
+  shareToken?: string;
 }
 
 export interface ActivateSessionResponse {
@@ -101,6 +102,7 @@ export interface CreateSessionPayload {
   agentId: AgentId;
   channel: 'whatsapp' | 'telegram';
   brief: Record<string, string>;
+  customerEmail?: string;
   paymentRef?: string;
 }
 

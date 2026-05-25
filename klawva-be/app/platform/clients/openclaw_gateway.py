@@ -166,6 +166,17 @@ def lock_telegram_account(config: dict, account_id: str, telegram_user_id: str) 
     return config
 
 
+async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool:
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
     request_id = str(uuid.uuid4())
     payload = {
