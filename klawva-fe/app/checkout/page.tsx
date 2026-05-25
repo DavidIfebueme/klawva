@@ -195,7 +195,7 @@ function CheckoutContent() {
                 <WhatsAppIcon size={48} className="text-klawva-accent mb-6" />
                 <h3 className="font-syne font-bold text-xl text-klawva-text mb-2">WhatsApp</h3>
                 <p className="font-mono text-klawva-muted text-sm">
-                  You&apos;ll scan a QR code to connect first, then your agent sends intro and report updates to this number.
+                  Connect your agent via WhatsApp. You&apos;ll receive a number to message after checkout.
                 </p>
               </button>
               
@@ -264,6 +264,9 @@ function CheckoutContent() {
                 placeholder="Your email for shift updates and mission report"
                 className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
               />
+              <p className="font-mono text-klawva-dim text-xs text-center">
+                Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.
+              </p>
               <Button 
                 variant="primary" 
                 size="lg" 
