@@ -19,9 +19,10 @@ async def send_contact_email_endpoint(
 ) -> SendEmailResponse:
     await send_contact_and_record(
         db,
-        subject=payload.subject,
-        body=payload.body,
-        reply_to=payload.reply_to,
+        name=payload.name,
+        email=payload.email,
+        employee_type=payload.employee_type,
+        description=payload.description,
     )
     return SendEmailResponse(sent=True)
 
