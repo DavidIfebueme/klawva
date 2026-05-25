@@ -104,12 +104,24 @@ async def _record_email_event(
 async def send_contact_and_record(
     db: AsyncSession,
     *,
-    subject: str,
-    body: str,
-    reply_to: str | None,
+    name: str,
+    email: str,
+    employee_type: str | None,
+    description: str,
 ) -> None:
+    subject = "Custom Klawva Employee request"
+    body_lines = [
+        f"Name: {name}",
+        f"Email: {email}",
+    ]
+    if employee_type:
+        body_lines.append(f"Employee type: {employee_type}")
+    body_lines.append("")
+    body_lines.append(description)
+    body = "<br/>".join(body_lines)
+
     try:
-        await send_contact_email(subject=subject, body=body, reply_to=reply_to)
+        await send_contact_email(subject=subject, body=body, reply_to=email)
     except EmailServiceError as exc:
         db.add(
             EmailEvent(
