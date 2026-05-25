@@ -7,6 +7,7 @@ class CreateSessionPayload(BaseModel):
     agent_id: str = Field(alias="agentId")
     channel: Literal["whatsapp", "telegram"]
     brief: dict[str, str]
+    customer_email: str | None = Field(default=None, alias="customerEmail")
     payment_ref: str | None = Field(default=None, alias="paymentRef")
 
 
@@ -51,3 +52,4 @@ class SessionReportResponse(BaseModel):
     date_range: str = Field(alias="dateRange")
     stats: list[StatEntry]
     summary: str
+    share_token: str | None = Field(default=None, alias="shareToken")
