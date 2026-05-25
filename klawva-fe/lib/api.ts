@@ -188,6 +188,12 @@ export async function getSessionReport(sessionId: string, sessionToken: string):
   return res.json();
 }
 
+export async function getSharedSessionReport(sessionId: string, shareToken: string): Promise<SessionReportResponse> {
+  const res = await fetch(`${BASE}/api/reports/shared/${sessionId}?shareToken=${encodeURIComponent(shareToken)}`);
+  if (!res.ok) throw new Error('Failed to fetch shared report');
+  return res.json();
+}
+
 export async function lockTelegramAccess(
   sessionId: string,
   sessionToken: string,
