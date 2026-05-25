@@ -15,4 +15,5 @@ class MissionReportResponse(BaseModel):
     summary: str
     report_data: dict = Field(alias="reportData")
     report_card_url: str | None = Field(default=None, alias="reportCardUrl")
+    share_token: str | None = Field(default=None, alias="shareToken")
     delivered_at: datetime | None = Field(default=None, alias="deliveredAt")
