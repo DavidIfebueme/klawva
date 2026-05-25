@@ -19,4 +19,5 @@ class MissionReport(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     report_data: Mapped[dict] = mapped_column(JSON, nullable=False)
     report_card_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
