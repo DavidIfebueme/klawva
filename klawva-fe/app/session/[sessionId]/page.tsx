@@ -13,9 +13,12 @@ import {
   getSessionQR,
   getSessionStatus,
   lockTelegramAccess,
+  lockWhatsAppAccess,
 } from '../../../lib/api';
 
 type HandshakeState = 'provisioning' | 'qr' | 'whatsapp-number' | 'telegram';
+
+const PRIVACY_NOTICE = 'Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.';
 
 export default function SessionHandshakePage() {
   const params = useParams();
@@ -36,6 +39,7 @@ export default function SessionHandshakePage() {
   const [waMeLink, setWaMeLink] = useState<string | null>(null);
   const [telegramDeepLink, setTelegramDeepLink] = useState<string | null>(null);
   const [telegramOnboardingState, setTelegramOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
+  const [whatsappOnboardingState, setWhatsappOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,7 +55,6 @@ export default function SessionHandshakePage() {
       setStatusText('Activating your worker...');
       setProgress(20);
 
-      // PAYWALL DISABLED — activate directly, no payment confirmation polling
       try {
         const activation = await activateSession(sessionId, token);
         if (cancelled) return;
@@ -160,9 +163,56 @@ export default function SessionHandshakePage() {
   }, [channel, sessionId, sessionToken]);
 
   useEffect(() => {
+    if (channel !== 'whatsapp' || !sessionToken) return;
+    let cancelled = false;
+
+    const loadWhatsAppOnboardingState = async () => {
+      try {
+        const [sessionStatus, sessionActivity] = await Promise.all([
+          getSessionStatus(sessionId, sessionToken),
+          getSessionActivity(sessionId, sessionToken),
+        ]);
+        if (cancelled) return;
+
+        const activityTexts = sessionActivity.activities.map((entry) => entry.text.toLowerCase());
+        const introSent = activityTexts.some((text) => text.includes('intro message sent'));
+        const linked = activityTexts.some((text) => text.includes('channel connected'));
+
+        if (introSent) {
+          setWhatsappOnboardingState('intro_sent');
+          return;
+        }
+
+        if (linked || sessionStatus.connected) {
+          setWhatsappOnboardingState('linked');
+          return;
+        }
+
+        setWhatsappOnboardingState('pending');
+      } catch {
+      }
+    };
+
+    void loadWhatsAppOnboardingState();
+    const interval = setInterval(() => {
+      void loadWhatsAppOnboardingState();
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [channel, sessionId, sessionToken]);
+
+  useEffect(() => {
     if (channel !== 'telegram' || !sessionToken || telegramOnboardingState !== 'linked') return;
     void lockTelegramAccess(sessionId, sessionToken);
   }, [channel, sessionId, sessionToken, telegramOnboardingState]);
+
+  useEffect(() => {
+    if (channel !== 'whatsapp' || !sessionToken || whatsappOnboardingState !== 'linked') return;
+    void lockWhatsAppAccess(sessionId, sessionToken);
+  }, [channel, sessionId, sessionToken, whatsappOnboardingState]);
 
   const goToStatus = async () => {
     const params = new URLSearchParams();
@@ -240,9 +290,21 @@ export default function SessionHandshakePage() {
             </a>
           )}
 
-          <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
-            Continue to session →
-          </Button>
+          <div className="font-mono text-xs text-klawva-dim mb-6">
+            {whatsappOnboardingState === 'intro_sent'
+              ? 'WhatsApp onboarding: Connected · Intro sent'
+              : whatsappOnboardingState === 'linked'
+                ? 'WhatsApp onboarding: Connected · Locking access...'
+                : 'WhatsApp onboarding: Waiting for connection'}
+          </div>
+
+          {whatsappOnboardingState === 'intro_sent' && (
+            <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
+              Continue to session →
+            </Button>
+          )}
+
+          <p className="font-mono text-klawva-dim text-xs mt-6 max-w-xs">{PRIVACY_NOTICE}</p>
         </motion.div>
       )}
 
@@ -283,9 +345,27 @@ export default function SessionHandshakePage() {
             QR expires in 0:{Math.max(qrExpiresIn, 0).toString().padStart(2, '0')}
           </div>
 
-          <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
-            I scanned, continue →
-          </Button>
+          {channel === 'whatsapp' && (
+            <div className="font-mono text-xs text-klawva-dim mb-6">
+              {whatsappOnboardingState === 'intro_sent'
+                ? 'WhatsApp onboarding: Connected · Intro sent'
+                : whatsappOnboardingState === 'linked'
+                  ? 'WhatsApp onboarding: Connected · Locking access...'
+                  : 'WhatsApp onboarding: Waiting for connection'}
+            </div>
+          )}
+
+          {channel === 'whatsapp' && whatsappOnboardingState === 'intro_sent' ? (
+            <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
+              Continue to session →
+            </Button>
+          ) : (
+            <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
+              I scanned, continue →
+            </Button>
+          )}
+
+          <p className="font-mono text-klawva-dim text-xs mt-6 max-w-xs">{PRIVACY_NOTICE}</p>
         </motion.div>
       )}
 
