@@ -231,6 +231,39 @@ async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool
         return False
 
 
+async def _ws_connect_v3(ws) -> None:
+    raw = await asyncio.wait_for(ws.recv(), timeout=10)
+    challenge = json.loads(raw)
+    if challenge.get("event") != "connect.challenge":
+        raise OpenClawGatewayError(f"unexpected_ws_event:{challenge.get('event')}")
+
+    connect_id = str(uuid.uuid4())
+    connect_payload = {
+        "type": "req",
+        "id": connect_id,
+        "method": "connect",
+        "params": {
+            "minProtocol": 3,
+            "maxProtocol": 3,
+            "client": {
+                "id": "gateway-client",
+                "platform": "linux",
+                "mode": "backend",
+                "version": "2026.4.21",
+            },
+            "auth": {
+                "token": settings.openclaw_gateway_token or "",
+            },
+        },
+    }
+    await ws.send(json.dumps(connect_payload))
+    raw = await asyncio.wait_for(ws.recv(), timeout=10)
+    connect_resp = json.loads(raw)
+    if not connect_resp.get("ok"):
+        err = connect_resp.get("error", {}).get("message", "unknown")
+        raise OpenClawGatewayError(f"ws_connect_failed:{err}")
+
+
 async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
     request_id = str(uuid.uuid4())
     payload = {
@@ -249,8 +282,11 @@ async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
             additional_headers=_gateway_headers(),
             open_timeout=10,
         ) as ws:
+            await _ws_connect_v3(ws)
             await ws.send(json.dumps(payload))
-            raw = await ws.recv()
+            raw = await asyncio.wait_for(ws.recv(), timeout=15)
+    except OpenClawGatewayError:
+        raise
     except Exception as exc:
         raise OpenClawGatewayError(f"gateway_ws_qr_failed:{exc}") from exc
 
@@ -259,8 +295,8 @@ async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
     except json.JSONDecodeError as exc:
         raise OpenClawGatewayError("gateway_ws_qr_invalid_json") from exc
 
-    if response.get("type") == "err":
-        error_msg = response.get("payload", {}).get("message", "unknown")
+    if not response.get("ok"):
+        error_msg = response.get("error", {}).get("message", "unknown")
         raise OpenClawGatewayError(f"gateway_ws_qr_error:{error_msg}")
 
     result = response.get("payload", response.get("result", {}))
@@ -292,8 +328,11 @@ async def wait_for_whatsapp_link(account_id: str = "default", timeout: float = 1
             additional_headers=_gateway_headers(),
             open_timeout=10,
         ) as ws:
+            await _ws_connect_v3(ws)
             await ws.send(json.dumps(payload))
             raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+    except OpenClawGatewayError:
+        raise
     except Exception as exc:
         raise OpenClawGatewayError(f"gateway_ws_link_wait_failed:{exc}") from exc
 
@@ -302,4 +341,4 @@ async def wait_for_whatsapp_link(account_id: str = "default", timeout: float = 1
     except json.JSONDecodeError:
         return False
 
-    return bool(response.get("type") != "err")
+    return bool(response.get("ok"))
