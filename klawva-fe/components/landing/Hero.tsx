@@ -11,6 +11,7 @@ export function Hero() {
     <section className="relative w-full h-screen overflow-hidden bg-klawva-bg">
       <AgentActivityFeed />
 
+      <div className="absolute top-0 left-0 right-0 h-48 z-10 bg-gradient-to-b from-[#0A0A0A] to-transparent pointer-events-none" />
       <div className="absolute bottom-0 left-0 right-0 h-48 z-10 bg-gradient-to-t from-[#0A0A0A] to-transparent pointer-events-none" />
 
       <div className="relative z-20 flex flex-col items-center justify-center h-full text-center px-6 max-w-4xl mx-auto pt-16">
