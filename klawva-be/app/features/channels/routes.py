@@ -223,3 +223,56 @@ async def lock_telegram_access_endpoint(
     openclaw_gateway.restart_gateway()
 
     return TelegramLockAccessResponse(locked=True, telegramUserId=telegram_user_id)
+
+
+CLAWRAG_WHATSAPP_ALLOW_FROM = {"+2349066033744", "+2348023131244", "+15063961976"}
+
+
+class WhatsAppLockAccessRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+
+
+class WhatsAppLockAccessResponse(BaseModel):
+    locked: bool
+    whatsapp_phone_number: str | None = Field(default=None, alias="whatsappPhoneNumber")
+    overlap_warning: bool = Field(default=False, alias="overlapWarning")
+
+
+@router.post(
+    "/api/channels/whatsapp/lock-access",
+    response_model=WhatsAppLockAccessResponse,
+)
+async def lock_whatsapp_access_endpoint(
+    payload: WhatsAppLockAccessRequest,
+    session_token: str = Depends(get_session_token_header),
+    db: AsyncSession = Depends(get_async_session),
+) -> WhatsAppLockAccessResponse:
+    await assert_session_access(
+        db,
+        session_id=payload.session_id,
+        session_token=session_token,
+    )
+
+    agent_id = _agent_gateway_id(payload.session_id)
+    phone_number = openclaw_gateway.read_whatsapp_peer_id(agent_id)
+    if not phone_number:
+        return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=None)
+
+    stmt = select(ChannelLink).where(ChannelLink.session_id == payload.session_id)
+    link = (await db.execute(stmt)).scalar_one_or_none()
+    if not link or not link.external_id:
+        return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=phone_number)
+
+    account_id = link.external_id
+
+    config = await openclaw_gateway.read_config()
+    config = openclaw_gateway.lock_whatsapp_account(config, account_id, phone_number)
+    openclaw_gateway.write_config(config)
+    openclaw_gateway.restart_gateway()
+
+    overlap = phone_number in CLAWRAG_WHATSAPP_ALLOW_FROM
+    return WhatsAppLockAccessResponse(
+        locked=True,
+        whatsappPhoneNumber=phone_number,
+        overlapWarning=overlap,
+    )
