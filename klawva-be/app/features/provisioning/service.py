@@ -147,6 +147,8 @@ async def destroy_provisioning(db: AsyncSession, *, session_id: str) -> bool:
             channel_type=channel_type or None,
             account_id=account_id or None,
         )
+        if channel_type == "telegram" and account_id:
+            config = openclaw_gateway.reset_telegram_account_access(config, account_id)
         openclaw_gateway.write_config(config)
 
         if channel_type:
