@@ -7,10 +7,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
 from app.features.emails.service import send_shift_ended_email
-from app.features.provisioning.service import destroy_provisioning
+from app.features.provisioning.models import ProvisioningJob
+from app.features.provisioning.service import _load_telegram_accounts_map, destroy_provisioning
 from app.features.reports.models import MissionReport
+from app.features.reports.service import _generate_share_token
 from app.features.sessions.models import Session
 from app.features.termination.models import TerminationJob
+from app.platform.clients import openclaw_gateway
+from app.platform.config import settings
+
+
+async def _notify_telegram_employer(
+    db: AsyncSession,
+    session: Session,
+    channel_link: ChannelLink | None,
+) -> None:
+    if session.channel != "telegram" or channel_link is None or not channel_link.external_id:
+        return
+
+    bot_token = channel_link.external_id
+
+    pjob_stmt = select(ProvisioningJob).where(ProvisioningJob.session_id == session.id)
+    result = await db.execute(pjob_stmt)
+    pjob = result.scalar_one_or_none()
+    if not pjob or not pjob.agent_id_in_gateway:
+        return
+
+    peer_id = openclaw_gateway.read_telegram_peer_id(pjob.agent_id_in_gateway)
+    if not peer_id:
+        return
+
+    report_link = f"{settings.frontend_base_url}/report/{session.id}?agent={session.agent_id}"
+    text = (
+        "Your Klawva shift has ended. Thanks for hiring!\n\n"
+        f"View your mission report: {report_link}"
+    )
+    await openclaw_gateway.send_telegram_message(bot_token, peer_id, text)
 
 
 async def schedule_termination(db: AsyncSession, *, session_id: str) -> TerminationJob:
@@ -58,15 +90,19 @@ async def execute_due_terminations(db: AsyncSession) -> int:
                 summary="Shift complete",
                 report_data={"stats": []},
                 report_card_url=None,
+                share_token=_generate_share_token(),
                 delivered_at=now,
             )
             db.add(report)
 
-        await destroy_provisioning(db, session_id=session.id)
-
         channel_link_stmt = select(ChannelLink).where(ChannelLink.session_id == session.id)
         channel_link_result = await db.execute(channel_link_stmt)
         channel_link = channel_link_result.scalar_one_or_none()
+
+        await _notify_telegram_employer(db, session, channel_link)
+
+        await destroy_provisioning(db, session_id=session.id)
+
         if channel_link is not None:
             channel_link.status = "terminated"
             channel_link.terminated_at = now
