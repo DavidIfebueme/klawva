@@ -26,13 +26,15 @@ async def create_session(
     agent_id: str,
     channel: str,
     brief: dict[str, str],
-    payment_ref: str | None,
+    customer_email: str | None = None,
+    payment_ref: str | None = None,
 ) -> tuple[Session, str]:
     session_token = generate_session_token()
     session = Session(
         agent_id=agent_id,
         channel=channel,
         brief=brief,
+        customer_email=customer_email,
         payment_ref=payment_ref,
         session_token_hash=hash_session_token(session_token),
         status="provisioning",
@@ -73,7 +75,7 @@ async def get_session_activity(db: AsyncSession, session_id: str) -> list[Activi
 
 async def get_session_report(
     db: AsyncSession, session_id: str
-) -> tuple[str, list[dict[str, str]], str]:
+) -> tuple[str, list[dict[str, str]], str, str | None]:
     session = await get_session_or_404(db, session_id)
     statement = select(MissionReport).where(MissionReport.session_id == session_id)
     result = await db.execute(statement)
@@ -83,7 +85,7 @@ async def get_session_report(
         started = session.created_at
         ended = datetime.now(UTC)
         date_range = f"{started.date().isoformat()} - {ended.date().isoformat()}"
-        return date_range, [], "Mission report is not ready yet."
+        return date_range, [], "Mission report is not ready yet.", None
 
     stats_value = (
         report.report_data.get("stats", []) if isinstance(report.report_data, dict) else []
@@ -96,7 +98,7 @@ async def get_session_report(
     started = session.created_at
     ended = report.delivered_at or report.updated_at
     date_range = f"{started.date().isoformat()} - {ended.date().isoformat()}"
-    return date_range, stats, report.summary
+    return date_range, stats, report.summary, report.share_token
 
 
 def get_connected_flag(status: str) -> bool | None:
