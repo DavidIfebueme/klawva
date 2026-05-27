@@ -111,8 +111,8 @@ export default async function HireAgentPage({ params }: { params: Promise<{ agen
               </span>
             </div>
 
-            <Button variant="primary" size="lg" className="w-full mb-4" href={`/checkout?agent=${agent.id}`}>
-              Hire {agent.name.split(' ')[1]} →
+            <Button variant="primary" size="lg" className="w-full mb-4 opacity-40 cursor-not-allowed" disabled>
+              Coming soon →
             </Button>
 
             <div className="text-center">
