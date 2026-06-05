@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     env: str = "development"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    rate_limit_per_minute: int = 120
+    internal_service_token: str | None = None
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/klawva"
     redis_url: str = "redis://localhost:6379/0"
