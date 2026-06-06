@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { agents, AgentId, Channel } from '../../lib/agents';
+import { createSession, initializePayment } from '../../lib/api';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
@@ -29,6 +30,7 @@ function CheckoutContent() {
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [channel, setChannel] = useState<Channel | null>(agent?.channels.length === 1 ? agent.channels[0] : null);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!agent) {
@@ -64,12 +66,54 @@ function CheckoutContent() {
   };
 
   const handlePayment = async (provider: 'paystack' | 'stripe') => {
+    if (!channel) {
+      setErrorMessage('Please select a channel before payment.');
+      return;
+    }
+
     setLoading(true);
-    // Simulate payment and session creation
-    setTimeout(() => {
-      const mockSessionId = `sess_${Math.random().toString(36).substring(2, 9)}`;
-      router.push(`/session/${mockSessionId}`);
-    }, 1500);
+    setErrorMessage(null);
+
+    try {
+      const paymentRef = `pending_${provider}_${Date.now()}`;
+      const { sessionId } = await createSession({
+        agentId: agent.id,
+        channel,
+        brief,
+        paymentRef,
+      });
+
+      const amountMinor = provider === 'paystack' ? Math.round(agent.priceNGN * 100) : Math.round(agent.priceUSD * 100);
+      const currency = provider === 'paystack' ? 'NGN' : 'USD';
+      const customerEmail = brief.email || brief.customer_email || undefined;
+
+      const payment = await initializePayment({
+        sessionId,
+        provider,
+        amountMinor,
+        currency,
+        customerEmail,
+      });
+
+      if (payment.checkoutUrl) {
+        window.open(payment.checkoutUrl, '_blank', 'noopener,noreferrer');
+      }
+
+      const endsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      const params = new URLSearchParams({
+        agent: agent.id,
+        channel,
+        provider,
+        paymentRef: payment.providerReference,
+        endsAt,
+      });
+      router.push(`/session/${sessionId}?${params.toString()}`);
+    } catch {
+      setErrorMessage('Unable to start payment. Please check backend and try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -252,6 +296,12 @@ function CheckoutContent() {
                 Pay with Stripe ($1.99)
               </Button>
             </div>
+
+            {errorMessage && (
+              <div className="mb-6 border border-klawva-orange rounded p-3 font-mono text-klawva-orange text-xs">
+                {errorMessage}
+              </div>
+            )}
             
             <div className="text-center font-mono text-klawva-dim text-xs">
               [ Secure payment · No subscription · Session starts immediately ]
