@@ -1,5 +1,6 @@
 BACKEND_BUILDOUT_PLAN.md
 .venv
+.env
 .pytest_cache
 __pycache__
 *.pyc

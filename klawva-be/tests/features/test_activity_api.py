@@ -4,13 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+from app.platform.config import settings
 from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
 from app.platform.db.session import get_async_session
 
 
 @pytest.fixture
-def test_client() -> TestClient:
+def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     load_model_registry()
     engine = create_async_engine(
         "sqlite+aiosqlite://",
@@ -36,6 +37,7 @@ def test_client() -> TestClient:
 
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
+    monkeypatch.setattr(settings, "internal_service_token", "internal-token")
     client = TestClient(app)
     yield client
     app.dependency_overrides.clear()
@@ -67,6 +69,7 @@ def test_activity_ingest_updates_projection(test_client: TestClient) -> None:
             "text": "Channel linked",
             "payload": {"stage": "channel"},
         },
+        headers={"x-internal-token": "internal-token"},
     )
     assert ingest.status_code == 200
     assert "eventId" in ingest.json()
