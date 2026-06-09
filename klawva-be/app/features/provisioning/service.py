@@ -33,13 +33,12 @@ async def start_provisioning(db: AsyncSession, *, session_id: str) -> Provisioni
 
     job.status = "provisioning"
     job.error_message = None
-    await db.commit()
 
     client = DigitalOceanClient()
     try:
         created = await client.create_openclaw_droplet(session_id=session_id)
     except Exception as exc:
-        job.attempt_count += 1
+        job.attempt_count = int(job.attempt_count or 0) + 1
         job.status = "failed"
         job.error_message = str(exc)
         await db.commit()
