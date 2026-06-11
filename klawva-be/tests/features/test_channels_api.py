@@ -121,11 +121,16 @@ def test_onboarding_event_updates_channel_link(test_client: TestClient) -> None:
             "channel": "telegram",
             "eventType": "linked",
             "target": "@user123",
+            "callbackEventId": "cb_link_1",
         },
         headers={"x-internal-token": "internal-token"},
     )
     assert linked.status_code == 200
-    assert linked.json() == {"status": "linked", "target": "@user123"}
+    assert linked.json() == {
+        "status": "linked",
+        "target": "@user123",
+        "callbackEventId": "cb_link_1",
+    }
 
     intro = test_client.post(
         "/api/channels/onboarding/event",
@@ -133,8 +138,82 @@ def test_onboarding_event_updates_channel_link(test_client: TestClient) -> None:
             "sessionId": session_id,
             "channel": "telegram",
             "eventType": "intro_sent",
+            "callbackEventId": "cb_intro_1",
         },
         headers={"x-internal-token": "internal-token"},
     )
     assert intro.status_code == 200
     assert intro.json()["status"] == "intro_sent"
+    assert intro.json()["callbackEventId"] == "cb_intro_1"
+
+
+def test_explicit_onboarding_callbacks(test_client: TestClient) -> None:
+    session_id, _ = _create_session(test_client, agent="researcher", channel="telegram")
+
+    assign = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert assign.status_code == 200
+
+    link_confirmed = test_client.post(
+        "/api/channels/onboarding/link-confirmed",
+        json={
+            "sessionId": session_id,
+            "channel": "telegram",
+            "target": "@user99",
+            "callbackEventId": "cb_link_explicit",
+        },
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert link_confirmed.status_code == 200
+    assert link_confirmed.json() == {
+        "status": "linked",
+        "target": "@user99",
+        "callbackEventId": "cb_link_explicit",
+    }
+
+    intro_delivered = test_client.post(
+        "/api/channels/onboarding/intro-delivered",
+        json={
+            "sessionId": session_id,
+            "channel": "telegram",
+            "callbackEventId": "cb_intro_explicit",
+        },
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert intro_delivered.status_code == 200
+    assert intro_delivered.json() == {
+        "status": "intro_sent",
+        "target": "@user99",
+        "callbackEventId": "cb_intro_explicit",
+    }
+
+
+def test_onboarding_event_supports_terminated_state(test_client: TestClient) -> None:
+    session_id, _ = _create_session(test_client, agent="researcher", channel="telegram")
+
+    assign = test_client.post(
+        "/api/channels/telegram/assign",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert assign.status_code == 200
+
+    terminated = test_client.post(
+        "/api/channels/onboarding/event",
+        json={
+            "sessionId": session_id,
+            "channel": "telegram",
+            "eventType": "terminated",
+            "callbackEventId": "cb_terminated_1",
+        },
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert terminated.status_code == 200
+    assert terminated.json() == {
+        "status": "terminated",
+        "target": assign.json().get("deepLink"),
+        "callbackEventId": "cb_terminated_1",
+    }
