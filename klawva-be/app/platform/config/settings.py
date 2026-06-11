@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     digitalocean_region: str = "nyc1"
     digitalocean_droplet_size: str = "s-2vcpu-4gb"
     digitalocean_openclaw_image: str = "openclaw"
+    digitalocean_ssh_key_fingerprints: str = ""
     provisioning_max_retries: int = 3
+    droplet_max_sessions: int = 5
+    droplet_agent_gateway_port: int = 9090
     openclaw_bootstrap_dispatch_url: str | None = None
     openclaw_bootstrap_dispatch_timeout_seconds: int = 15
     openclaw_bootstrap_dispatch_token: str | None = None
