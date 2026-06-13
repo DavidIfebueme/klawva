@@ -42,6 +42,8 @@ export default function SessionHandshakePage() {
   const [whatsappOnboardingState, setWhatsappOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const [provisioningReady, setProvisioningReady] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -59,26 +61,52 @@ export default function SessionHandshakePage() {
         const activation = await activateSession(sessionId, token);
         if (cancelled) return;
 
-        setProgress(80);
+        setProgress(60);
         setStatusText('Provisioning resources...');
 
         if (activation.whatsappNumber) {
           setWhatsappNumber(activation.whatsappNumber);
           setWaMeLink(activation.waMeLink || null);
-          setState('whatsapp-number');
-        } else if (activation.qr) {
+        }
+        if (activation.qr) {
           setQrCode(activation.qr);
           setQrExpiresIn(activation.expiresIn || 60);
-          setState('qr');
         }
-
         if (activation.telegramDeepLink || activation.telegramToken) {
           setTelegramDeepLink(activation.telegramDeepLink || null);
-          setState('telegram');
         }
 
-        setProgress(100);
-        setErrorMessage(null);
+        setProgress(80);
+        setStatusText('Waiting for agent to come online...');
+
+        const pollUntilReady = async () => {
+          const maxAttempts = 60;
+          for (let i = 0; i < maxAttempts; i++) {
+            if (cancelled) return;
+            await new Promise((r) => setTimeout(r, 3000));
+            try {
+              const [sessionStatus, sessionActivity] = await Promise.all([
+                getSessionStatus(sessionId, token),
+                getSessionActivity(sessionId, token),
+              ]);
+              const activityTexts = sessionActivity.activities.map((e) => e.text.toLowerCase());
+              const connected = sessionStatus.connected
+                || activityTexts.some((t) => t.includes('channel connected'))
+                || activityTexts.some((t) => t.includes('intro message sent'));
+              if (connected) {
+                if (cancelled) return;
+                setProgress(100);
+                setProvisioningReady(true);
+                return;
+              }
+            } catch {
+            }
+          }
+          if (cancelled) return;
+          setProvisioningReady(true);
+        };
+
+        void pollUntilReady();
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : '';
@@ -92,6 +120,17 @@ export default function SessionHandshakePage() {
       cancelled = true;
     };
   }, [channel, sessionId]);
+
+  useEffect(() => {
+    if (!provisioningReady) return;
+    if (whatsappNumber) {
+      setState('whatsapp-number');
+    } else if (qrCode) {
+      setState('qr');
+    } else if (telegramDeepLink) {
+      setState('telegram');
+    }
+  }, [provisioningReady, whatsappNumber, qrCode, telegramDeepLink]);
 
   useEffect(() => {
     if (state !== 'qr') return;
