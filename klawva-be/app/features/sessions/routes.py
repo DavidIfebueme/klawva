@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
@@ -13,6 +14,7 @@ from app.features.channels.service import (
 )
 from app.features.emails.service import send_shift_started_email
 from app.features.payments.service import require_confirmed_session_payment
+from app.features.provisioning.agent_config import _agent_gateway_id
 from app.features.provisioning.service import start_provisioning
 from app.features.sessions.auth import assert_session_access, get_session_token_header
 from app.features.sessions.contracts import (
@@ -25,6 +27,7 @@ from app.features.sessions.contracts import (
     SessionStatusResponse,
     StatEntry,
 )
+from app.features.sessions.models import Session
 from app.features.sessions.service import (
     create_session,
     ensure_session_window,
@@ -34,7 +37,27 @@ from app.features.sessions.service import (
     normalize_session_status,
 )
 from app.features.termination.service import schedule_termination
+from app.platform.clients import openclaw_gateway
 from app.platform.db.session import get_async_session
+
+logger = logging.getLogger(__name__)
+
+
+async def _auto_lock_telegram(db: AsyncSession, session_id: str, agent_id: str, telegram_user_id: str) -> None:
+    stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
+    link = (await db.execute(stmt)).scalar_one_or_none()
+    if not link or not link.external_id:
+        return
+    from app.features.provisioning.service import _load_telegram_accounts_map
+    accounts_map = _load_telegram_accounts_map()
+    account_id = accounts_map.get(link.external_id, "")
+    if not account_id:
+        return
+    config = await openclaw_gateway.read_config()
+    config = openclaw_gateway.lock_telegram_account(config, account_id, telegram_user_id)
+    openclaw_gateway.write_config(config)
+    openclaw_gateway.restart_gateway()
+    logger.info("auto-locked telegram account %s to user %s", account_id, telegram_user_id)
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -109,7 +132,7 @@ async def activate_session_endpoint(
         )
     )
 
-    session.status = "active"
+    session.status = "provisioning"
     await db.commit()
     await schedule_termination(db, session_id=current_session_id)
 
@@ -145,6 +168,39 @@ async def get_session_status_endpoint(
         session_token=session_token,
     )
     normalized_status = normalize_session_status(session.status)
+
+    if normalized_status == "provisioning":
+        agent_id = _agent_gateway_id(session_id)
+        try:
+            agent_state = openclaw_gateway.check_agent_sessions(agent_id)
+        except Exception:
+            agent_state = {"channel_connected": False, "intro_sent": False, "peer_id": None, "provider": None}
+
+        if agent_state["channel_connected"]:
+            session.status = "active"
+            db.add(ActivityEvent(
+                session_id=session_id,
+                event_type="channel_connected",
+                payload={"text": "channel connected", "provider": agent_state.get("provider", "")},
+                occurred_at=datetime.now(UTC),
+            ))
+            if agent_state["intro_sent"]:
+                db.add(ActivityEvent(
+                    session_id=session_id,
+                    event_type="intro_sent",
+                    payload={"text": "intro message sent"},
+                    occurred_at=datetime.now(UTC),
+                ))
+
+            if agent_state["provider"] == "telegram" and agent_state.get("peer_id"):
+                try:
+                    await _auto_lock_telegram(db, session_id, agent_id, agent_state["peer_id"])
+                except Exception:
+                    logger.warning("auto-lock telegram failed for session %s", session_id, exc_info=True)
+
+            await db.commit()
+            normalized_status = "active"
+
     connected = get_connected_flag(normalized_status)
     return SessionStatusResponse(status=normalized_status, connected=connected)
 
