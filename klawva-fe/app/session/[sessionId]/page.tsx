@@ -80,7 +80,7 @@ export default function SessionHandshakePage() {
         setStatusText('Waiting for agent to come online...');
 
         const pollUntilReady = async () => {
-          const maxAttempts = 60;
+          const maxAttempts = 120;
           for (let i = 0; i < maxAttempts; i++) {
             if (cancelled) return;
             await new Promise((r) => setTimeout(r, 3000));
@@ -103,7 +103,7 @@ export default function SessionHandshakePage() {
             }
           }
           if (cancelled) return;
-          setProvisioningReady(true);
+          setErrorMessage('Agent is taking too long to come online. Please check your Telegram bot and try again.');
         };
 
         void pollUntilReady();
@@ -416,17 +416,23 @@ export default function SessionHandshakePage() {
         >
           <PulseRing size={64} className="mb-8" />
           
-          <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your agent is ready</h2>
+          {telegramOnboardingState === 'intro_sent' ? (
+            <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your agent is ready</h2>
+          ) : (
+            <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Connect your agent</h2>
+          )}
           <p className="font-mono text-klawva-muted text-sm mb-8">
-            Connect your Telegram bot to begin receiving updates for this session.
+            {telegramOnboardingState === 'intro_sent'
+              ? 'Your agent is online and ready. Open Telegram to start working.'
+              : 'Open the Telegram bot link below and send a message to activate your agent.'}
           </p>
 
           <div className="font-mono text-xs text-klawva-dim mb-6">
             {telegramOnboardingState === 'intro_sent'
-              ? 'Telegram onboarding: Intro sent'
+              ? 'Telegram onboarding: Connected · Intro sent'
               : telegramOnboardingState === 'linked'
-                ? 'Telegram onboarding: Linked · Intro pending'
-                : 'Telegram onboarding: Waiting for link confirmation'}
+                ? 'Telegram onboarding: Connected · Waiting for intro...'
+                : 'Telegram onboarding: Waiting for your first message'}
           </div>
 
           {telegramDeepLink ? (
@@ -442,13 +448,15 @@ export default function SessionHandshakePage() {
             </a>
           ) : (
             <div className="font-mono text-klawva-orange text-xs mb-6">
-              Bot link is still preparing. Continue to session while provisioning finalizes.
+              Bot link is still preparing. Please wait...
             </div>
           )}
           
-          <Button variant="primary" size="lg" className="w-full mb-6" onClick={goToStatus}>
-            Continue to session →
-          </Button>
+          {telegramOnboardingState === 'intro_sent' && (
+            <Button variant="primary" size="lg" className="w-full mb-6" onClick={goToStatus}>
+              Continue to session →
+            </Button>
+          )}
         </motion.div>
       )}
 
