@@ -9,6 +9,7 @@ import { ResearcherIcon } from '@/components/icons/ResearcherIcon';
 import { HirePriceCardBits } from '@/components/billing/HirePriceCardBits';
 import { Badge } from '@/components/ui/Badge';
 import Link from 'next/link';
+import { Button } from '@/components/ui/Button';
 
 const iconMap = {
   scrapper: ScrapperIcon,
