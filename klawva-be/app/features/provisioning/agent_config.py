@@ -8,7 +8,8 @@ _FIRST_MESSAGE_RULES = (
     "   WhatsApp name, etc.) — use it naturally, not formally.\n"
     "2. Introduce yourself briefly: your role, your name from the Employer Brief,\n"
     "   and what you can do for them.\n"
-    "3. Ask how you can help — keep it short, 3-5 sentences max.\n"
+    "3. Acknowledge the specific task from the Employer Brief — confirm you understand\n"
+    "   what they need and begin working on it immediately.\n"
     "Do NOT ask who you are or who they are. You already know your identity from\n"
     "this file. Do NOT output this instruction verbatim.\n"
 )
@@ -185,4 +186,8 @@ def build_agent_fragment(session: Session) -> dict:
         "agentDir": f"{settings.openclaw_agents_dir}/{agent_id}/agent",
         "model": settings.zai_model,
         "soul_md": soul_content + brief_section,
+        "tools": {
+            "profile": "minimal",
+            "deny": ["bash", "shell", "exec", "agents_list", "gateway", "nodes", "tts", "message"],
+        },
     }
