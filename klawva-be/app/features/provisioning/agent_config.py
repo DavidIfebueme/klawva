@@ -191,8 +191,8 @@ def build_agent_fragment(session: Session) -> dict:
             "deny": ["bash", "shell", "exec", "agents_list", "gateway", "nodes", "tts", "message"],
         },
         "commands": {
-            "native": "off",
-            "nativeSkills": "off",
+            "native": False,
+            "nativeSkills": False,
             "text": True,
             "restart": False,
         },
