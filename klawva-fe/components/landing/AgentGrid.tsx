@@ -54,9 +54,15 @@ export function AgentGrid() {
                     ))}
                   </ul>
 
-                  <Button variant="ghost" className="w-full justify-start px-0 group-hover:text-klawva-accent transition-colors duration-300" onClick={() => window.location.href = `/hire/${agent.id}`}>
-                    Hire {agent.name.split(' ').pop()} →
-                  </Button>
+                  {agent.comingSoon ? (
+                    <Button variant="ghost" className="w-full justify-start px-0 opacity-40 cursor-not-allowed" disabled>
+                      Coming soon →
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" className="w-full justify-start px-0 group-hover:text-klawva-accent transition-colors duration-300" onClick={() => window.location.href = `/hire/${agent.id}`}>
+                      Hire {agent.name.split(' ').pop()} →
+                    </Button>
+                  )}
                 </Card>
               </motion.div>
             );
