@@ -157,6 +157,42 @@ def read_telegram_peer_id(agent_id: str) -> str | None:
     return None
 
 
+def check_agent_sessions(agent_id: str) -> dict:
+    result = {"has_sessions": False, "channel_connected": False, "intro_sent": False, "peer_id": None, "provider": None}
+    sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
+    if not sessions_path.exists():
+        return result
+    try:
+        data = json.loads(sessions_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return result
+    if not isinstance(data, dict) or not data:
+        return result
+    result["has_sessions"] = True
+    for _key, value in data.items():
+        if not isinstance(value, dict):
+            continue
+        origin = value.get("origin", {})
+        provider = origin.get("provider", "")
+        chat_type = origin.get("chatType", "")
+        if chat_type == "direct":
+            result["channel_connected"] = True
+            result["provider"] = provider
+            from_id = str(origin.get("from", ""))
+            if provider == "telegram" and from_id.startswith("telegram:"):
+                result["peer_id"] = from_id.split(":", 1)[1]
+            elif provider == "whatsapp" and from_id.startswith("whatsapp:"):
+                raw = from_id.split(":", 1)[1]
+                phone = raw.split("@")[0]
+                if phone and not phone.startswith("+"):
+                    phone = "+" + phone
+                result["peer_id"] = phone
+            if value.get("systemSent"):
+                result["intro_sent"] = True
+            break
+    return result
+
+
 def read_whatsapp_peer_id(agent_id: str) -> str | None:
     sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
     if not sessions_path.exists():
