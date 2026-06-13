@@ -64,49 +64,53 @@ export default function SessionHandshakePage() {
         setProgress(60);
         setStatusText('Provisioning resources...');
 
-        if (activation.whatsappNumber) {
-          setWhatsappNumber(activation.whatsappNumber);
-          setWaMeLink(activation.waMeLink || null);
-        }
-        if (activation.qr) {
-          setQrCode(activation.qr);
-          setQrExpiresIn(activation.expiresIn || 60);
-        }
-        if (activation.telegramDeepLink || activation.telegramToken) {
-          setTelegramDeepLink(activation.telegramDeepLink || null);
-        }
-
         setProgress(80);
-        setStatusText('Waiting for agent to come online...');
 
-        const pollUntilReady = async () => {
-          const maxAttempts = 120;
-          for (let i = 0; i < maxAttempts; i++) {
-            if (cancelled) return;
-            await new Promise((r) => setTimeout(r, 3000));
-            try {
-              const [sessionStatus, sessionActivity] = await Promise.all([
-                getSessionStatus(sessionId, token),
-                getSessionActivity(sessionId, token),
-              ]);
-              const activityTexts = sessionActivity.activities.map((e) => e.text.toLowerCase());
-              const connected = sessionStatus.connected
-                || activityTexts.some((t) => t.includes('channel connected'))
-                || activityTexts.some((t) => t.includes('intro message sent'));
-              if (connected) {
-                if (cancelled) return;
-                setProgress(100);
-                setProvisioningReady(true);
-                return;
-              }
-            } catch {
-            }
+        if (channel === 'telegram' && (activation.telegramDeepLink || activation.telegramToken)) {
+          setTelegramDeepLink(activation.telegramDeepLink || null);
+          setProgress(100);
+          setProvisioningReady(true);
+        } else {
+          if (activation.whatsappNumber) {
+            setWhatsappNumber(activation.whatsappNumber);
+            setWaMeLink(activation.waMeLink || null);
           }
-          if (cancelled) return;
-          setErrorMessage('Agent is taking too long to come online. Please check your Telegram bot and try again.');
-        };
+          if (activation.qr) {
+            setQrCode(activation.qr);
+            setQrExpiresIn(activation.expiresIn || 60);
+          }
 
-        void pollUntilReady();
+          setStatusText('Waiting for agent to come online...');
+
+          const pollUntilReady = async () => {
+            const maxAttempts = 120;
+            for (let i = 0; i < maxAttempts; i++) {
+              if (cancelled) return;
+              await new Promise((r) => setTimeout(r, 3000));
+              try {
+                const [sessionStatus, sessionActivity] = await Promise.all([
+                  getSessionStatus(sessionId, token),
+                  getSessionActivity(sessionId, token),
+                ]);
+                const activityTexts = sessionActivity.activities.map((e) => e.text.toLowerCase());
+                const connected = sessionStatus.connected
+                  || activityTexts.some((t) => t.includes('channel connected'))
+                  || activityTexts.some((t) => t.includes('intro message sent'));
+                if (connected) {
+                  if (cancelled) return;
+                  setProgress(100);
+                  setProvisioningReady(true);
+                  return;
+                }
+              } catch {
+              }
+            }
+            if (cancelled) return;
+            setErrorMessage('Agent is taking too long to come online. Please try again.');
+          };
+
+          void pollUntilReady();
+        }
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : '';
