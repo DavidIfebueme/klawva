@@ -38,7 +38,13 @@ def _resolve_channel_binding(
         account_id = accounts_map.get(token, "")
         if not account_id:
             return "telegram", "", None
-        return "telegram", account_id, None
+        account_config = {
+            "enabled": True,
+            "dmPolicy": "open",
+            "allowFrom": ["*"],
+            "groupPolicy": "disabled",
+        }
+        return "telegram", account_id, account_config
 
     if session.channel == "whatsapp" and channel_link is not None and channel_link.external_id:
         account_id = channel_link.external_id
