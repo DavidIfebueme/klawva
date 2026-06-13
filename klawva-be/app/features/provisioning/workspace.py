@@ -20,6 +20,7 @@ def create_agent_workspace(session: Session) -> str:
     soul_content = str(profile.get("soul_md", ""))
     brief_payload = session.brief if isinstance(session.brief, dict) else {}
     worker_name = str(brief_payload.get("workerName", session.agent_id))
+    employer_name = session.customer_email or "Employer"
 
     brief_section = "\n\n## Employer Brief\n"
     for key, value in brief_payload.items():
@@ -40,7 +41,7 @@ def create_agent_workspace(session: Session) -> str:
     user_lines = [
         "# USER.md — Your Employer",
         "",
-        f"- **Name:** {worker_name}",
+        f"- **Name:** {employer_name}",
         "- **What to call them:** Employer",
         "- **Timezone:** UTC",
         f"- **Notes:** Klawva {session.agent_id} session. "
