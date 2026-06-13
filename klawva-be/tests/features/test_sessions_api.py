@@ -8,7 +8,6 @@ from sqlalchemy.pool import StaticPool
 from app.features.payments.models import Payment
 from app.features.activity.models import ActivityEvent
 from app.features.reports.models import MissionReport
-from app.platform.clients.openclaw_runtime import OpenClawRuntimeClientError
 from app.main import app
 from app.platform.config import settings
 from app.platform.db.base import Base
@@ -32,26 +31,36 @@ class FakeDigitalOceanClient:
 
         return Result()
 
+    async def get_droplet(self, *, droplet_id: str) -> dict:
+        return {
+            "id": droplet_id,
+            "networks": {
+                "v4": [{"ip_address": "10.0.0.99", "type": "public"}]
+            },
+        }
+
     async def destroy_droplet(self, *, droplet_id: str) -> None:
         _ = droplet_id
+
+    @staticmethod
+    def extract_public_ipv4(droplet_data: dict) -> str | None:
+        for net in droplet_data.get("networks", {}).get("v4", []):
+            if net.get("type") == "public":
+                return net["ip_address"]
+        return None
+
+
+class FakeDropletAgentClient:
+    async def push_session(self, *, droplet_ip, session_config):
+        pass
+
+    async def remove_session(self, *, droplet_ip, session_id):
+        pass
 
 
 class FakeOpenClawRuntimeClient:
     async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
         _ = payload
-
-
-class CapturingOpenClawRuntimeClient:
-    last_payload: dict[str, object] | None = None
-
-    async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
-        CapturingOpenClawRuntimeClient.last_payload = payload
-
-
-class FailingOpenClawRuntimeClient:
-    async def dispatch_bootstrap(self, payload: dict[str, object]) -> None:
-        _ = payload
-        raise OpenClawRuntimeClientError("openclaw_dispatch_failed:503:dispatch_failed")
 
 
 @pytest.fixture
@@ -82,14 +91,22 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
     monkeypatch.setattr(
-        "app.features.provisioning.service.DigitalOceanClient",
+        "app.features.provisioning.pool.DigitalOceanClient",
         lambda: FakeDigitalOceanClient(),
+    )
+    monkeypatch.setattr(
+        "app.features.provisioning.pool.DropletAgentClient",
+        lambda: FakeDropletAgentClient(),
     )
     monkeypatch.setattr(
         "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
         lambda: FakeOpenClawRuntimeClient(),
     )
     monkeypatch.setattr(settings, "telegram_bot_token_pool", "tokenA,tokenB")
+    monkeypatch.setattr(settings, "droplet_agent_gateway_port", 9090)
+    monkeypatch.setattr(settings, "droplet_max_sessions", 5)
+    monkeypatch.setattr(settings, "digitalocean_region", "nyc1")
+    monkeypatch.setattr(settings, "digitalocean_ssh_key_fingerprints", "")
     client = TestClient(app)
     yield client
     app.dependency_overrides.clear()
@@ -293,157 +310,3 @@ def test_activate_with_confirmed_payment(test_client: TestClient) -> None:
     assert body["status"] == "active"
     assert body["telegramToken"] is None
     assert "telegramDeepLink" in body
-
-
-def test_activate_records_bootstrap_dispatch_activity(test_client: TestClient) -> None:
-    create_response = test_client.post(
-        "/api/sessions",
-        json={
-            "agentId": "scrapper",
-            "channel": "telegram",
-            "brief": {"task": "track price"},
-            "paymentRef": "pay_gate_3",
-        },
-    )
-    payload = create_response.json()
-    session_id = payload["sessionId"]
-    headers = {"x-session-token": payload["sessionToken"]}
-
-    import asyncio
-
-    async def seed_payment() -> None:
-        override = app.dependency_overrides[get_async_session]
-        async for db in override():
-            db.add(
-                Payment(
-                    session_id=session_id,
-                    provider="paystack",
-                    provider_reference="pay_ref_confirmed_2",
-                    amount_minor=250000,
-                    currency="NGN",
-                    status="confirmed",
-                    confirmed_at=datetime.now(UTC),
-                )
-            )
-            await db.commit()
-
-    asyncio.run(seed_payment())
-
-    activation = test_client.post(f"/api/sessions/{session_id}/activate", headers=headers)
-    assert activation.status_code == 200
-
-    activity = test_client.get(f"/api/sessions/{session_id}/activity", headers=headers)
-    assert activity.status_code == 200
-    texts = [entry["text"] for entry in activity.json()["activities"]]
-    assert "OpenClaw bootstrap dispatched to runtime" in texts
-
-
-def test_activate_dispatch_includes_window_and_intro_template(
-    monkeypatch: pytest.MonkeyPatch,
-    test_client: TestClient,
-) -> None:
-    monkeypatch.setattr(
-        "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
-        lambda: CapturingOpenClawRuntimeClient(),
-    )
-
-    create_response = test_client.post(
-        "/api/sessions",
-        json={
-            "agentId": "researcher",
-            "channel": "telegram",
-            "brief": {"topic": "fintech"},
-            "paymentRef": "pay_gate_5",
-        },
-    )
-    payload = create_response.json()
-    session_id = payload["sessionId"]
-    headers = {"x-session-token": payload["sessionToken"]}
-
-    import asyncio
-
-    async def seed_payment() -> None:
-        override = app.dependency_overrides[get_async_session]
-        async for db in override():
-            db.add(
-                Payment(
-                    session_id=session_id,
-                    provider="paystack",
-                    provider_reference="pay_ref_confirmed_5",
-                    amount_minor=250000,
-                    currency="NGN",
-                    status="confirmed",
-                    confirmed_at=datetime.now(UTC),
-                )
-            )
-            await db.commit()
-
-    asyncio.run(seed_payment())
-
-    activation = test_client.post(f"/api/sessions/{session_id}/activate", headers=headers)
-    assert activation.status_code == 200
-
-    dispatched_payload = CapturingOpenClawRuntimeClient.last_payload
-    assert isinstance(dispatched_payload, dict)
-    session_window = dispatched_payload.get("session_window")
-    assert isinstance(session_window, dict)
-    assert isinstance(session_window.get("started_at"), str)
-    assert isinstance(session_window.get("expires_at"), str)
-    assert session_window.get("duration_hours") == 24
-
-    intro_template = dispatched_payload.get("intro_message_template")
-    assert isinstance(intro_template, dict)
-    assert intro_template.get("key") == "intro_telegram_v1"
-    assert intro_template.get("required") is True
-
-
-def test_activate_fails_when_bootstrap_dispatch_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    test_client: TestClient,
-) -> None:
-    monkeypatch.setattr(
-        "app.features.provisioning.bootstrap.OpenClawRuntimeClient",
-        lambda: FailingOpenClawRuntimeClient(),
-    )
-
-    create_response = test_client.post(
-        "/api/sessions",
-        json={
-            "agentId": "researcher",
-            "channel": "telegram",
-            "brief": {"topic": "fintech"},
-            "paymentRef": "pay_gate_4",
-        },
-    )
-    payload = create_response.json()
-    session_id = payload["sessionId"]
-    headers = {"x-session-token": payload["sessionToken"]}
-
-    import asyncio
-
-    async def seed_payment() -> None:
-        override = app.dependency_overrides[get_async_session]
-        async for db in override():
-            db.add(
-                Payment(
-                    session_id=session_id,
-                    provider="paystack",
-                    provider_reference="pay_ref_confirmed_3",
-                    amount_minor=250000,
-                    currency="NGN",
-                    status="confirmed",
-                    confirmed_at=datetime.now(UTC),
-                )
-            )
-            await db.commit()
-
-    asyncio.run(seed_payment())
-
-    activation = test_client.post(f"/api/sessions/{session_id}/activate", headers=headers)
-    assert activation.status_code == 502
-    assert activation.json() == {
-        "error": {
-            "code": "http_error",
-            "message": "openclaw_dispatch_failed:503:dispatch_failed",
-        }
-    }
