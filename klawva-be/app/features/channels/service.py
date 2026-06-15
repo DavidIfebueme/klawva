@@ -146,6 +146,20 @@ async def record_channel_onboarding_event(
     if link.channel != channel:
         raise HTTPException(status_code=409, detail="channel_link_mismatch")
 
+    if callback_event_id:
+        existing_callback_id: str | None
+        if event_type == "linked":
+            existing_callback_id = link.worker_link_callback_id
+        elif event_type == "intro_sent":
+            existing_callback_id = link.worker_intro_callback_id
+        elif event_type == "report_sent":
+            existing_callback_id = link.worker_report_callback_id
+        else:
+            existing_callback_id = link.worker_terminated_callback_id
+
+        if existing_callback_id == callback_event_id:
+            return link
+
     now = datetime.now(UTC)
     if target:
         link.link_target = target
