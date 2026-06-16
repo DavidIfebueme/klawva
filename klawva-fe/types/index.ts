@@ -8,6 +8,8 @@ export interface SessionStatusResponse {
 export interface SessionQRResponse {
   qr: string;
   expiresIn: number;
+  whatsappNumber?: string;
+  waMeLink?: string;
 }
 
 export interface ActivityEntry {
@@ -34,6 +36,8 @@ export interface ActivateSessionResponse {
   expiresIn?: number;
   telegramToken?: string;
   telegramDeepLink?: string;
+  whatsappNumber?: string;
+  waMeLink?: string;
 }
 
 export type PaymentProvider = 'paystack' | 'stripe';
@@ -69,7 +73,7 @@ export interface BillingProfile {
 export interface ProvisioningResponse {
   jobId: string;
   status: string;
-  dropletId?: string;
+  agentIdInGateway?: string;
   attemptCount: number;
 }
 

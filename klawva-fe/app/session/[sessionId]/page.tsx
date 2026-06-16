@@ -14,7 +14,7 @@ import {
   getSessionStatus,
 } from '../../../lib/api';
 
-type HandshakeState = 'provisioning' | 'qr' | 'telegram';
+type HandshakeState = 'provisioning' | 'qr' | 'whatsapp-number' | 'telegram';
 
 export default function SessionHandshakePage() {
   const params = useParams();
@@ -31,6 +31,8 @@ export default function SessionHandshakePage() {
   const [statusText, setStatusText] = useState('Preparing your worker...');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrExpiresIn, setQrExpiresIn] = useState(60);
+  const [whatsappNumber, setWhatsappNumber] = useState<string | null>(null);
+  const [waMeLink, setWaMeLink] = useState<string | null>(null);
   const [telegramDeepLink, setTelegramDeepLink] = useState<string | null>(null);
   const [telegramOnboardingState, setTelegramOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -68,7 +70,11 @@ export default function SessionHandshakePage() {
           setProgress(80);
           setStatusText('Provisioning resources...');
 
-          if (activation.qr) {
+          if (activation.whatsappNumber) {
+            setWhatsappNumber(activation.whatsappNumber);
+            setWaMeLink(activation.waMeLink || null);
+            setState('whatsapp-number');
+          } else if (activation.qr) {
             setQrCode(activation.qr);
             setQrExpiresIn(activation.expiresIn || 60);
             setState('qr');
@@ -115,8 +121,10 @@ export default function SessionHandshakePage() {
           if (!sessionToken) return 0;
           void getSessionQR(sessionId, sessionToken)
             .then((payload) => {
-              setQrCode(payload.qr);
-              setQrExpiresIn(payload.expiresIn);
+              if (payload.qr) {
+                setQrCode(payload.qr);
+                setQrExpiresIn(payload.expiresIn);
+              }
             })
             .catch(() => {
             });
@@ -216,6 +224,43 @@ export default function SessionHandshakePage() {
         <div className="mb-6 border border-klawva-orange rounded p-3 font-mono text-klawva-orange text-xs max-w-md w-full text-center">
           {errorMessage}
         </div>
+      )}
+
+      {state === 'whatsapp-number' && whatsappNumber && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-klawva-surface border border-klawva-border rounded-lg p-8 md:p-12 flex flex-col items-center text-center max-w-md w-full"
+        >
+          <PulseRing size={64} className="mb-8" />
+
+          <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your worker is ready</h2>
+          <p className="font-mono text-klawva-muted text-sm mb-6">
+            Send a message to your worker on WhatsApp to begin. Your session ID is already included.
+          </p>
+
+          <div className="bg-klawva-bg border border-klawva-border rounded-lg px-6 py-4 mb-6 w-full">
+            <p className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-2">Worker number</p>
+            <p className="font-syne font-bold text-xl text-klawva-text">{whatsappNumber}</p>
+          </div>
+
+          {waMeLink && (
+            <a
+              href={waMeLink}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full mb-6"
+            >
+              <Button variant="secondary" size="lg" className="w-full">
+                Open WhatsApp ↗
+              </Button>
+            </a>
+          )}
+
+          <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
+            Continue to session →
+          </Button>
+        </motion.div>
       )}
 
       {state === 'qr' && qrCode && (

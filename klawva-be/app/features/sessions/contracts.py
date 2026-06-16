@@ -23,6 +23,8 @@ class ActivateSessionResponse(BaseModel):
     expires_in: int | None = Field(default=None, alias="expiresIn")
     telegram_token: str | None = Field(default=None, alias="telegramToken")
     telegram_deep_link: str | None = Field(default=None, alias="telegramDeepLink")
+    whatsapp_number: str | None = Field(default=None, alias="whatsappNumber")
+    wa_me_link: str | None = Field(default=None, alias="waMeLink")
 
 
 class SessionStatusResponse(BaseModel):
