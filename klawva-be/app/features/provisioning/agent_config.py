@@ -1,6 +1,3 @@
-from typing import cast
-
-from app.features.channels.models import ChannelLink
 from app.features.sessions.models import Session
 from app.platform.config import settings
 
@@ -138,21 +135,15 @@ _RESEARCHER_SOUL = (
     "  evidence\n"
 )
 
-AGENT_BOOTSTRAP_PROFILE: dict[str, dict[str, object]] = {
+AGENT_BOOTSTRAP_PROFILE: dict[str, dict[str, str]] = {
     "scrapper": {
         "soul_md": _SCRAPPER_SOUL,
-        "skills": ["web-browser", "data-parser", "file-exporter"],
-        "tools": ["browser", "parser", "exporter"],
     },
     "vendor": {
         "soul_md": _VENDOR_SOUL,
-        "skills": ["whatsapp-gateway", "faq-lookup", "order-tracker"],
-        "tools": ["whatsapp_gateway", "faq_lookup", "order_tracker"],
     },
     "researcher": {
         "soul_md": _RESEARCHER_SOUL,
-        "skills": ["web-search", "pdf-reader", "report-writer"],
-        "tools": ["search", "pdf_reader", "report_writer"],
     },
 }
 
@@ -161,73 +152,22 @@ def _agent_gateway_id(session_id: str) -> str:
     return f"session-{session_id[:8]}"
 
 
-def build_agent_fragment(
-    session: Session,
-    channel_link: ChannelLink | None = None,
-    whatsapp_account: str | None = None,
-) -> dict:
+def build_agent_fragment(session: Session) -> dict:
     profile = AGENT_BOOTSTRAP_PROFILE.get(session.agent_id, {})
     agent_id = _agent_gateway_id(session.id)
     brief_payload = session.brief if isinstance(session.brief, dict) else {}
-    worker_name = brief_payload.get("workerName", session.agent_id)
-
-    profile_skills = cast(list[str], profile.get("skills", []))
-    profile_tools = cast(list[str], profile.get("tools", []))
-
-    channel_configs: list[dict] = []
-    if session.channel == "whatsapp":
-        wa_config: dict[str, object] = {"channel": "whatsapp"}
-        if session.agent_id == "vendor":
-            wa_config["account"] = whatsapp_account or f"vendor-{session.id[:8]}"
-            wa_config["selfChatMode"] = True
-        else:
-            wa_config["account"] = whatsapp_account or "default"
-            wa_config["selfChatMode"] = False
-        channel_configs.append(wa_config)
-    elif session.channel == "telegram":
-        tg_config: dict[str, object] = {
-            "channel": "telegram",
-            "dmPolicy": "open",
-            "groupPolicy": "disabled",
-        }
-        if channel_link is not None and channel_link.external_id:
-            tg_config["botToken"] = channel_link.external_id
-        channel_configs.append(tg_config)
+    worker_name = str(brief_payload.get("workerName", session.agent_id))
 
     soul_content = str(profile.get("soul_md", ""))
     brief_section = "\n\n## Employer Brief\n"
     for key, value in brief_payload.items():
         brief_section += f"- **{key}**: {value}\n"
 
-    system_prompt = soul_content + brief_section
-
     return {
         "id": agent_id,
-        "identity": {
-            "name": worker_name,
-        },
-        "systemPrompt": system_prompt,
-        "model": {
-            "provider": "custom",
-            "baseUrl": settings.zai_base_url,
-            "apiKey": settings.zai_api_key,
-            "model": settings.zai_model,
-            "fallbackModel": settings.zai_fallback_model,
-        },
-        "skills": profile_skills,
-        "tools": profile_tools,
-        "channels": channel_configs,
+        "name": worker_name,
         "workspace": f"{settings.openclaw_workspaces_dir}/{agent_id}",
+        "agentDir": f"{settings.openclaw_agents_dir}/{agent_id}/agent",
+        "model": settings.zai_model,
+        "soul_md": soul_content + brief_section,
     }
-
-
-def build_binding_fragment(session: Session) -> dict:
-    agent_id = _agent_gateway_id(session.id)
-    binding: dict[str, str] = {"agent": agent_id}
-
-    if session.channel == "whatsapp":
-        binding["channel"] = "whatsapp"
-    elif session.channel == "telegram":
-        binding["channel"] = "telegram"
-
-    return binding
