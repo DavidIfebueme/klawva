@@ -41,8 +41,6 @@ export default function SessionHandshakePage() {
   useEffect(() => {
     let cancelled = false;
 
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
     const runHandshake = async () => {
       const token = sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
       if (!token) {
@@ -50,59 +48,38 @@ export default function SessionHandshakePage() {
         return;
       }
       setSessionToken(token);
-      setStatusText('Waiting for payment confirmation...');
+      setStatusText('Activating your worker...');
       setProgress(20);
 
-      const maxAttempts = 60;
-      const intervalMs = 3000;
-
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // PAYWALL DISABLED — activate directly, no payment confirmation polling
+      try {
+        const activation = await activateSession(sessionId, token);
         if (cancelled) return;
 
-        try {
-          if (attempt > 0) {
-            setStatusText('Waiting for payment confirmation...');
-          }
+        setProgress(80);
+        setStatusText('Provisioning resources...');
 
-          setProgress(20 + Math.min(attempt * 2, 30));
-          const activation = await activateSession(sessionId, token);
-          if (cancelled) return;
-
-          setProgress(80);
-          setStatusText('Provisioning resources...');
-
-          if (activation.whatsappNumber) {
-            setWhatsappNumber(activation.whatsappNumber);
-            setWaMeLink(activation.waMeLink || null);
-            setState('whatsapp-number');
-          } else if (activation.qr) {
-            setQrCode(activation.qr);
-            setQrExpiresIn(activation.expiresIn || 60);
-            setState('qr');
-          }
-
-          if (activation.telegramDeepLink || activation.telegramToken) {
-            setTelegramDeepLink(activation.telegramDeepLink || null);
-            setState('telegram');
-          }
-
-          setProgress(100);
-          setErrorMessage(null);
-          return;
-        } catch (error) {
-          if (cancelled) return;
-          const message = error instanceof Error ? error.message : '';
-          if (message === 'payment_not_confirmed') {
-            await sleep(intervalMs);
-            continue;
-          }
-          setErrorMessage(message || 'Failed to prepare this session. Please retry from checkout.');
-          return;
+        if (activation.whatsappNumber) {
+          setWhatsappNumber(activation.whatsappNumber);
+          setWaMeLink(activation.waMeLink || null);
+          setState('whatsapp-number');
+        } else if (activation.qr) {
+          setQrCode(activation.qr);
+          setQrExpiresIn(activation.expiresIn || 60);
+          setState('qr');
         }
-      }
 
-      if (!cancelled) {
-        setErrorMessage('Payment confirmation timed out. Complete payment in the other tab, then refresh this page.');
+        if (activation.telegramDeepLink || activation.telegramToken) {
+          setTelegramDeepLink(activation.telegramDeepLink || null);
+          setState('telegram');
+        }
+
+        setProgress(100);
+        setErrorMessage(null);
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : '';
+        setErrorMessage(message || 'Failed to prepare this session. Please retry from checkout.');
       }
     };
 
