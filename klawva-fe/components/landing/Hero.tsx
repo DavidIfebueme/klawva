@@ -27,24 +27,16 @@ export function Hero() {
           </span>
         </motion.div>
 
-        <h1 className="font-syne font-extrabold text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-tight mb-8 flex flex-col">
+        <h1 className="font-syne font-extrabold text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-tight mb-8">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5, ease: 'easeOut' }}
             className="text-klawva-text"
           >
-            THE WORKER THAT CLOCKS IN
-          </motion.span>
-          <motion.span
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.65, ease: 'easeOut' }}
-            className="text-klawva-text"
-          >
-            AND{' '}
+            HIRE AN{' '}
             <span style={{ WebkitTextStroke: '2px #E8FF47', color: 'transparent' }}>
-              CLOCKS OUT.
+              AI EMPLOYEE
             </span>
           </motion.span>
         </h1>
