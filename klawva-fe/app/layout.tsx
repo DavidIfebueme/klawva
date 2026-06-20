@@ -16,10 +16,10 @@ const dmMono = DM_Mono({
 
 export const metadata: Metadata = {
   title: 'Klawva — Hire Autonomous AI Workers',
-  description: 'Rent a high-performance AI agent for 24 hours. Scrapper, Vendor, or Researcher. Pay once. It works. Then it disappears.',
+  description: 'Deploy an AI worker to your Telegram or WhatsApp. It handles the shift, delivers results, and signs off. One fee. No subscription.',
   openGraph: {
-    title: 'Klawva — Hire the Worker. Fire the Worker.',
-    description: 'Three autonomous AI agents. One flat fee. 24 hours. Then gone.',
+    title: 'Klawva',
+    description: 'Deploy an AI worker to your Telegram or WhatsApp. It handles the shift, delivers results, and signs off. One fee. No subscription.',
   },
 };
 
