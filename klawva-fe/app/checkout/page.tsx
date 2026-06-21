@@ -267,12 +267,15 @@ function CheckoutContent() {
               <p className="font-mono text-klawva-dim text-xs text-center">
                 Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.
               </p>
+              <div className="bg-klawva-bg border border-klawva-border rounded-lg p-4 mb-4 text-center">
+                <p className="font-syne font-bold text-klawva-muted text-sm mb-1">Provisioning Paused</p>
+                <p className="font-mono text-klawva-dim text-xs">Employee deployment is temporarily offline. Check back soon.</p>
+              </div>
               <Button 
                 variant="primary" 
                 size="lg" 
-                className="w-full"
-                loading={loading}
-                onClick={handlePayment}
+                className="w-full opacity-40 cursor-not-allowed"
+                disabled
               >
                 Launch session
               </Button>
