@@ -42,7 +42,13 @@ def _resolve_channel_binding(
 
     if session.channel == "whatsapp" and channel_link is not None and channel_link.external_id:
         account_id = channel_link.external_id
-        account_config = {"enabled": True}
+        account_config = {
+            "enabled": True,
+            "dmPolicy": "open",
+            "allowFrom": ["*"],
+            "groupPolicy": "disabled",
+            "sendReadReceipts": False,
+        }
         return "whatsapp", account_id, account_config
 
     return "", "", None
@@ -149,6 +155,8 @@ async def destroy_provisioning(db: AsyncSession, *, session_id: str) -> bool:
         )
         if channel_type == "telegram" and account_id:
             config = openclaw_gateway.reset_telegram_account_access(config, account_id)
+        if channel_type == "whatsapp" and account_id:
+            config = openclaw_gateway.reset_whatsapp_account_access(config, account_id)
         openclaw_gateway.write_config(config)
 
         if channel_type:
