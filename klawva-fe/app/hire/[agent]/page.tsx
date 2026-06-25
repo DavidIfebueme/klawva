@@ -8,7 +8,7 @@ import { VendorIcon } from '@/components/icons/VendorIcon';
 import { ResearcherIcon } from '@/components/icons/ResearcherIcon';
 import { HirePriceCardBits } from '@/components/billing/HirePriceCardBits';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import Link from 'next/link';
 
 const iconMap = {
   scrapper: ScrapperIcon,
@@ -111,9 +111,11 @@ export default async function HireAgentPage({ params }: { params: Promise<{ agen
               </span>
             </div>
 
-            <Button variant="primary" size="lg" className="w-full mb-4 opacity-40 cursor-not-allowed" disabled>
-              Coming soon →
-            </Button>
+            <Link href={`/checkout?agent=${agentId}`} className="block w-full">
+              <Button variant="primary" size="lg" className="w-full mb-4">
+                Hire {agent.name.split(' ').pop()} →
+              </Button>
+            </Link>
 
             <div className="text-center">
               <Badge variant="pending" className="px-3 py-1 text-xs tracking-widest">[ 24HRS ]</Badge>
