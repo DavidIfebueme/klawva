@@ -267,15 +267,26 @@ function CheckoutContent() {
               <p className="font-mono text-klawva-dim text-xs text-center">
                 Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.
               </p>
-              <Button 
-                variant="primary" 
-                size="lg" 
-                className="w-full"
-                onClick={handlePayment}
-                disabled={loading}
-              >
-                {loading ? 'Launching...' : 'Launch session'}
-              </Button>
+              {agent.comingSoon ? (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full opacity-40 cursor-not-allowed"
+                  disabled
+                >
+                  Coming soon
+                </Button>
+              ) : (
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  className="w-full"
+                  onClick={handlePayment}
+                  disabled={loading}
+                >
+                  {loading ? 'Launching...' : 'Launch session'}
+                </Button>
+              )}
             </div>
 
             {errorMessage && (
