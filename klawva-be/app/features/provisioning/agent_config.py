@@ -193,7 +193,7 @@ def build_agent_fragment(session: Session) -> dict:
         "commands": {
             "native": False,
             "nativeSkills": False,
-            "text": True,
+            "text": False,
             "restart": False,
         },
     }
