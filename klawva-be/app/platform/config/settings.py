@@ -28,8 +28,8 @@ class Settings(BaseSettings):
 
     zai_base_url: str = "https://api.z.ai/api/paas/v4/"
     zai_api_key: str | None = None
-    zai_model: str = "zai/glm-4.7"
-    zai_fallback_model: str = "zai/glm-4.7-flash"
+    zai_model: str = "google/gemini-2.5-flash"
+    zai_fallback_model: str = "google/gemini-2.5-flash"
 
     whatsapp_klawva_account_pool: str = ""
     whatsapp_numbers_map_path: str = "/etc/openclaw/whatsapp_numbers.json"
