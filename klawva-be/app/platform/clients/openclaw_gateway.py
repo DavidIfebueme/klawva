@@ -76,12 +76,8 @@ def add_agent_to_config(
         "agentDir": agent_fragment["agentDir"],
         "model": agent_fragment["model"],
     }
-    if agent_fragment.get("soul_md"):
-        fragment["soul"] = agent_fragment["soul_md"]
     if agent_fragment.get("tools"):
         fragment["tools"] = agent_fragment["tools"]
-    if agent_fragment.get("commands"):
-        fragment["commands"] = agent_fragment["commands"]
 
     agents_list = list(config.get("agents", {}).get("list", []))
     agents_list.append(fragment)
