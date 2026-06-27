@@ -187,16 +187,15 @@ function CheckoutContent() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
               <button
-                onClick={() => setChannel('whatsapp')}
-                className={`flex flex-col items-start text-left p-6 rounded-lg border transition-all duration-200 ${
-                  channel === 'whatsapp' ? 'bg-[#1A1A1A] border-klawva-accent' : 'bg-[#111111] border-klawva-border hover:border-klawva-muted'
-                }`}
+                disabled
+                className="flex flex-col items-start text-left p-6 rounded-lg border bg-[#111111] border-klawva-border opacity-40 cursor-not-allowed"
               >
-                <WhatsAppIcon size={48} className="text-klawva-accent mb-6" />
+                <WhatsAppIcon size={48} className="text-klawva-muted mb-6" />
                 <h3 className="font-syne font-bold text-xl text-klawva-text mb-2">WhatsApp</h3>
-                <p className="font-mono text-klawva-muted text-sm">
+                <p className="font-mono text-klawva-muted text-sm mb-3">
                   Connect your agent via WhatsApp. You&apos;ll receive a number to message after checkout.
                 </p>
+                <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider">Coming soon</span>
               </button>
               
               <button
