@@ -6,7 +6,11 @@ from app.features.termination.contracts import (
     ScheduleTerminationRequest,
     TerminationJobResponse,
 )
-from app.features.termination.service import execute_due_terminations, schedule_termination
+from app.features.termination.service import (
+    execute_due_terminations,
+    schedule_termination,
+    process_upcoming_auto_renewals,
+)
 from app.platform.db.session import get_async_session
 
 router = APIRouter(prefix="/api/termination", tags=["termination"])
@@ -30,5 +34,6 @@ async def schedule_termination_endpoint(
 async def execute_due_termination_endpoint(
     db: AsyncSession = Depends(get_async_session),
 ) -> ExecuteDueTerminationResponse:
+    await process_upcoming_auto_renewals(db)
     terminated = await execute_due_terminations(db)
     return ExecuteDueTerminationResponse(terminated=terminated)
