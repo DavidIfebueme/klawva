@@ -28,16 +28,36 @@ def _load_telegram_accounts_map() -> dict[str, str]:
         return {}
 
 
+def _save_telegram_accounts_map(accounts_map: dict[str, str]) -> None:
+    map_path = Path(settings.telegram_accounts_map_path)
+    map_path.parent.mkdir(parents=True, exist_ok=True)
+    map_path.write_text(json.dumps(accounts_map, indent=2), encoding="utf-8")
+
+
+def _register_telegram_token(token: str) -> str:
+    accounts_map = _load_telegram_accounts_map()
+    if token in accounts_map:
+        return accounts_map[token]
+    existing_ids = set(accounts_map.values())
+    if "default" not in existing_ids:
+        account_id = "default"
+    else:
+        n = 2
+        while f"klawva_agent_{n}" in existing_ids:
+            n += 1
+        account_id = f"klawva_agent_{n}"
+    accounts_map[token] = account_id
+    _save_telegram_accounts_map(accounts_map)
+    return account_id
+
+
 def _resolve_channel_binding(
     session: Session,
     channel_link: ChannelLink | None,
 ) -> tuple[str, str, dict | None]:
     if session.channel == "telegram" and channel_link is not None and channel_link.external_id:
         token = channel_link.external_id
-        accounts_map = _load_telegram_accounts_map()
-        account_id = accounts_map.get(token, "")
-        if not account_id:
-            return "telegram", "", None
+        account_id = _register_telegram_token(token)
         account_config = {
             "enabled": True,
             "dmPolicy": "open",
