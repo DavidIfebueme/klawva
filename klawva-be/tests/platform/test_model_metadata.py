@@ -5,6 +5,7 @@ from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
 
 EXPECTED_TABLES = {
+    "users",
     "sessions",
     "payments",
     "provisioning_jobs",
@@ -14,6 +15,9 @@ EXPECTED_TABLES = {
     "termination_jobs",
     "email_events",
     "idempotency_keys",
+    "wallets",
+    "wallet_transactions",
+    "virtual_accounts",
 }
 
 
@@ -35,6 +39,8 @@ def test_session_schema_contract() -> None:
         "started_at": None,
         "expires_at": None,
         "completed_at": None,
+        "user_id": None,
+        "auto_renew": False,
         "created_at": now,
         "updated_at": now,
     }
