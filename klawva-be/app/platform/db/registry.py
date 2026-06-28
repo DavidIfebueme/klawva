@@ -6,9 +6,11 @@ from app.features.provisioning import models as provisioning_models
 from app.features.reports import models as reports_models
 from app.features.sessions import models as sessions_models
 from app.features.termination import models as termination_models
+from app.features.users import models as users_models
 from app.platform.db.models import idempotency_key as idempotency_models
 
 MODEL_MODULES = [
+    users_models,
     sessions_models,
     payments_models,
     provisioning_models,
