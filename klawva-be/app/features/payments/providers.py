@@ -3,12 +3,14 @@ import hmac
 import json
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 import httpx
 
 from app.features.payments.contracts import PaymentProviderName
 from app.platform.config import settings
+
 
 
 class PaymentProviderError(RuntimeError):
@@ -58,13 +60,56 @@ class PaymentProvider(Protocol):
     def parse_webhook(self, body: bytes) -> WebhookParseResult: ...
 
 
-class PaystackProvider:
-    name: PaymentProviderName = "paystack"
+class NombaProvider:
+    name: PaymentProviderName = "nomba"
+    _token: str | None = None
+    _token_expires_at: float = 0.0
 
     def __init__(self) -> None:
-        self._base_url = settings.paystack_base_url.rstrip("/")
-        self._secret_key = settings.paystack_secret_key
-        self._webhook_secret = settings.paystack_webhook_secret
+        self._base_url = settings.nomba_base_url.rstrip("/")
+        self._client_id = settings.nomba_client_id
+        self._client_secret = settings.nomba_client_secret
+        self._account_id = settings.nomba_account_id
+        self._webhook_secret = settings.nomba_webhook_secret
+
+    async def _get_access_token(self) -> str:
+        if self._token and time.time() < self._token_expires_at - 60:
+            return self._token
+
+        if not self._client_id or not self._client_secret or not self._account_id:
+            raise PaymentProviderError("Nomba API keys are not configured")
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{self._base_url}/v1/auth/token/issue",
+                headers={"accountId": self._account_id},
+                json={
+                    "grant_type": "client_credentials",
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                }
+            )
+
+        if response.status_code >= 400:
+            raise PaymentProviderError(f"nomba_auth_failed:{response.status_code}")
+
+        res_json = response.json()
+        if res_json.get("code") != "00":
+            raise PaymentProviderError(f"nomba_auth_failed_code:{res_json.get('code')}:{res_json.get('description')}")
+
+        data = res_json.get("data", {})
+        self._token = str(data.get("access_token"))
+        expires_at_str = data.get("expiresAt")
+        if expires_at_str:
+            try:
+                dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                self._token_expires_at = dt.timestamp()
+            except Exception:
+                self._token_expires_at = time.time() + 1500
+        else:
+            self._token_expires_at = time.time() + 1500
+
+        return self._token
 
     async def initialize_payment(
         self,
@@ -74,78 +119,108 @@ class PaystackProvider:
         session_id: str,
         customer_email: str | None,
     ) -> ProviderInitResult:
-        if not self._secret_key:
-            raise PaymentProviderError("PAYSTACK_SECRET_KEY is not configured")
+        token = await self._get_access_token()
+        order_reference = f"order_{session_id}_{int(time.time())}"
+        amount_major_str = f"{amount_minor / 100:.2f}"
 
         payload = {
-            "amount": amount_minor,
+            "orderReference": order_reference,
+            "amount": amount_major_str,
             "currency": currency.upper(),
-            "email": customer_email or "customer@klawva.local",
-            "metadata": {"session_id": session_id},
+            "callbackUrl": f"{settings.frontend_base_url}/session/{session_id}",
+            "customerId": customer_email or "customer@klawva.local",
         }
 
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
-                f"{self._base_url}/transaction/initialize",
-                headers={"Authorization": f"Bearer {self._secret_key}"},
+                f"{self._base_url}/v1/checkout/order",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "accountId": self._account_id,
+                    "Content-Type": "application/json",
+                },
                 json=payload,
             )
 
         if response.status_code >= 400:
-            raise PaymentProviderError(f"paystack_initialize_failed:{response.status_code}")
+            raise PaymentProviderError(f"nomba_initialize_failed:{response.status_code}")
 
-        data = response.json().get("data", {})
-        reference = str(data.get("reference"))
-        if not reference:
-            raise PaymentProviderError("paystack_reference_missing")
+        res_json = response.json()
+        if res_json.get("code") != "00":
+            raise PaymentProviderError(f"nomba_initialize_failed_code:{res_json.get('code')}:{res_json.get('description')}")
+
+        data = res_json.get("data", {})
+        checkout_link = data.get("checkoutLink")
+        if not checkout_link:
+            raise PaymentProviderError("nomba_checkout_link_missing")
 
         return ProviderInitResult(
-            provider_reference=reference,
+            provider_reference=order_reference,
             status="pending",
-            checkout_url=data.get("authorization_url"),
+            checkout_url=checkout_link,
         )
 
     async def verify_transaction(self, provider_reference: str) -> ProviderVerificationResult:
-        if not self._secret_key:
-            raise PaymentProviderError("PAYSTACK_SECRET_KEY is not configured")
+        token = await self._get_access_token()
 
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                f"{self._base_url}/transaction/verify/{provider_reference}",
-                headers={"Authorization": f"Bearer {self._secret_key}"},
+                f"{self._base_url}/v1/checkout/order/{provider_reference}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "accountId": self._account_id,
+                },
             )
 
         if response.status_code >= 400:
-            raise PaymentProviderError(f"paystack_verify_failed:{response.status_code}")
+            raise PaymentProviderError(f"nomba_verify_failed:{response.status_code}")
 
-        data = response.json().get("data", {})
-        status = "confirmed" if data.get("status") == "success" else "failed"
-        metadata = data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {}
-        amount = int(data.get("amount", 0) or 0)
+        res_json = response.json()
+        if res_json.get("code") != "00":
+            raise PaymentProviderError(f"nomba_verify_failed_code:{res_json.get('code')}:{res_json.get('description')}")
+
+        data = res_json.get("data", {})
+        status_raw = data.get("status")
+        status = "confirmed" if status_raw == "SUCCESS" else "failed" if status_raw == "EXPIRED" else "pending"
+
+        amount_major = float(data.get("amount", 0.0))
+        amount_minor = int(round(amount_major * 100))
         currency = str(data.get("currency", "")).upper()
+
+        session_id = None
+        if provider_reference.startswith("order_"):
+            parts = provider_reference.split("_")
+            if len(parts) >= 3:
+                session_id = parts[1]
+
         return ProviderVerificationResult(
-            provider_reference=str(data.get("reference", provider_reference)),
+            provider_reference=provider_reference,
             status=status,
-            session_id=metadata.get("session_id"),
-            amount_minor=amount,
+            session_id=session_id,
+            amount_minor=amount_minor,
             currency=currency,
         )
 
     def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool:
         if not self._webhook_secret or not signature_header:
             return False
-        digest = hmac.new(self._webhook_secret.encode("utf-8"), body, hashlib.sha512).hexdigest()
-        return hmac.compare_digest(digest, signature_header)
+        expected = hmac.new(
+            self._webhook_secret.encode("utf-8"), body, hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(expected, signature_header)
 
     def parse_webhook(self, body: bytes) -> WebhookParseResult:
         payload = json.loads(body.decode("utf-8"))
+        event_type = str(payload.get("event", "unknown"))
         data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
-        event = str(payload.get("event", "unknown"))
-        reference = data.get("reference")
+        
+        order_data = data.get("order", {}) if isinstance(data.get("order"), dict) else {}
+        reference = order_data.get("orderReference") or data.get("reference")
+
         event_id = str(data.get("id") or reference or hashlib.sha256(body).hexdigest())
         return WebhookParseResult(
             event_id=event_id,
-            event_type=event,
+            event_type=event_type,
             provider_reference=str(reference) if reference else None,
         )
 
@@ -279,6 +354,6 @@ class StripeProvider:
 
 
 def get_provider(name: PaymentProviderName) -> PaymentProvider:
-    if name == "paystack":
-        return PaystackProvider()
+    if name == "nomba":
+        return NombaProvider()
     return StripeProvider()
