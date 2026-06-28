@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, String, ForeignKey, Boolean
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.platform.db.base import Base
 from app.platform.db.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -20,3 +20,8 @@ class Session(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    user = relationship("User", back_populates="sessions")

@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PaymentProviderName = Literal["paystack", "stripe"]
+PaymentProviderName = Literal["nomba", "stripe"]
 
 
 class InitializePaymentRequest(BaseModel):
