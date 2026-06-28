@@ -27,11 +27,11 @@ class FakeProvider:
         customer_email: str | None,
     ) -> ProviderInitResult:
         _ = amount_minor, currency, session_id, customer_email
-        if self.provider == "paystack":
+        if self.provider == "nomba":
             return ProviderInitResult(
                 provider_reference="pay_ref_123",
                 status="pending",
-                checkout_url="https://paystack.local/checkout",
+                checkout_url="https://nomba.local/checkout",
             )
         return ProviderInitResult(
             provider_reference="pi_123",
@@ -89,12 +89,12 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
 
-    fake_paystack = FakeProvider("paystack")
+    fake_nomba = FakeProvider("nomba")
     fake_stripe = FakeProvider("stripe")
 
     def fake_get_provider(name: str):
-        if name == "paystack":
-            return fake_paystack
+        if name == "nomba":
+            return fake_nomba
         return fake_stripe
 
     monkeypatch.setattr("app.features.payments.service.get_provider", fake_get_provider)
@@ -120,14 +120,14 @@ def _create_session(client: TestClient, channel: str = "whatsapp") -> tuple[str,
     return payload["sessionId"], payload["sessionToken"]
 
 
-def test_initialize_payment_paystack(test_client: TestClient) -> None:
+def test_initialize_payment_nomba(test_client: TestClient) -> None:
     session_id, _ = _create_session(test_client)
 
     response = test_client.post(
         "/api/payments/initialize",
         json={
             "sessionId": session_id,
-            "provider": "paystack",
+            "provider": "nomba",
             "amountMinor": 2500,
             "currency": "NGN",
             "customerEmail": "owner@example.com",
@@ -137,9 +137,9 @@ def test_initialize_payment_paystack(test_client: TestClient) -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["provider"] == "paystack"
+    assert payload["provider"] == "nomba"
     assert payload["providerReference"] == "pay_ref_123"
-    assert payload["checkoutUrl"] == "https://paystack.local/checkout"
+    assert payload["checkoutUrl"] == "https://nomba.local/checkout"
     assert payload["amountMinor"] == 250000
     assert payload["currency"] == "NGN"
 
@@ -170,7 +170,7 @@ def test_get_billing_profile_nigeria(test_client: TestClient) -> None:
     response = test_client.get("/api/payments/billing-profile", headers={"cf-ipcountry": "NG"})
     assert response.status_code == 200
     assert response.json() == {
-        "provider": "paystack",
+        "provider": "nomba",
         "amountMinor": 250000,
         "currency": "NGN",
         "amountDisplay": "₦2,500",
@@ -199,7 +199,7 @@ def test_get_billing_profile_nigeria_from_timezone_fallback(test_client: TestCli
     )
     assert response.status_code == 200
     assert response.json() == {
-        "provider": "paystack",
+        "provider": "nomba",
         "amountMinor": 250000,
         "currency": "NGN",
         "amountDisplay": "₦2,500",
@@ -218,7 +218,7 @@ def test_get_billing_profile_nigeria_from_hint_and_language(test_client: TestCli
     )
     assert response.status_code == 200
     assert response.json() == {
-        "provider": "paystack",
+        "provider": "nomba",
         "amountMinor": 250000,
         "currency": "NGN",
         "amountDisplay": "₦2,500",
@@ -242,23 +242,23 @@ def test_webhook_idempotent_and_unlock_session(
                 currency="NGN",
             )
 
-    provider = SessionAwareFakeProvider("paystack")
+    provider = SessionAwareFakeProvider("nomba")
     monkeypatch.setattr("app.features.payments.service.get_provider", lambda _: provider)
 
     body = {"event": "charge.success", "data": {"reference": "pay_ref_123", "id": "evt_1"}}
 
     first = test_client.post(
-        "/api/payments/paystack/webhook",
+        "/api/payments/nomba/webhook",
         json=body,
-        headers={"x-paystack-signature": "sig"},
+        headers={"nomba-signature": "sig"},
     )
     assert first.status_code == 200
     assert first.json() == {"processed": True}
 
     second = test_client.post(
-        "/api/payments/paystack/webhook",
+        "/api/payments/nomba/webhook",
         json=body,
-        headers={"x-paystack-signature": "sig"},
+        headers={"nomba-signature": "sig"},
     )
     assert second.status_code == 200
     assert second.json() == {"processed": False}
