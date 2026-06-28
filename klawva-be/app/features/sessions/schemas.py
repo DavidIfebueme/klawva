@@ -13,6 +13,8 @@ class SessionSchema(BaseModel):
     started_at: datetime | None
     expires_at: datetime | None
     completed_at: datetime | None
+    user_id: str | None = None
+    auto_renew: bool = False
     created_at: datetime
     updated_at: datetime
 
