@@ -126,3 +126,157 @@ async def execute_due_terminations(db: AsyncSession) -> int:
 
     await db.commit()
     return terminated_count
+
+
+async def check_if_already_warned(db: AsyncSession, session_id: str) -> bool:
+    stmt = select(ActivityEvent).where(
+        ActivityEvent.session_id == session_id,
+        ActivityEvent.event_type == "insufficient_balance_warning",
+    )
+    res = await db.execute(stmt)
+    return res.scalar_one_or_none() is not None
+
+
+async def record_warning_event(db: AsyncSession, session_id: str) -> None:
+    db.add(
+        ActivityEvent(
+            session_id=session_id,
+            event_type="insufficient_balance_warning",
+            payload={
+                "text": "Warning: Insufficient wallet balance to auto-renew shift. Extension failed."
+            },
+            occurred_at=datetime.now(UTC),
+        )
+    )
+    await db.flush()
+
+
+async def process_upcoming_auto_renewals(db: AsyncSession) -> None:
+    """Find active sessions expiring in less than 2 hours and extend them if auto_renew is active and funded."""
+    now = datetime.now(UTC)
+    two_hours_from_now = now + timedelta(hours=2)
+
+    statement = select(Session).where(
+        Session.status == "active",
+        Session.auto_renew == True,
+        Session.expires_at <= two_hours_from_now,
+        Session.expires_at > now,
+    )
+    result = await db.execute(statement)
+    sessions = result.scalars().all()
+
+    for session in sessions:
+        await _attempt_session_extension(db, session)
+
+    await db.commit()
+
+
+async def _attempt_session_extension(db: AsyncSession, session: Session) -> None:
+    """Checks wallet balance and extends session expires_at and termination job scheduled_for by 24 hours."""
+    from app.features.emails.service import _render_template
+    from app.features.payments.billing import resolve_billing_profile_from_country
+    from app.features.payments.models import Wallet, WalletTransaction
+    from app.features.users.models import User
+    from app.platform.email.service import send_transactional_email
+
+    if not session.user_id:
+        return
+
+    user = await db.get(User, session.user_id)
+    if not user:
+        return
+
+    stmt = select(Wallet).where(Wallet.user_id == user.id)
+    res = await db.execute(stmt)
+    wallet = res.scalar_one_or_none()
+    if not wallet:
+        return
+
+    billing = resolve_billing_profile_from_country("NG")
+    agent_cost = billing.amount_minor
+
+    if wallet.balance_minor < agent_cost:
+        already_warned = await check_if_already_warned(db, session.id)
+        if not already_warned:
+            subject = f"Action Required: Insufficient balance to auto-renew {session.agent_id.capitalize()} shift"
+            body = (
+                f"Your Klawva worker (<strong>{session.agent_id.capitalize()}</strong>) is set to expire in 2 hours, "
+                f"but your wallet balance (₦{wallet.balance_minor / 100:.2f}) is insufficient to cover the renewal cost "
+                f"(₦{agent_cost / 100:.2f}).<br/><br/>"
+                "Please fund your virtual account to prevent your worker from terminating."
+            )
+            html = _render_template(
+                title="Insufficient balance to auto-renew shift",
+                body=body,
+                cta_label="Fund Wallet",
+                cta_href=f"{settings.frontend_base_url}/dashboard/wallet",
+            )
+            text = f"Action Required: Insufficient balance to auto-renew your Klawva worker shift. Please fund your wallet."
+            try:
+                await send_transactional_email(
+                    to_email=user.email,
+                    subject=subject,
+                    text_body=text,
+                    html_body=html,
+                )
+            except Exception:
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    "Failed to send insufficient balance email to %s", user.email, exc_info=True
+                )
+            await record_warning_event(db, session.id)
+        return
+
+    wallet.balance_minor -= agent_cost
+    tx = WalletTransaction(
+        wallet_id=wallet.id,
+        type="debit",
+        amount_minor=agent_cost,
+        description=f"Auto-renewal extension: {session.agent_id} (24h)",
+        source="auto_reprovision",
+        balance_after=wallet.balance_minor,
+    )
+    db.add(tx)
+
+    session.expires_at += timedelta(hours=24)
+
+    term_job_stmt = select(TerminationJob).where(TerminationJob.session_id == session.id)
+    term_job_res = await db.execute(term_job_stmt)
+    term_job = term_job_res.scalar_one_or_none()
+    if term_job:
+        term_job.scheduled_for += timedelta(hours=24)
+
+    db.add(
+        ActivityEvent(
+            session_id=session.id,
+            event_type="session_extended",
+            payload={"text": "Session extended by 24 hours (Zero Downtime Auto-Renewal)"},
+            occurred_at=datetime.now(UTC),
+        )
+    )
+
+    subject = f"Your Klawva worker shift has been extended"
+    expiry_formatted = session.expires_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    body = (
+        f"Your Klawva worker (<strong>{session.agent_id.capitalize()}</strong>) shift has been successfully "
+        f"extended by 24 hours via auto-renewal.<br/>"
+        f"New shift expiration: <strong>{expiry_formatted}</strong><br/>"
+        f"Balance remaining: <strong>₦{wallet.balance_minor / 100:.2f}</strong>"
+    )
+    html = _render_template(
+        title="Worker shift extended",
+        body=body,
+        cta_label="View Dashboard",
+        cta_href=f"{settings.frontend_base_url}/dashboard",
+    )
+    text = f"Your Klawva worker shift has been extended by 24 hours. New expiration: {expiry_formatted}."
+    try:
+        await send_transactional_email(
+            to_email=user.email,
+            subject=subject,
+            text_body=text,
+            html_body=html,
+        )
+    except Exception:
+        logger = logging.getLogger(__name__)
+        logger.error("Failed to send auto-renewal extension email to %s", user.email, exc_info=True)
