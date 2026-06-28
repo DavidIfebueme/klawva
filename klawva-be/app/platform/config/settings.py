@@ -34,9 +34,11 @@ class Settings(BaseSettings):
     whatsapp_klawva_account_pool: str = ""
     whatsapp_numbers_map_path: str = "/etc/openclaw/whatsapp_numbers.json"
 
-    paystack_secret_key: str | None = None
-    paystack_webhook_secret: str | None = None
-    paystack_base_url: str = "https://api.paystack.co"
+    nomba_client_id: str | None = None
+    nomba_client_secret: str | None = None
+    nomba_account_id: str | None = None
+    nomba_base_url: str = "https://api.nomba.com"
+    nomba_webhook_secret: str | None = None
 
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None

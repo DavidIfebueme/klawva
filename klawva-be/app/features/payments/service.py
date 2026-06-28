@@ -90,6 +90,57 @@ async def process_webhook(
     if existing is not None:
         return False
 
+    if provider_name == "nomba" and parsed.provider_reference and parsed.provider_reference.startswith("klawva_"):
+        import json
+        from app.features.payments.models import Wallet, WalletTransaction, VirtualAccount
+        
+        payload = json.loads(raw_body.decode("utf-8"))
+        data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+        
+        va_stmt = select(VirtualAccount).where(VirtualAccount.nomba_account_ref == parsed.provider_reference)
+        va_res = await db.execute(va_stmt)
+        va = va_res.scalar_one_or_none()
+        if not va:
+            raise HTTPException(status_code=404, detail="virtual_account_not_found")
+            
+        wallet_stmt = select(Wallet).where(Wallet.user_id == va.user_id)
+        wallet_res = await db.execute(wallet_stmt)
+        wallet = wallet_res.scalar_one_or_none()
+        if not wallet:
+            wallet = Wallet(user_id=va.user_id, balance_minor=0)
+            db.add(wallet)
+            await db.flush()
+
+        amount_major = float(data.get("amount", 0.0))
+        amount_minor = int(round(amount_major * 100))
+        
+        wallet.balance_minor += amount_minor
+        
+        tx = WalletTransaction(
+            wallet_id=wallet.id,
+            type="credit",
+            amount_minor=amount_minor,
+            reference=parsed.event_id,
+            description="Virtual account funding",
+            balance_after=wallet.balance_minor,
+            source="virtual_account",
+        )
+        db.add(tx)
+        
+        expires_at = datetime.now(UTC) + timedelta(days=30)
+        db.add(
+            IdempotencyKey(
+                scope=scope,
+                key=key,
+                request_hash=_hash_body(raw_body),
+                response_json={"processed": True, "wallet_funded": True},
+                status_code=200,
+                expires_at=expires_at,
+            )
+        )
+        await db.commit()
+        return True
+
     if parsed.provider_reference is None:
         expires_at = datetime.now(UTC) + timedelta(days=30)
         db.add(

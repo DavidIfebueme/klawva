@@ -64,49 +64,53 @@ export default function SessionHandshakePage() {
         setProgress(60);
         setStatusText('Provisioning resources...');
 
-        if (activation.whatsappNumber) {
-          setWhatsappNumber(activation.whatsappNumber);
-          setWaMeLink(activation.waMeLink || null);
-        }
-        if (activation.qr) {
-          setQrCode(activation.qr);
-          setQrExpiresIn(activation.expiresIn || 60);
-        }
-        if (activation.telegramDeepLink || activation.telegramToken) {
-          setTelegramDeepLink(activation.telegramDeepLink || null);
-        }
-
         setProgress(80);
-        setStatusText('Waiting for agent to come online...');
 
-        const pollUntilReady = async () => {
-          const maxAttempts = 60;
-          for (let i = 0; i < maxAttempts; i++) {
-            if (cancelled) return;
-            await new Promise((r) => setTimeout(r, 3000));
-            try {
-              const [sessionStatus, sessionActivity] = await Promise.all([
-                getSessionStatus(sessionId, token),
-                getSessionActivity(sessionId, token),
-              ]);
-              const activityTexts = sessionActivity.activities.map((e) => e.text.toLowerCase());
-              const connected = sessionStatus.connected
-                || activityTexts.some((t) => t.includes('channel connected'))
-                || activityTexts.some((t) => t.includes('intro message sent'));
-              if (connected) {
-                if (cancelled) return;
-                setProgress(100);
-                setProvisioningReady(true);
-                return;
-              }
-            } catch {
-            }
-          }
-          if (cancelled) return;
+        if (channel === 'telegram' && (activation.telegramDeepLink || activation.telegramToken)) {
+          setTelegramDeepLink(activation.telegramDeepLink || null);
+          setProgress(100);
           setProvisioningReady(true);
-        };
+        } else {
+          if (activation.whatsappNumber) {
+            setWhatsappNumber(activation.whatsappNumber);
+            setWaMeLink(activation.waMeLink || null);
+          }
+          if (activation.qr) {
+            setQrCode(activation.qr);
+            setQrExpiresIn(activation.expiresIn || 60);
+          }
 
-        void pollUntilReady();
+          setStatusText('Waiting for agent to come online...');
+
+          const pollUntilReady = async () => {
+            const maxAttempts = 120;
+            for (let i = 0; i < maxAttempts; i++) {
+              if (cancelled) return;
+              await new Promise((r) => setTimeout(r, 3000));
+              try {
+                const [sessionStatus, sessionActivity] = await Promise.all([
+                  getSessionStatus(sessionId, token),
+                  getSessionActivity(sessionId, token),
+                ]);
+                const activityTexts = sessionActivity.activities.map((e) => e.text.toLowerCase());
+                const connected = sessionStatus.connected
+                  || activityTexts.some((t) => t.includes('channel connected'))
+                  || activityTexts.some((t) => t.includes('intro message sent'));
+                if (connected) {
+                  if (cancelled) return;
+                  setProgress(100);
+                  setProvisioningReady(true);
+                  return;
+                }
+              } catch {
+              }
+            }
+            if (cancelled) return;
+            setErrorMessage('Agent is taking too long to come online. Please try again.');
+          };
+
+          void pollUntilReady();
+        }
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : '';
@@ -416,17 +420,23 @@ export default function SessionHandshakePage() {
         >
           <PulseRing size={64} className="mb-8" />
           
-          <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your agent is ready</h2>
+          {telegramOnboardingState === 'intro_sent' ? (
+            <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Your agent is ready</h2>
+          ) : (
+            <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Connect your agent</h2>
+          )}
           <p className="font-mono text-klawva-muted text-sm mb-8">
-            Connect your Telegram bot to begin receiving updates for this session.
+            {telegramOnboardingState === 'intro_sent'
+              ? 'Your agent is online and ready. Open Telegram to start working.'
+              : 'Open the Telegram bot link below and send a message to activate your agent.'}
           </p>
 
           <div className="font-mono text-xs text-klawva-dim mb-6">
             {telegramOnboardingState === 'intro_sent'
-              ? 'Telegram onboarding: Intro sent'
+              ? 'Telegram onboarding: Connected · Intro sent'
               : telegramOnboardingState === 'linked'
-                ? 'Telegram onboarding: Linked · Intro pending'
-                : 'Telegram onboarding: Waiting for link confirmation'}
+                ? 'Telegram onboarding: Connected · Waiting for intro...'
+                : 'Telegram onboarding: Waiting for your first message'}
           </div>
 
           {telegramDeepLink ? (
@@ -442,13 +452,15 @@ export default function SessionHandshakePage() {
             </a>
           ) : (
             <div className="font-mono text-klawva-orange text-xs mb-6">
-              Bot link is still preparing. Continue to session while provisioning finalizes.
+              Bot link is still preparing. Please wait...
             </div>
           )}
           
-          <Button variant="primary" size="lg" className="w-full mb-6" onClick={goToStatus}>
-            Continue to session →
-          </Button>
+          {telegramOnboardingState === 'intro_sent' && (
+            <Button variant="primary" size="lg" className="w-full mb-6" onClick={goToStatus}>
+              Continue to session →
+            </Button>
+          )}
         </motion.div>
       )}
 
