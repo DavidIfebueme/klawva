@@ -55,17 +55,17 @@ async def get_billing_profile_endpoint(request: Request) -> BillingProfileRespon
     )
 
 
-@router.post("/paystack/webhook", response_model=WebhookResultResponse)
-async def paystack_webhook_endpoint(
+@router.post("/nomba/webhook", response_model=WebhookResultResponse)
+async def nomba_webhook_endpoint(
     request: Request,
     db: AsyncSession = Depends(get_async_session),
-    x_paystack_signature: str | None = Header(default=None),
+    nomba_signature: str | None = Header(default=None),
 ) -> WebhookResultResponse:
     processed = await process_webhook(
         db,
-        provider_name="paystack",
+        provider_name="nomba",
         raw_body=await request.body(),
-        signature_header=x_paystack_signature,
+        signature_header=nomba_signature,
     )
     return WebhookResultResponse(processed=processed)
 
