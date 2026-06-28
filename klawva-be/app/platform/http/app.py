@@ -10,6 +10,7 @@ from app.features.provisioning.routes import router as provisioning_router
 from app.features.reports.routes import router as reports_router
 from app.features.sessions.routes import router as sessions_router
 from app.features.termination.routes import router as termination_router
+from app.features.dashboard.routes import router as dashboard_router
 from app.platform.config import settings
 from app.platform.errors.handlers import register_exception_handlers
 from app.platform.http.routes.health import router as health_router
@@ -43,4 +44,5 @@ def create_app() -> FastAPI:
     app.include_router(reports_router)
     app.include_router(termination_router)
     app.include_router(observability_router)
+    app.include_router(dashboard_router)
     return app
