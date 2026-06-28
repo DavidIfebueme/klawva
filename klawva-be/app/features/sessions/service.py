@@ -29,6 +29,25 @@ async def create_session(
     customer_email: str | None = None,
     payment_ref: str | None = None,
 ) -> tuple[Session, str]:
+    from app.features.payments.models import Wallet
+    from app.features.users.models import User
+
+    user_id = None
+    if customer_email:
+        email_clean = customer_email.strip().lower()
+        stmt = select(User).where(User.email == email_clean)
+        res = await db.execute(stmt)
+        user = res.scalar_one_or_none()
+        if not user:
+            user = User(email=email_clean)
+            db.add(user)
+            await db.flush()
+
+            wallet = Wallet(user_id=user.id, balance_minor=0)
+            db.add(wallet)
+            await db.flush()
+        user_id = user.id
+
     session_token = generate_session_token()
     session = Session(
         agent_id=agent_id,
@@ -38,6 +57,7 @@ async def create_session(
         payment_ref=payment_ref,
         session_token_hash=hash_session_token(session_token),
         status="provisioning",
+        user_id=user_id,
     )
     db.add(session)
     await db.commit()
