@@ -41,7 +41,43 @@ export interface ActivateSessionResponse {
   waMeLink?: string;
 }
 
-export type PaymentProvider = 'paystack' | 'stripe';
+export type PaymentProvider = 'nomba' | 'stripe';
+
+export interface UserProfileResponse {
+  id: string;
+  email: string;
+}
+
+export interface DashboardSessionEntry {
+  id: string;
+  agentId: string;
+  channel: 'whatsapp' | 'telegram';
+  status: 'provisioning' | 'ready' | 'active' | 'completed';
+  autoRenew: boolean;
+  startedAt?: string;
+  expiresAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface WalletDetailsResponse {
+  balanceMinor: number;
+  currency: string;
+  hasVirtualAccount: boolean;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+}
+
+export interface WalletTransactionEntry {
+  id: string;
+  type: 'credit' | 'debit';
+  amountMinor: number;
+  description?: string;
+  balanceAfter: number;
+  source?: string;
+  createdAt: string;
+}
 
 export interface InitializePaymentPayload {
   sessionId: string;
