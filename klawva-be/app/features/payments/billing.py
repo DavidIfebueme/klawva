@@ -106,7 +106,7 @@ def _is_nigeria_language(value: str | None) -> bool:
 def resolve_billing_profile_from_country(country_code: str | None) -> BillingProfile:
     if country_code == "NG":
         return BillingProfile(
-            provider="paystack",
+            provider="nomba",
             amount_minor=250000,
             currency="NGN",
             amount_display="₦2,500",

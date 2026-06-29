@@ -16,7 +16,7 @@ export function HirePriceCardBits() {
 
       <div className="text-center">
         <p className="font-mono text-klawva-dim text-xs mb-4">
-          Secure payment via {profile.provider === 'paystack' ? 'Paystack (Nigeria)' : 'Stripe (Global)'}
+          Secure payment via {profile.provider === 'nomba' ? 'Nomba (Nigeria)' : 'Stripe (Global)'}
         </p>
       </div>
     </>
