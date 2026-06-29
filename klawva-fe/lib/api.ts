@@ -14,6 +14,10 @@ import {
   SessionActivityResponse,
   SessionReportResponse,
   WhatsAppLockAccessResponse,
+  UserProfileResponse,
+  DashboardSessionEntry,
+  WalletDetailsResponse,
+  WalletTransactionEntry,
 } from '../types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -234,4 +238,126 @@ export async function lockWhatsAppAccess(
     whatsappPhoneNumber: data.whatsappPhoneNumber,
     overlapWarning: data.overlapWarning,
   };
+}
+
+function dashboardTokenHeaders(token?: string): HeadersInit {
+  return token ? { 'x-dashboard-token': token } : {};
+}
+
+export async function requestDashboardMagicLink(email: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${BASE}/api/dashboard/auth/request-magic-link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw new Error('Failed to request login link');
+  return res.json();
+}
+
+export async function verifyDashboardMagicLink(token: string): Promise<{ token: string; user: UserProfileResponse }> {
+  const res = await fetch(`${BASE}/api/dashboard/auth/verify-magic-link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    let message = 'Failed to verify login link';
+    try {
+      const payload = await res.json();
+      message = payload?.detail || message;
+    } catch {}
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export async function getDashboardMe(token: string): Promise<UserProfileResponse> {
+  const res = await fetch(`${BASE}/api/dashboard/me`, {
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Unauthorized');
+  return res.json();
+}
+
+export async function getDashboardSessions(token: string): Promise<DashboardSessionEntry[]> {
+  const res = await fetch(`${BASE}/api/dashboard/sessions`, {
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Failed to fetch dashboard sessions');
+  return res.json();
+}
+
+export async function getDashboardSession(id: string, token: string): Promise<DashboardSessionEntry> {
+  const res = await fetch(`${BASE}/api/dashboard/sessions/${id}`, {
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Failed to fetch session detail');
+  return res.json();
+}
+
+export async function toggleDashboardSessionAutoRenew(
+  id: string,
+  autoRenew: boolean,
+  token: string,
+): Promise<DashboardSessionEntry> {
+  const res = await fetch(`${BASE}/api/dashboard/sessions/${id}/auto-renew`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...dashboardTokenHeaders(token),
+    },
+    body: JSON.stringify({ auto_renew: autoRenew }),
+  });
+  if (!res.ok) throw new Error('Failed to toggle auto-renewal');
+  return res.json();
+}
+
+export async function getDashboardSessionBrief(id: string, token: string): Promise<{ brief: Record<string, any> }> {
+  const res = await fetch(`${BASE}/api/dashboard/sessions/${id}/brief`, {
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Failed to fetch brief');
+  return res.json();
+}
+
+export async function updateDashboardSessionBrief(
+  id: string,
+  brief: Record<string, any>,
+  token: string,
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${BASE}/api/dashboard/sessions/${id}/brief`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...dashboardTokenHeaders(token),
+    },
+    body: JSON.stringify({ brief }),
+  });
+  if (!res.ok) throw new Error('Failed to update brief');
+  return res.json();
+}
+
+export async function getDashboardWallet(token: string): Promise<WalletDetailsResponse> {
+  const res = await fetch(`${BASE}/api/dashboard/wallet`, {
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Failed to fetch wallet details');
+  return res.json();
+}
+
+export async function createDashboardVirtualAccount(token: string): Promise<WalletDetailsResponse> {
+  const res = await fetch(`${BASE}/api/dashboard/wallet/create-virtual-account`, {
+    method: 'POST',
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Failed to create virtual account');
+  return res.json();
+}
+
+export async function getDashboardWalletTransactions(token: string): Promise<WalletTransactionEntry[]> {
+  const res = await fetch(`${BASE}/api/dashboard/wallet/transactions`, {
+    headers: dashboardTokenHeaders(token),
+  });
+  if (!res.ok) throw new Error('Failed to fetch transaction history');
+  return res.json();
 }
