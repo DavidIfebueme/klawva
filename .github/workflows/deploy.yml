@@ -1,0 +1,23 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [master]
+    paths: ['klawva-be/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_SERVER_IP }}
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: klawva-deploy
