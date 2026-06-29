@@ -16,6 +16,7 @@ export function Navbar() {
             <Link href="/#agents" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Agents</Link>
             <Link href="/#pricing" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Pricing</Link>
             <Link href="/history" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">History</Link>
+            <Link href="/dashboard" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors font-bold text-klawva-accent">Dashboard</Link>
           </div>
           <Button variant="primary" size="sm" href="/#agents">Hire an Agent</Button>
         </div>
