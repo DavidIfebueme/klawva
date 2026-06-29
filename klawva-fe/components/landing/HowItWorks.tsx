@@ -47,7 +47,7 @@ export function HowItWorks() {
     step.num === '03'
       ? {
           ...step,
-          desc: `${profile.amountDisplay} via ${profile.provider === 'paystack' ? 'Paystack' : 'Stripe'}. No subscriptions. No hidden costs. One price for a 24-hour shift.`,
+          desc: `${profile.amountDisplay} via ${profile.provider === 'nomba' ? 'Nomba' : 'Stripe'}. No subscriptions. No hidden costs. One price for a 24-hour shift.`,
         }
       : step,
   );
