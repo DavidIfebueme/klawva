@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from app.platform.config import settings
 
 _BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+log = logging.getLogger(__name__)
 
 
 class EmailServiceError(RuntimeError):
@@ -27,9 +30,8 @@ async def send_transactional_email(
     text_body: str,
     html_body: str | None = None,
     reply_to: str | None = None,
-) -> None:
+) -> str | None:
 
-    print("yeah")
     _require_brevo_settings()
 
     payload: dict = {
@@ -48,24 +50,33 @@ async def send_transactional_email(
     if reply_to:
         payload["replyTo"] = {"email": reply_to}
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            _BREVO_API_URL,
-            headers={
-                "api-key": settings.brevo_api_key or "",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json=payload,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                _BREVO_API_URL,
+                headers={
+                    "api-key": settings.brevo_api_key or "",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        log.error("Brevo request failed: %s", exc)
+        raise EmailServiceError(f"Brevo request failed: {exc}") from exc
 
     if resp.status_code >= 400:
         detail = resp.text
+        log.error("Brevo API error %d: %s", resp.status_code, detail)
         raise EmailServiceError(f"Brevo API error {resp.status_code}: {detail}")
 
+    message_id = resp.json().get("messageId")
+    log.info("Email sent to %s, messageId=%s", to_email, message_id)
+    return message_id
 
-async def send_contact_email(*, subject: str, body: str, reply_to: str | None = None) -> None:
-    await send_transactional_email(
+
+async def send_contact_email(*, subject: str, body: str, reply_to: str | None = None) -> str | None:
+    return await send_transactional_email(
         to_email=settings.contact_recipient_email or "",
         subject=subject,
         text_body=body,
