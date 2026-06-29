@@ -84,6 +84,7 @@ async def _record_email_event(
     to_email: str,
     subject: str,
     status: str,
+    provider_message_id: str | None = None,
     error_message: str | None = None,
 ) -> None:
     db.add(
@@ -93,7 +94,7 @@ async def _record_email_event(
             to_email=to_email,
             subject=subject,
             status=status,
-            provider_message_id=None,
+            provider_message_id=provider_message_id,
             error_message=error_message,
             sent_at=datetime.now(UTC) if status == "sent" else None,
         )
@@ -121,7 +122,7 @@ async def send_contact_and_record(
     body = "<br/>".join(body_lines)
 
     try:
-        await send_contact_email(subject=subject, body=body, reply_to=email)
+        message_id = await send_contact_email(subject=subject, body=body, reply_to=email)
     except EmailServiceError as exc:
         db.add(
             EmailEvent(
@@ -145,7 +146,7 @@ async def send_contact_and_record(
             to_email="contact_recipient",
             subject=subject,
             status="sent",
-            provider_message_id=None,
+            provider_message_id=message_id,
             error_message=None,
             sent_at=datetime.now(UTC),
         )
@@ -176,7 +177,7 @@ async def send_shift_started_email(db: AsyncSession, *, session: Session) -> Non
         f"Start: {_format_dt(session.started_at)}. End: {_format_dt(session.expires_at)}."
     )
     try:
-        await send_transactional_email(
+        message_id = await send_transactional_email(
             to_email=session.customer_email,
             subject=subject,
             text_body=text,
@@ -201,6 +202,7 @@ async def send_shift_started_email(db: AsyncSession, *, session: Session) -> Non
         to_email=session.customer_email,
         subject=subject,
         status="sent",
+        provider_message_id=message_id,
     )
 
 
@@ -227,7 +229,7 @@ async def send_shift_ending_soon_email(db: AsyncSession, *, session: Session) ->
         f"Start: {_format_dt(session.started_at)}. End: {_format_dt(session.expires_at)}."
     )
     try:
-        await send_transactional_email(
+        message_id = await send_transactional_email(
             to_email=session.customer_email,
             subject=subject,
             text_body=text,
@@ -252,6 +254,7 @@ async def send_shift_ending_soon_email(db: AsyncSession, *, session: Session) ->
         to_email=session.customer_email,
         subject=subject,
         status="sent",
+        provider_message_id=message_id,
     )
 
 
@@ -281,7 +284,7 @@ async def send_shift_ended_email(db: AsyncSession, *, session: Session) -> None:
         f"{_format_dt(session.expires_at or session.completed_at)}."
     )
     try:
-        await send_transactional_email(
+        message_id = await send_transactional_email(
             to_email=session.customer_email,
             subject=subject,
             text_body=text,
@@ -306,6 +309,7 @@ async def send_shift_ended_email(db: AsyncSession, *, session: Session) -> None:
         to_email=session.customer_email,
         subject=subject,
         status="sent",
+        provider_message_id=message_id,
     )
 
 
@@ -391,7 +395,7 @@ async def send_history_magic_link(db: AsyncSession, *, email: str) -> None:
     )
     text = f"Open your Klawva history: {history_link}"
     try:
-        await send_transactional_email(
+        message_id = await send_transactional_email(
             to_email=normalized,
             subject=subject,
             text_body=text,
@@ -416,4 +420,5 @@ async def send_history_magic_link(db: AsyncSession, *, email: str) -> None:
         to_email=normalized,
         subject=subject,
         status="sent",
+        provider_message_id=message_id,
     )
