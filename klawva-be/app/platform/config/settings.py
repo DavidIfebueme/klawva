@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     nomba_account_id: str | None = None
     nomba_base_url: str = "https://api.nomba.com"
     nomba_webhook_secret: str | None = None
+    nomba_subaccount_id: str | None = None
 
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
