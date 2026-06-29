@@ -62,7 +62,7 @@ async def send_dashboard_magic_link(db: AsyncSession, email: str) -> None:
     )
     text = f"Log into your Klawva dashboard: {verify_link}"
     try:
-        await send_transactional_email(
+        message_id = await send_transactional_email(
             to_email=normalized,
             subject=subject,
             text_body=text,
@@ -87,6 +87,7 @@ async def send_dashboard_magic_link(db: AsyncSession, email: str) -> None:
         to_email=normalized,
         subject=subject,
         status="sent",
+        provider_message_id=message_id,
     )
 
 
