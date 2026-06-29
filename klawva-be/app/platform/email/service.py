@@ -28,6 +28,8 @@ async def send_transactional_email(
     html_body: str | None = None,
     reply_to: str | None = None,
 ) -> None:
+
+    print("yeah")
     _require_brevo_settings()
 
     payload: dict = {
