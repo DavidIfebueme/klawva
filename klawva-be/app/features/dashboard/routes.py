@@ -1,41 +1,40 @@
 import logging
 import time
-import httpx
 from datetime import UTC, datetime
-from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+import httpx
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.platform.config import settings
-from app.platform.db.session import get_async_session
-from app.features.users.models import User
-from app.features.sessions.models import Session
-from app.features.sessions.service import normalize_session_status
-from app.features.payments.models import Wallet, WalletTransaction, VirtualAccount
 from app.features.activity.models import ActivityEvent
-from app.features.provisioning.workspace import create_agent_workspace
-from app.features.provisioning.agent_config import build_agent_fragment, _agent_gateway_id
 from app.features.channels.models import ChannelLink
-from app.platform.clients import openclaw_gateway
 from app.features.dashboard.auth import (
-    generate_token,
     decode_token,
-    send_dashboard_magic_link,
+    generate_token,
     get_current_user,
+    send_dashboard_magic_link,
 )
 from app.features.dashboard.contracts import (
-    RequestMagicLinkPayload,
-    VerifyMagicLinkPayload,
-    VerifyMagicLinkResponse,
-    UserProfileResponse,
     DashboardSessionEntry,
+    RequestMagicLinkPayload,
     UpdateAutoRenewPayload,
     UpdateBriefPayload,
+    UserProfileResponse,
+    VerifyMagicLinkPayload,
+    VerifyMagicLinkResponse,
     WalletDetailsResponse,
     WalletTransactionEntry,
 )
+from app.features.payments.models import VirtualAccount, Wallet, WalletTransaction
+from app.features.provisioning.agent_config import build_agent_fragment
+from app.features.provisioning.workspace import create_agent_workspace
+from app.features.sessions.models import Session
+from app.features.sessions.service import normalize_session_status
+from app.features.users.models import User
+from app.platform.clients import openclaw_gateway
+from app.platform.db.session import get_async_session
+from app.platform.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -50,12 +49,13 @@ async def request_magic_link(
     stmt = select(User).where(User.email == email)
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
-    if user:
-        try:
-            await send_dashboard_magic_link(db, email=email)
-        except Exception:
-            logger.error("Failed to send dashboard magic link to %s", email, exc_info=True)
-            raise HTTPException(status_code=502, detail="failed_to_send_email")
+    if user is None:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    try:
+        await send_dashboard_magic_link(db, email=email)
+    except Exception as e:
+        logger.error("Failed to send dashboard magic link to %s", email, exc_info=True)
+        raise HTTPException(status_code=502, detail="failed_to_send_email") from e
     return {"success": True}
 
 
@@ -77,7 +77,7 @@ async def verify_magic_link(
     if not user:
         raise HTTPException(status_code=401, detail="user_not_found")
 
-    session_token = generate_token(user.email, exp_minutes=60 * 24 * 7, scope="dashboard_session")
+    session_token = generate_token(user.email, exp_minutes=60 * 24, scope="dashboard_session")
     return VerifyMagicLinkResponse(
         token=session_token,
         user={"id": user.id, "email": user.email},
@@ -177,7 +177,7 @@ async def update_session_brief(
     s = await db.get(Session, session_id)
     if not s or s.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="session_not_found")
-    
+
     s.brief = payload.brief
     await db.flush()
 
@@ -191,6 +191,7 @@ async def update_session_brief(
             channel_link = channel_res.scalar_one_or_none()
 
             from app.features.provisioning.service import _resolve_channel_binding
+
             channel_type, account_id, account_config = _resolve_channel_binding(s, channel_link)
 
             agent_fragment = build_agent_fragment(s)
@@ -216,8 +217,12 @@ async def update_session_brief(
                     occurred_at=datetime.now(UTC),
                 )
             )
-        except Exception as exc:
-            logger.error("Failed to update active workspace/gateway config for session %s", s.id, exc_info=True)
+        except Exception:
+            logger.error(
+                "Failed to update active workspace/gateway config for session %s",
+                s.id,
+                exc_info=True,
+            )
 
     await db.commit()
     return {"success": True}
@@ -270,7 +275,8 @@ async def create_virtual_account_endpoint(
     if existing:
         raise HTTPException(status_code=409, detail="virtual_account_already_exists")
 
-    from app.features.payments.providers import get_provider, NombaProvider
+    from app.features.payments.providers import NombaProvider, get_provider
+
     provider = get_provider("nomba")
     if not isinstance(provider, NombaProvider):
         raise HTTPException(status_code=500, detail="invalid_provider_configuration")
@@ -278,14 +284,18 @@ async def create_virtual_account_endpoint(
     account_ref = f"klawva_{current_user.id[:8]}_{int(time.time())}"
     try:
         token = await provider._get_access_token()
-    except Exception as exc:
+    except Exception:
         logger.error("Failed to authenticate with Nomba API", exc_info=True)
         raise HTTPException(status_code=502, detail="nomba_authentication_failed")
+
+    url = f"{provider._base_url}/v1/accounts/virtual"
+    if settings.nomba_subaccount_id:
+        url = f"{url}/{settings.nomba_subaccount_id}"
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
-                f"{provider._base_url}/v1/accounts/virtual",
+                url,
                 headers={
                     "Authorization": f"Bearer {token}",
                     "accountId": provider._account_id,
@@ -294,22 +304,30 @@ async def create_virtual_account_endpoint(
                 json={
                     "accountRef": account_ref,
                     "accountName": f"Klawva / {current_user.email}",
-                }
+                },
             )
-    except Exception as exc:
+    except Exception:
         logger.error("Failed to call Nomba API for virtual account creation", exc_info=True)
         raise HTTPException(status_code=502, detail="nomba_api_connection_failed")
 
     if response.status_code >= 400:
-        logger.error("Nomba VA creation API returned error status: %s, body: %s", response.status_code, response.text)
+        logger.error(
+            "Nomba VA creation API returned error status: %s, body: %s",
+            response.status_code,
+            response.text,
+        )
         raise HTTPException(status_code=502, detail=f"nomba_api_error:{response.status_code}")
 
     res_json = response.json()
     if res_json.get("code") != "00":
-        logger.error("Nomba VA creation API returned code: %s, desc: %s", res_json.get("code"), res_json.get("description"))
+        logger.error(
+            "Nomba VA creation API returned code: %s, desc: %s",
+            res_json.get("code"),
+            res_json.get("description"),
+        )
         raise HTTPException(
             status_code=502,
-            detail=f"nomba_api_error_code:{res_json.get('code')}:{res_json.get('description')}"
+            detail=f"nomba_api_error_code:{res_json.get('code')}:{res_json.get('description')}",
         )
 
     data = res_json.get("data", {})
