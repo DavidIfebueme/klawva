@@ -1,3 +1,7 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,11 +22,27 @@ from app.platform.logging.config import configure_logging
 from app.platform.logging.middleware import register_request_logging
 from app.platform.observability.routes import router as observability_router
 from app.platform.security.middleware import register_security_middleware
+from app.platform.tasks.scheduler import _scheduler_loop
+
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_scheduler_loop())
+    log.info("Background scheduler started (interval=300s)")
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    log.info("Background scheduler stopped")
 
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Klawva Backend", version="0.1.0")
+    app = FastAPI(title="Klawva Backend", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_base_url, "http://127.0.0.1:3000", "https://www.klawva.xyz"],
