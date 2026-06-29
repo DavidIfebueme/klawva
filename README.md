@@ -192,9 +192,6 @@ BREVO_SENDER_NAME=Klawva
 NOMBA_CLIENT_ID=...
 NOMBA_CLIENT_SECRET=...
 STRIPE_SECRET_KEY=...
-
-# ai model
-DEFAULT_MODEL=google/gemini-2.5-flash
 ```
 
 ## how agents work
@@ -208,6 +205,16 @@ each klawva agent is an isolated [openclaw](https://github.com/openclaw/openclaw
 - **channel** — telegram deep link for direct employer communication
 
 agents are provisioned on-demand when an employer hires a worker, and terminated when the shift ends.
+
+## agent types
+
+| agent | role | channels |
+|-------|------|----------|
+| `scrapper` | web intelligence & data — monitors prices, tracks competitors, extracts structured data from public websites | telegram, whatsapp |
+| `vendor` | business operations — handles customer inquiries on whatsapp using your product brief *(coming soon)* | whatsapp |
+| `researcher` | academic & market research — browses multiple sources and produces structured, readable reports | telegram, whatsapp |
+
+custom agent types can be added by extending the agent config in `klawva-be/app/features/provisioning/agent_config.py`.
 
 ## contributing
 
