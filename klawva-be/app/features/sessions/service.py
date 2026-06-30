@@ -33,7 +33,7 @@ async def create_session(
     from app.features.users.models import User
 
     user_id = None
-    if customer_email:
+    if customer_email and customer_email.strip():
         email_clean = customer_email.strip().lower()
         stmt = select(User).where(User.email == email_clean)
         res = await db.execute(stmt)

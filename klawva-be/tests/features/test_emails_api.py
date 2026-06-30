@@ -52,9 +52,10 @@ def test_send_contact_email(test_client: TestClient) -> None:
     response = test_client.post(
         "/api/emails/contact",
         json={
-            "subject": "Help",
-            "body": "Need support",
-            "replyTo": "owner@example.com",
+            "name": "Owner",
+            "email": "owner@example.com",
+            "employeeType": "Full-Time",
+            "description": "Need support with my account because it is locked.",
         },
     )
 
@@ -76,8 +77,10 @@ def test_send_contact_email_failure(
     response = test_client.post(
         "/api/emails/contact",
         json={
-            "subject": "Help",
-            "body": "Need support",
+            "name": "Owner",
+            "email": "owner@example.com",
+            "employeeType": "Full-Time",
+            "description": "Need support with my account because it is locked.",
         },
     )
 

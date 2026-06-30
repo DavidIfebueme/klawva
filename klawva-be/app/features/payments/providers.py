@@ -1,7 +1,10 @@
 import hashlib
 import hmac
 import json
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -51,11 +54,14 @@ class PaymentProvider(Protocol):
         currency: str,
         session_id: str,
         customer_email: str | None,
+        callback_url: str | None = None,
     ) -> ProviderInitResult: ...
 
     async def verify_transaction(self, provider_reference: str) -> ProviderVerificationResult: ...
 
-    def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool: ...
+    def verify_webhook_signature(
+        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+    ) -> bool: ...
 
     def parse_webhook(self, body: bytes) -> WebhookParseResult: ...
 
@@ -118,18 +124,26 @@ class NombaProvider:
         currency: str,
         session_id: str,
         customer_email: str | None,
+        callback_url: str | None = None,
     ) -> ProviderInitResult:
         token = await self._get_access_token()
-        order_reference = f"order_{session_id}_{int(time.time())}"
+        hex_time = hex(int(time.time()))[2:]
+        order_reference = f"ord_{session_id}_{hex_time}"
         amount_major_str = f"{amount_minor / 100:.2f}"
 
         payload = {
-            "orderReference": order_reference,
-            "amount": amount_major_str,
-            "currency": currency.upper(),
-            "callbackUrl": f"{settings.frontend_base_url}/session/{session_id}",
-            "customerId": customer_email or "customer@klawva.local",
+            "order": {
+                "orderReference": order_reference,
+                "amount": amount_major_str,
+                "currency": currency.upper(),
+                "callbackUrl": callback_url or f"{settings.frontend_base_url}/session/{session_id}",
+                "customerId": customer_email or "customer@klawva.local",
+                "customerEmail": customer_email or "customer@klawva.local",
+            }
         }
+
+        if settings.nomba_subaccount_id:
+            payload["order"]["accountId"] = settings.nomba_subaccount_id
 
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
@@ -143,7 +157,8 @@ class NombaProvider:
             )
 
         if response.status_code >= 400:
-            raise PaymentProviderError(f"nomba_initialize_failed:{response.status_code}")
+            logger.error("Nomba checkout initialize failed: %s, body: %s", response.status_code, response.text)
+            raise PaymentProviderError(f"nomba_initialize_failed:{response.status_code}:{response.text}")
 
         res_json = response.json()
         if res_json.get("code") != "00":
@@ -154,8 +169,10 @@ class NombaProvider:
         if not checkout_link:
             raise PaymentProviderError("nomba_checkout_link_missing")
 
+        returned_ref = data.get("orderReference") or order_reference
+
         return ProviderInitResult(
-            provider_reference=order_reference,
+            provider_reference=returned_ref,
             status="pending",
             checkout_url=checkout_link,
         )
@@ -165,7 +182,7 @@ class NombaProvider:
 
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                f"{self._base_url}/v1/checkout/order/{provider_reference}",
+                f"{self._base_url}/v1/transactions/accounts/single?orderReference={provider_reference}",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "accountId": self._account_id,
@@ -185,10 +202,10 @@ class NombaProvider:
 
         amount_major = float(data.get("amount", 0.0))
         amount_minor = int(round(amount_major * 100))
-        currency = str(data.get("currency", "")).upper()
+        currency = str(data.get("currency") or "NGN").upper()
 
         session_id = None
-        if provider_reference.startswith("order_"):
+        if provider_reference.startswith("order_") or provider_reference.startswith("ord_"):
             parts = provider_reference.split("_")
             if len(parts) >= 3:
                 session_id = parts[1]
@@ -201,21 +218,71 @@ class NombaProvider:
             currency=currency,
         )
 
-    def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool:
+    def verify_webhook_signature(
+        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+    ) -> bool:
+        logger.warning(
+            "Nomba webhook signature verification - secret configured: %s, received header: %s",
+            bool(self._webhook_secret),
+            signature_header,
+        )
         if not self._webhook_secret or not signature_header:
             return False
-        expected = hmac.new(
-            self._webhook_secret.encode("utf-8"), body, hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature_header)
+
+        import base64
+        import json
+        import hashlib
+
+        try:
+            payload = json.loads(body.decode("utf-8"))
+            data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+            merchant = data.get("merchant", {}) if isinstance(data.get("merchant"), dict) else {}
+            transaction = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+
+            event_type = payload.get("event_type") or payload.get("event", "")
+            request_id = payload.get("requestId", "")
+            user_id = merchant.get("userId", "")
+            wallet_id = merchant.get("walletId", "")
+            transaction_id = transaction.get("transactionId", "")
+            transaction_type = transaction.get("type", "")
+            transaction_time = transaction.get("time", "")
+
+            transaction_response_code = transaction.get("responseCode", "")
+            if transaction_response_code is None or transaction_response_code == "null":
+                transaction_response_code = ""
+
+            timestamp = (additional_headers or {}).get("nomba-timestamp") or ""
+
+            hashing_payload = f"{event_type}:{request_id}:{user_id}:{wallet_id}:{transaction_id}:{transaction_type}:{transaction_time}:{transaction_response_code}:{timestamp}"
+
+            expected_bytes = hmac.new(
+                self._webhook_secret.encode("utf-8"), hashing_payload.encode("utf-8"), hashlib.sha256
+            ).digest()
+
+            expected_hex = expected_bytes.hex()
+            expected_b64 = base64.b64encode(expected_bytes).decode("utf-8")
+
+            logger.warning("Nomba expected hex: %s", expected_hex)
+            logger.warning("Nomba expected base64: %s", expected_b64)
+
+            return hmac.compare_digest(expected_hex, signature_header) or hmac.compare_digest(expected_b64, signature_header)
+        except Exception as e:
+            logger.error("Error verifying Nomba webhook signature: %s", str(e))
+            return False
 
     def parse_webhook(self, body: bytes) -> WebhookParseResult:
         payload = json.loads(body.decode("utf-8"))
-        event_type = str(payload.get("event", "unknown"))
+        event_type = str(payload.get("event") or payload.get("event_type") or "unknown")
         data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
         
         order_data = data.get("order", {}) if isinstance(data.get("order"), dict) else {}
-        reference = order_data.get("orderReference") or data.get("reference")
+        transaction_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+        
+        reference = (
+            order_data.get("orderReference")
+            or data.get("reference")
+            or transaction_data.get("aliasAccountReference")
+        )
 
         event_id = str(data.get("id") or reference or hashlib.sha256(body).hexdigest())
         return WebhookParseResult(
@@ -241,6 +308,7 @@ class StripeProvider:
         currency: str,
         session_id: str,
         customer_email: str | None,
+        callback_url: str | None = None,
     ) -> ProviderInitResult:
         if not self._secret_key:
             raise PaymentProviderError("STRIPE_SECRET_KEY is not configured")
@@ -303,7 +371,9 @@ class StripeProvider:
             currency=currency,
         )
 
-    def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool:
+    def verify_webhook_signature(
+        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+    ) -> bool:
         if not self._webhook_secret or not signature_header:
             return False
 

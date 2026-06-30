@@ -134,7 +134,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     )
     monkeypatch.setattr(
         "app.features.payments.providers.NombaProvider.verify_webhook_signature",
-        lambda self, b, s: True,
+        lambda self, b, s, *args, **kwargs: True,
     )
 
     client = TestClient(app)

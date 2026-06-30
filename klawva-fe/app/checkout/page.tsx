@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { agents, AgentId, Channel } from '../../lib/agents';
-import { createSession } from '../../lib/api';
+import { createSession, initializePayment } from '../../lib/api';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
@@ -72,11 +72,15 @@ function CheckoutContent() {
       return;
     }
 
+    if (!customerEmail.trim()) {
+      setErrorMessage('Please provide your email address.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null);
 
     try {
-      // PAYWALL DISABLED — skip payment, create session directly
       const { sessionId, sessionToken } = await createSession({
         agentId: agent.id,
         channel,
@@ -85,16 +89,21 @@ function CheckoutContent() {
       });
       sessionStorage.setItem(`klawva_session_token:${sessionId}`, sessionToken);
 
-      const endsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-      const params = new URLSearchParams({
-        agent: agent.id,
-        channel,
-        endsAt,
+      const paymentInit = await initializePayment({
+        sessionId,
+        customerEmail: customerEmail.trim(),
+        provider: 'nomba',
+        amountMinor: 250000,
+        currency: 'NGN',
       });
-      router.push(`/session/${sessionId}?${params.toString()}`);
+
+      if (paymentInit.checkoutUrl) {
+        window.location.href = paymentInit.checkoutUrl;
+      } else {
+        throw new Error('Payment initialization failed to return a checkout URL');
+      }
     } catch {
-      setErrorMessage('Unable to start session. Please try again.');
+      setErrorMessage('Unable to initialize payment. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -256,13 +265,19 @@ function CheckoutContent() {
             </div>
             
             <div className="flex flex-col gap-4 mb-8">
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(event) => setCustomerEmail(event.target.value)}
-                placeholder="Your email for shift updates and mission report"
-                className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
-              />
+              <div>
+                <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider block mb-2">
+                  Email Address <span className="text-klawva-orange">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                  placeholder="Your email for shift updates, dashboard access & mission reports"
+                  className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
+                />
+              </div>
               <p className="font-mono text-klawva-dim text-xs text-center">
                 Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.
               </p>
