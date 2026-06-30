@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { agents, AgentId, Channel } from '../../lib/agents';
-import { createSession } from '../../lib/api';
+import { createSession, initializePayment } from '../../lib/api';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
@@ -81,7 +81,6 @@ function CheckoutContent() {
     setErrorMessage(null);
 
     try {
-      // PAYWALL DISABLED — skip payment, create session directly
       const { sessionId, sessionToken } = await createSession({
         agentId: agent.id,
         channel,
@@ -90,16 +89,21 @@ function CheckoutContent() {
       });
       sessionStorage.setItem(`klawva_session_token:${sessionId}`, sessionToken);
 
-      const endsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-      const params = new URLSearchParams({
-        agent: agent.id,
-        channel,
-        endsAt,
+      const paymentInit = await initializePayment({
+        sessionId,
+        customerEmail: customerEmail.trim(),
+        provider: 'nomba',
+        amountMinor: 250000,
+        currency: 'NGN',
       });
-      router.push(`/session/${sessionId}?${params.toString()}`);
+
+      if (paymentInit.checkoutUrl) {
+        window.location.href = paymentInit.checkoutUrl;
+      } else {
+        throw new Error('Payment initialization failed to return a checkout URL');
+      }
     } catch {
-      setErrorMessage('Unable to start session. Please try again.');
+      setErrorMessage('Unable to initialize payment. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -44,6 +44,7 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(settings, "internal_service_token", "internal-token")
     monkeypatch.setattr(settings, "openclaw_config_path", "/tmp/test_prov_openclaw.json")
     monkeypatch.setattr(settings, "openclaw_workspaces_dir", "/tmp/test_prov_workspaces")
+    monkeypatch.setattr(settings, "openclaw_agents_dir", "/tmp/test_prov_agents")
     monkeypatch.setattr(settings, "zai_api_key", "test-zai-key")
     monkeypatch.setattr(settings, "zai_base_url", "https://api.z.ai/api/paas/v4/")
     monkeypatch.setattr(settings, "zai_model", "glm-4.7")
@@ -54,6 +55,9 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     workspace_dir = Path("/tmp/test_prov_workspaces")
     workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    agents_dir = Path("/tmp/test_prov_agents")
+    agents_dir.mkdir(parents=True, exist_ok=True)
 
     async def fake_read_config():
         return json.loads(config_path.read_text())
@@ -87,6 +91,7 @@ def test_start_provisioning_success(test_client: TestClient) -> None:
     response = test_client.post(
         "/api/provisioning/start",
         json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
     )
 
     assert response.status_code == 200
@@ -108,12 +113,14 @@ def test_destroy_provisioning(test_client: TestClient) -> None:
     start = test_client.post(
         "/api/provisioning/start",
         json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
     )
     assert start.status_code == 200
 
     destroy = test_client.post(
         "/api/provisioning/destroy",
         json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
     )
     assert destroy.status_code == 200
     assert destroy.json() == {"destroyed": True}

@@ -158,6 +158,8 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
         raise HTTPException(status_code=404, detail="session_not_found")
     if session.channel != "telegram":
         raise HTTPException(status_code=409, detail="channel_not_telegram")
+    if session.agent_id == "vendor":
+        raise HTTPException(status_code=409, detail="vendor_telegram_not_allowed")
 
     statement = select(ChannelLink).where(ChannelLink.session_id == session_id)
     result = await db.execute(statement)
