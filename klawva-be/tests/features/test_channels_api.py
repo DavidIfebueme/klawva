@@ -40,7 +40,13 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     asyncio.run(init_models())
     app.dependency_overrides[get_async_session] = override_get_async_session
     monkeypatch.setattr(settings, "telegram_bot_token_pool", "tokenA,tokenB")
+    monkeypatch.setattr(settings, "whatsapp_klawva_account_pool", "account1,account2")
     monkeypatch.setattr(settings, "internal_service_token", "internal-token")
+
+    async def fake_get_whatsapp_qr(account_id: str):
+        return "mock_qr_data", 60
+
+    monkeypatch.setattr("app.platform.clients.openclaw_gateway.get_whatsapp_qr", fake_get_whatsapp_qr)
 
     client = TestClient(app)
     yield client
@@ -64,7 +70,7 @@ def _create_session(client: TestClient, *, agent: str, channel: str) -> tuple[st
 
 
 def test_get_session_qr(test_client: TestClient) -> None:
-    session_id, session_token = _create_session(test_client, agent="scrapper", channel="whatsapp")
+    session_id, session_token = _create_session(test_client, agent="vendor", channel="whatsapp")
 
     response = test_client.get(
         f"/api/sessions/{session_id}/qr",
