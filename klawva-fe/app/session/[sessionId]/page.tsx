@@ -57,10 +57,35 @@ export default function SessionHandshakePage() {
       setStatusText('Activating your worker...');
       setProgress(20);
 
-      try {
-        const activation = await activateSession(sessionId, token);
+      let activation = null;
+      const maxActivationAttempts = 30; // 30 attempts * 3 seconds = 90 seconds max wait
+      
+      for (let attempt = 0; attempt < maxActivationAttempts; attempt++) {
         if (cancelled) return;
+        try {
+          activation = await activateSession(sessionId, token);
+          break;
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : '';
+          const isPending = errMsg === 'payment_not_confirmed' || errMsg === 'payment_not_initialized';
+          
+          if (isPending && attempt < maxActivationAttempts - 1) {
+            setStatusText('Waiting for payment confirmation...');
+            // Progress goes from 20% to 50% during payment confirmation polling
+            setProgress(20 + Math.min(30, attempt * 2));
+            await new Promise((r) => setTimeout(r, 3000));
+          } else {
+            if (cancelled) return;
+            setErrorMessage(errMsg || 'Failed to prepare this session. Please retry from checkout.');
+            return;
+          }
+        }
+      }
 
+      if (!activation) return;
+      if (cancelled) return;
+
+      try {
         setProgress(60);
         setStatusText('Provisioning resources...');
 
