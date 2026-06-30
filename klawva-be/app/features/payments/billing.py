@@ -104,12 +104,18 @@ def _is_nigeria_language(value: str | None) -> bool:
 
 
 def resolve_billing_profile_from_country(country_code: str | None) -> BillingProfile:
+    from app.platform.config import settings
+    import sys
+    is_dev = settings.env == "development" and "pytest" not in sys.modules
+    
     if country_code == "NG":
+        amount_minor = 1000 if is_dev else 250000
+        amount_display = "₦10" if is_dev else "₦2,500"
         return BillingProfile(
             provider="nomba",
-            amount_minor=250000,
+            amount_minor=amount_minor,
             currency="NGN",
-            amount_display="₦2,500",
+            amount_display=amount_display,
             region="nigeria",
             country_code=country_code,
         )
