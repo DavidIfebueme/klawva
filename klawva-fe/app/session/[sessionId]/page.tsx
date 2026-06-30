@@ -453,7 +453,7 @@ export default function SessionHandshakePage() {
           <p className="font-mono text-klawva-muted text-sm mb-8">
             {telegramOnboardingState === 'intro_sent'
               ? 'Your agent is online and ready. Open Telegram to start working.'
-              : 'Open the Telegram bot link below and send a message to activate your agent.'}
+              : 'Open the Telegram bot link below and tap START to activate your agent. Your session ID is included automatically.'}
           </p>
 
           <div className="font-mono text-xs text-klawva-dim mb-6">
@@ -461,7 +461,7 @@ export default function SessionHandshakePage() {
               ? 'Telegram onboarding: Connected · Intro sent'
               : telegramOnboardingState === 'linked'
                 ? 'Telegram onboarding: Connected · Waiting for intro...'
-                : 'Telegram onboarding: Waiting for your first message'}
+                : 'Telegram onboarding: Waiting for you to tap START'}
           </div>
 
           {telegramDeepLink ? (
