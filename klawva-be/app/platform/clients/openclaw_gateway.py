@@ -159,7 +159,49 @@ def read_telegram_peer_id(agent_id: str) -> str | None:
     return None
 
 
-def check_agent_sessions(agent_id: str) -> dict:
+def _read_first_user_message(session_file_path: Path) -> str | None:
+    if not session_file_path.exists():
+        return None
+    try:
+        with open(session_file_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if entry.get("type") != "prompt.submitted":
+                    continue
+                data = entry.get("data", {})
+                messages = data.get("messages", [])
+                for msg in messages:
+                    if msg.get("role") != "user":
+                        continue
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                    if isinstance(content, list):
+                        for part in content:
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                text = part.get("text", "").strip()
+                                if text:
+                                    return text
+                return None
+    except OSError:
+        return None
+    return None
+
+
+def _validate_start_command(message: str, expected_session_id: str) -> bool:
+    if not message.startswith("/start"):
+        return False
+    payload = message[len("/start"):].strip()
+    return payload == expected_session_id
+
+
+def check_agent_sessions(agent_id: str, expected_session_id: str | None = None) -> dict:
     result = {"has_sessions": False, "channel_connected": False, "intro_sent": False, "peer_id": None, "provider": None}
     sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
     if not sessions_path.exists():
@@ -182,6 +224,13 @@ def check_agent_sessions(agent_id: str) -> dict:
             result["provider"] = provider
             from_id = str(origin.get("from", ""))
             if provider == "telegram" and from_id.startswith("telegram:"):
+                if expected_session_id:
+                    session_file = Path(value.get("sessionFile", ""))
+                    first_message = _read_first_user_message(session_file)
+                    if not first_message or not _validate_start_command(first_message, expected_session_id):
+                        result["channel_connected"] = False
+                        result["peer_id"] = None
+                        return result
                 result["peer_id"] = from_id.split(":", 1)[1]
             elif provider == "whatsapp" and from_id.startswith("whatsapp:"):
                 raw = from_id.split(":", 1)[1]
