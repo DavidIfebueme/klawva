@@ -20,31 +20,33 @@ ENV_KEYS = [
 ]
 
 
-def test_settings_defaults() -> None:
+import pytest
+
+def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ENV_KEYS:
-        os.environ.pop(key, None)
+        monkeypatch.delenv(key, raising=False)
 
     cfg = Settings()
 
     assert cfg.env == "development"
     assert cfg.api_port == 8000
     assert cfg.openclaw_gateway_url == "http://localhost:9090"
-    assert cfg.zai_model == "zai/glm-4.7"
-    assert cfg.zai_fallback_model == "zai/glm-4.7-flash"
+    assert cfg.zai_model == "google/gemini-2.5-flash"
+    assert cfg.zai_fallback_model == "google/gemini-2.5-flash"
 
 
-def test_settings_env_override() -> None:
-    os.environ["DATABASE_URL"] = "postgresql+psycopg://u:p@localhost:5432/db"
-    os.environ["REDIS_URL"] = "redis://localhost:6380/1"
-    os.environ["OPENCLAW_GATEWAY_TOKEN"] = "gw-token"
-    os.environ["ZAI_API_KEY"] = "zai-key"
-    os.environ["NOMBA_CLIENT_ID"] = "nomba-client-id"
-    os.environ["NOMBA_CLIENT_SECRET"] = "nomba-client-secret"
-    os.environ["NOMBA_ACCOUNT_ID"] = "nomba-account-id"
-    os.environ["STRIPE_SECRET_KEY"] = "stripe-key"
-    os.environ["BREVO_API_KEY"] = "brevo-key"
-    os.environ["BREVO_SENDER_EMAIL"] = "sender@example.com"
-    os.environ["CONTACT_RECIPIENT_EMAIL"] = "contact@example.com"
+def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/db")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6380/1")
+    monkeypatch.setenv("OPENCLAW_GATEWAY_TOKEN", "gw-token")
+    monkeypatch.setenv("ZAI_API_KEY", "zai-key")
+    monkeypatch.setenv("NOMBA_CLIENT_ID", "nomba-client-id")
+    monkeypatch.setenv("NOMBA_CLIENT_SECRET", "nomba-client-secret")
+    monkeypatch.setenv("NOMBA_ACCOUNT_ID", "nomba-account-id")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "stripe-key")
+    monkeypatch.setenv("BREVO_API_KEY", "brevo-key")
+    monkeypatch.setenv("BREVO_SENDER_EMAIL", "sender@example.com")
+    monkeypatch.setenv("CONTACT_RECIPIENT_EMAIL", "contact@example.com")
 
     cfg = Settings()
 
@@ -59,6 +61,3 @@ def test_settings_env_override() -> None:
     assert cfg.brevo_api_key == "brevo-key"
     assert cfg.brevo_sender_email == "sender@example.com"
     assert cfg.contact_recipient_email == "contact@example.com"
-
-    for key in ENV_KEYS:
-        os.environ.pop(key, None)
