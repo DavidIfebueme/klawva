@@ -172,7 +172,7 @@ async def get_session_status_endpoint(
     if normalized_status == "provisioning":
         agent_id = _agent_gateway_id(session_id)
         try:
-            agent_state = openclaw_gateway.check_agent_sessions(agent_id)
+            agent_state = openclaw_gateway.check_agent_sessions(agent_id, expected_session_id=session_id)
         except Exception:
             agent_state = {"channel_connected": False, "intro_sent": False, "peer_id": None, "provider": None}
 
