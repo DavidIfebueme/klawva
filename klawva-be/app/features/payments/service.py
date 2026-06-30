@@ -37,6 +37,24 @@ async def initialize_payment(
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
 
+    from app.platform.config import settings
+    import urllib.parse
+
+    ends_at_str = ""
+    if session.expires_at:
+        ends_at_str = session.expires_at.isoformat()
+    elif session.started_at:
+        ends_at_str = (session.started_at + timedelta(hours=24)).isoformat()
+    else:
+        ends_at_str = (datetime.now(UTC) + timedelta(hours=24)).isoformat()
+
+    params = {
+        "channel": session.channel,
+        "agent": session.agent_id,
+        "endsAt": ends_at_str,
+    }
+    callback_url = f"{settings.frontend_base_url}/session/{session_id}?{urllib.parse.urlencode(params)}"
+
     provider = get_provider(provider_name)
     try:
         init_result = await provider.initialize_payment(
@@ -44,6 +62,7 @@ async def initialize_payment(
             currency=currency,
             session_id=session_id,
             customer_email=customer_email,
+            callback_url=callback_url,
         )
     except PaymentProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -75,9 +94,10 @@ async def process_webhook(
     provider_name: PaymentProviderName,
     raw_body: bytes,
     signature_header: str | None,
+    additional_headers: dict[str, str] | None = None,
 ) -> bool:
     provider = get_provider(provider_name)
-    if not provider.verify_webhook_signature(raw_body, signature_header):
+    if not provider.verify_webhook_signature(raw_body, signature_header, additional_headers=additional_headers):
         raise HTTPException(status_code=400, detail="invalid_webhook_signature")
 
     parsed = provider.parse_webhook(raw_body)
@@ -161,20 +181,24 @@ async def process_webhook(
     except PaymentProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    session_id = verification.session_id
-    if not session_id:
-        raise HTTPException(status_code=422, detail="session_mapping_missing")
-
-    session = await db.get(Session, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session_not_found")
-
     payment_statement = select(Payment).where(
         Payment.provider == provider_name,
         Payment.provider_reference == verification.provider_reference,
     )
     payment_result = await db.execute(payment_statement)
     payment = payment_result.scalar_one_or_none()
+
+    if payment:
+        session_id = payment.session_id
+    else:
+        session_id = verification.session_id
+
+    if not session_id:
+        raise HTTPException(status_code=422, detail="session_mapping_missing")
+
+    session = await db.get(Session, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
 
     if payment is None:
         payment = Payment(
