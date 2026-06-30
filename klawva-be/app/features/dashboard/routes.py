@@ -33,8 +33,8 @@ from app.features.sessions.models import Session
 from app.features.sessions.service import normalize_session_status
 from app.features.users.models import User
 from app.platform.clients import openclaw_gateway
-from app.platform.db.session import get_async_session
 from app.platform.config import settings
+from app.platform.db.session import get_async_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -292,6 +292,10 @@ async def create_virtual_account_endpoint(
     if settings.nomba_subaccount_id:
         url = f"{url}/{settings.nomba_subaccount_id}"
 
+    email_prefix = current_user.email.split("@")[0]
+    raw_name = f"Nomba Klawva {email_prefix}"
+    clean_name = "".join(c if c.isalpha() else " " for c in raw_name)
+    clean_name = " ".join(clean_name.split())
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
@@ -303,7 +307,8 @@ async def create_virtual_account_endpoint(
                 },
                 json={
                     "accountRef": account_ref,
-                    "accountName": f"Klawva / {current_user.email}",
+                    "accountName": clean_name,
+                    "currency": "NGN",
                 },
             )
     except Exception:
