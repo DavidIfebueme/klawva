@@ -25,8 +25,9 @@ class FakeProvider:
         currency: str,
         session_id: str,
         customer_email: str | None,
+        callback_url: str | None = None,
     ) -> ProviderInitResult:
-        _ = amount_minor, currency, session_id, customer_email
+        _ = amount_minor, currency, session_id, customer_email, callback_url
         if self.provider == "nomba":
             return ProviderInitResult(
                 provider_reference="pay_ref_123",
@@ -48,7 +49,9 @@ class FakeProvider:
             currency="NGN",
         )
 
-    def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool:
+    def verify_webhook_signature(
+        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+    ) -> bool:
         _ = body
         return signature_header == "sig"
 
@@ -128,7 +131,7 @@ def test_initialize_payment_nomba(test_client: TestClient) -> None:
         json={
             "sessionId": session_id,
             "provider": "nomba",
-            "amountMinor": 2500,
+            "amountMinor": 250000,
             "currency": "NGN",
             "customerEmail": "owner@example.com",
         },
@@ -278,7 +281,9 @@ def test_webhook_invalid_signature(
     _create_session(test_client)
 
     class InvalidSignatureProvider(FakeProvider):
-        def verify_webhook_signature(self, body: bytes, signature_header: str | None) -> bool:
+        def verify_webhook_signature(
+            self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+        ) -> bool:
             _ = body, signature_header
             return False
 
