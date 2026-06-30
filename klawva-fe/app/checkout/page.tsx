@@ -72,6 +72,11 @@ function CheckoutContent() {
       return;
     }
 
+    if (!customerEmail.trim()) {
+      setErrorMessage('Please provide your email address.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null);
 
@@ -256,13 +261,19 @@ function CheckoutContent() {
             </div>
             
             <div className="flex flex-col gap-4 mb-8">
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(event) => setCustomerEmail(event.target.value)}
-                placeholder="Your email for shift updates and mission report"
-                className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
-              />
+              <div>
+                <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider block mb-2">
+                  Email Address <span className="text-klawva-orange">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                  placeholder="Your email for shift updates, dashboard access & mission reports"
+                  className="w-full bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
+                />
+              </div>
               <p className="font-mono text-klawva-dim text-xs text-center">
                 Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.
               </p>
