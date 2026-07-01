@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
+from app.features.provisioning.service import _load_telegram_accounts_map
 from app.features.sessions.models import Session
 from app.platform.clients import openclaw_gateway
 from app.platform.config import settings
@@ -207,6 +208,24 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
 
     await db.commit()
     return assigned, deep_link
+
+
+async def auto_lock_telegram(db: AsyncSession, session_id: str, telegram_user_id: str) -> bool:
+    stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
+    link = (await db.execute(stmt)).scalar_one_or_none()
+    if not link or not link.external_id:
+        return False
+    accounts_map = _load_telegram_accounts_map()
+    account_id = accounts_map.get(link.external_id, "")
+    if not account_id:
+        return False
+    config = await openclaw_gateway.read_config()
+    config = openclaw_gateway.lock_telegram_account(config, account_id, telegram_user_id)
+    openclaw_gateway.write_config(config)
+    openclaw_gateway.restart_gateway()
+    link.peer_id = telegram_user_id
+    db.add(link)
+    return True
 
 
 async def record_channel_onboarding_event(
