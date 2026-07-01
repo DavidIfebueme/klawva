@@ -231,17 +231,6 @@ def check_agent_sessions(agent_id: str, expected_session_id: str | None = None) 
             result["provider"] = provider
             from_id = str(origin.get("from", ""))
             if provider == "telegram" and from_id.startswith("telegram:"):
-                if expected_session_id:
-                    session_file = Path(value.get("sessionFile", ""))
-                    if not session_file.is_absolute():
-                        session_file = sessions_path.parent / session_file
-                    first_message = _read_first_user_message(session_file)
-                    if not first_message or not _validate_start_command(
-                        first_message, expected_session_id
-                    ):
-                        result["channel_connected"] = False
-                        result["peer_id"] = None
-                        return result
                 result["peer_id"] = from_id.split(":", 1)[1]
             elif provider == "whatsapp" and from_id.startswith("whatsapp:"):
                 raw = from_id.split(":", 1)[1]
@@ -318,7 +307,7 @@ def reset_telegram_account_access(config: dict, account_id: str) -> dict:
     return config
 
 
-def read_pending_telegram_pairings(account_id: str | None = None) -> list[dict[str, Any]]:
+def read_pending_telegram_pairings() -> list[dict[str, Any]]:
     creds_dir = Path(settings.openclaw_credentials_dir)
     pairing_file = creds_dir / "telegram-pairing.json"
     if not pairing_file.exists():
@@ -332,8 +321,6 @@ def read_pending_telegram_pairings(account_id: str | None = None) -> list[dict[s
     pending = []
     for code, entry in data.items():
         if not isinstance(entry, dict):
-            continue
-        if account_id and entry.get("account") != account_id:
             continue
         entry_copy = dict(entry)
         entry_copy["code"] = code
