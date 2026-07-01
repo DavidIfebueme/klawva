@@ -29,8 +29,8 @@ async def create_session(
     customer_email: str | None = None,
     payment_ref: str | None = None,
 ) -> tuple[Session, str]:
-    from app.features.payments.models import Wallet
     from app.features.users.models import User
+    from app.features.payments.wallet_service import get_or_create_wallet
 
     user_id = None
     if customer_email and customer_email.strip():
@@ -43,9 +43,7 @@ async def create_session(
             db.add(user)
             await db.flush()
 
-            wallet = Wallet(user_id=user.id, balance_minor=0)
-            db.add(wallet)
-            await db.flush()
+            await get_or_create_wallet(db, user_id=user.id)
         user_id = user.id
 
     session_token = generate_session_token()
