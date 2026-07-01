@@ -14,12 +14,11 @@ _INTERVAL_SECONDS = 300
 
 async def _process_pending_telegram_pairings(db: AsyncSession) -> int:
     from app.features.channels.models import ChannelLink
-    from app.features.provisioning.service import _load_telegram_accounts_map
     from app.features.sessions.models import Session
     from app.platform.clients import openclaw_gateway
 
     stmt = (
-        select(Session, ChannelLink)
+        select(Session)
         .join(ChannelLink, ChannelLink.session_id == Session.id)
         .where(Session.status == "provisioning")
         .where(ChannelLink.channel == "telegram")
@@ -27,28 +26,19 @@ async def _process_pending_telegram_pairings(db: AsyncSession) -> int:
     )
     result = await db.execute(stmt)
     rows = result.all()
+    if not rows:
+        return 0
+
     approved = 0
-    accounts_map = _load_telegram_accounts_map()
-    for _session, link in rows:
-        if not link.external_id:
+    pending = openclaw_gateway.read_pending_telegram_pairings()
+    for pairing in pending:
+        code = pairing.get("code", "")
+        if not code:
             continue
-        account_id = accounts_map.get(link.external_id, "")
-        if not account_id:
-            continue
-        pending = openclaw_gateway.read_pending_telegram_pairings(account_id=account_id)
-        for pairing in pending:
-            code = pairing.get("code", "")
-            if not code:
-                continue
-            ok = openclaw_gateway.approve_telegram_pairing(code)
-            if ok:
-                approved += 1
-            log.info(
-                "auto-approved pairing %s for account %s: %s",
-                code,
-                account_id,
-                ok,
-            )
+        ok = openclaw_gateway.approve_telegram_pairing(code)
+        if ok:
+            approved += 1
+        log.info("auto-approved pairing %s: %s", code, ok)
     return approved
 
 
@@ -73,9 +63,7 @@ async def _process_pending_telegram_locks(db: AsyncSession) -> int:
     for session, _link in rows:
         agent_id = _agent_gateway_id(session.id)
         try:
-            agent_state = openclaw_gateway.check_agent_sessions(
-                agent_id, expected_session_id=session.id
-            )
+            agent_state = openclaw_gateway.check_agent_sessions(agent_id)
         except Exception:
             continue
         if not agent_state.get("channel_connected") or not agent_state.get("peer_id"):
