@@ -346,16 +346,11 @@ async def create_virtual_account_endpoint(
     )
     db.add(va)
 
-    wallet_stmt = select(Wallet).where(Wallet.user_id == current_user.id)
-    wallet_res = await db.execute(wallet_stmt)
-    wallet = wallet_res.scalar_one_or_none()
-    if not wallet:
-        wallet = Wallet(user_id=current_user.id, balance_minor=0)
-        db.add(wallet)
+    from app.features.payments.wallet_service import get_or_create_wallet
+    wallet = await get_or_create_wallet(db, user_id=current_user.id)
 
     await db.commit()
     await db.refresh(va)
-    await db.refresh(wallet)
 
     return WalletDetailsResponse(
         balanceMinor=wallet.balance_minor,
