@@ -222,6 +222,9 @@ async def lock_telegram_access_endpoint(
     openclaw_gateway.write_config(config)
     openclaw_gateway.restart_gateway()
 
+    link.peer_id = telegram_user_id
+    await db.commit()
+
     return TelegramLockAccessResponse(locked=True, telegramUserId=telegram_user_id)
 
 
