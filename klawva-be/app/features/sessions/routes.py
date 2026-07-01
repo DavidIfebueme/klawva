@@ -154,6 +154,27 @@ async def get_session_status_endpoint(
 
     if normalized_status == "provisioning":
         agent_id = _agent_gateway_id(session_id)
+
+        from app.features.provisioning.service import _load_telegram_accounts_map
+        link_stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
+        link = (await db.execute(link_stmt)).scalar_one_or_none()
+        if link and link.external_id:
+            accounts_map = _load_telegram_accounts_map()
+            account_id = accounts_map.get(link.external_id, "")
+            if account_id:
+                pending = openclaw_gateway.read_pending_telegram_pairings(
+                    account_id=account_id
+                )
+                for pairing in pending:
+                    code = pairing.get("code", "")
+                    if code:
+                        openclaw_gateway.approve_telegram_pairing(code)
+                        logger.info(
+                            "auto-approved pairing %s for account %s",
+                            code,
+                            account_id,
+                        )
+
         try:
             agent_state = openclaw_gateway.check_agent_sessions(
                 agent_id, expected_session_id=session_id
