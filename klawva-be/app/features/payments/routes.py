@@ -77,8 +77,8 @@ async def nomba_webhook_endpoint(
     nomba_timestamp: str | None = Header(default=None),
 ) -> WebhookResultResponse:
     body_bytes = await request.body()
-    logger.warning("Nomba webhook raw headers: %s", dict(request.headers))
-    logger.warning("Nomba webhook raw body: %s", body_bytes.decode("utf-8", errors="replace"))
+    logger.debug("Nomba webhook raw headers: %s", dict(request.headers))
+    logger.debug("Nomba webhook raw body: %s", body_bytes.decode("utf-8", errors="replace"))
     processed = await process_webhook(
         db,
         provider_name="nomba",
