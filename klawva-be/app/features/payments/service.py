@@ -1,9 +1,13 @@
 import hashlib
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.features.payments.contracts import PaymentProviderName
 from app.features.payments.models import Payment
@@ -112,41 +116,34 @@ async def process_webhook(
 
     if provider_name == "nomba" and parsed.provider_reference and parsed.provider_reference.startswith("klawva_"):
         import json
-        from app.features.payments.models import Wallet, WalletTransaction, VirtualAccount
-        
+        from app.features.payments.models import VirtualAccount
+        from app.features.payments.wallet_service import credit_wallet, get_or_create_wallet
+
         payload = json.loads(raw_body.decode("utf-8"))
         data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
-        
+
+        transaction_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+        amount_minor = int(round(float(transaction_data.get("transactionAmount", 0.0)) * 100))
+        if amount_minor <= 0:
+            amount_minor = int(round(float(data.get("amount", 0.0)) * 100))
+
         va_stmt = select(VirtualAccount).where(VirtualAccount.nomba_account_ref == parsed.provider_reference)
         va_res = await db.execute(va_stmt)
         va = va_res.scalar_one_or_none()
         if not va:
             raise HTTPException(status_code=404, detail="virtual_account_not_found")
-            
-        wallet_stmt = select(Wallet).where(Wallet.user_id == va.user_id)
-        wallet_res = await db.execute(wallet_stmt)
-        wallet = wallet_res.scalar_one_or_none()
-        if not wallet:
-            wallet = Wallet(user_id=va.user_id, balance_minor=0)
-            db.add(wallet)
-            await db.flush()
 
-        amount_major = float(data.get("amount", 0.0))
-        amount_minor = int(round(amount_major * 100))
-        
-        wallet.balance_minor += amount_minor
-        
-        tx = WalletTransaction(
+        wallet = await get_or_create_wallet(db, user_id=va.user_id)
+
+        await credit_wallet(
+            db,
             wallet_id=wallet.id,
-            type="credit",
             amount_minor=amount_minor,
             reference=parsed.event_id,
             description="Virtual account funding",
-            balance_after=wallet.balance_minor,
             source="virtual_account",
         )
-        db.add(tx)
-        
+
         expires_at = datetime.now(UTC) + timedelta(days=30)
         db.add(
             IdempotencyKey(
@@ -158,7 +155,12 @@ async def process_webhook(
                 expires_at=expires_at,
             )
         )
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            logger.info("Duplicate webhook ignored (idempotency key: %s)", key)
+            return False
         return True
 
     if parsed.provider_reference is None:
@@ -173,7 +175,10 @@ async def process_webhook(
                 expires_at=expires_at,
             )
         )
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
         return False
 
     try:
@@ -217,6 +222,14 @@ async def process_webhook(
             payment.confirmed_at = datetime.now(UTC)
 
     if verification.status == "confirmed":
+        if payment is not None:
+            if verification.amount_minor < payment.amount_minor:
+                raise HTTPException(status_code=400, detail="insufficient_payment_amount")
+        else:
+            from app.features.payments.billing import resolve_billing_profile_from_country
+            billing = resolve_billing_profile_from_country("NG" if provider_name == "nomba" else None)
+            if verification.amount_minor < billing.amount_minor:
+                raise HTTPException(status_code=400, detail="insufficient_payment_amount")
         session.status = "ready"
 
     expires_at = datetime.now(UTC) + timedelta(days=30)
@@ -234,7 +247,12 @@ async def process_webhook(
         )
     )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        logger.info("Duplicate webhook ignored (idempotency key: %s)", key)
+        return False
     return True
 
 
