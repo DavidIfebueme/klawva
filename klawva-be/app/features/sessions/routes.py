@@ -10,7 +10,7 @@ from app.features.channels.models import ChannelLink
 from app.features.channels.service import (
     assign_klawva_whatsapp_number,
     assign_telegram_bot_token,
-    get_vendor_whatsapp_qr,
+    auto_lock_telegram,
 )
 from app.features.emails.service import send_shift_started_email
 from app.features.payments.service import require_confirmed_session_payment
@@ -27,7 +27,6 @@ from app.features.sessions.contracts import (
     SessionStatusResponse,
     StatEntry,
 )
-from app.features.sessions.models import Session
 from app.features.sessions.service import (
     create_session,
     ensure_session_window,
@@ -42,22 +41,6 @@ from app.platform.db.session import get_async_session
 
 logger = logging.getLogger(__name__)
 
-
-async def _auto_lock_telegram(db: AsyncSession, session_id: str, agent_id: str, telegram_user_id: str) -> None:
-    stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
-    link = (await db.execute(stmt)).scalar_one_or_none()
-    if not link or not link.external_id:
-        return
-    from app.features.provisioning.service import _load_telegram_accounts_map
-    accounts_map = _load_telegram_accounts_map()
-    account_id = accounts_map.get(link.external_id, "")
-    if not account_id:
-        return
-    config = await openclaw_gateway.read_config()
-    config = openclaw_gateway.lock_telegram_account(config, account_id, telegram_user_id)
-    openclaw_gateway.write_config(config)
-    openclaw_gateway.restart_gateway()
-    logger.info("auto-locked telegram account %s to user %s", account_id, telegram_user_id)
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -172,9 +155,16 @@ async def get_session_status_endpoint(
     if normalized_status == "provisioning":
         agent_id = _agent_gateway_id(session_id)
         try:
-            agent_state = openclaw_gateway.check_agent_sessions(agent_id)
+            agent_state = openclaw_gateway.check_agent_sessions(
+                agent_id, expected_session_id=session_id
+            )
         except Exception:
-            agent_state = {"channel_connected": False, "intro_sent": False, "peer_id": None, "provider": None}
+            agent_state = {
+                "channel_connected": False,
+                "intro_sent": False,
+                "peer_id": None,
+                "provider": None,
+            }
 
         if agent_state["channel_connected"]:
             session.status = "active"
@@ -194,9 +184,11 @@ async def get_session_status_endpoint(
 
             if agent_state["provider"] == "telegram" and agent_state.get("peer_id"):
                 try:
-                    await _auto_lock_telegram(db, session_id, agent_id, agent_state["peer_id"])
+                    await auto_lock_telegram(db, session_id, agent_state["peer_id"])
                 except Exception:
-                    logger.warning("auto-lock telegram failed for session %s", session_id, exc_info=True)
+                    logger.warning(
+                        "auto-lock telegram failed for session %s", session_id, exc_info=True
+                    )
 
             await db.commit()
             normalized_status = "active"
