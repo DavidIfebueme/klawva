@@ -81,7 +81,6 @@ function CheckoutContent() {
     setErrorMessage(null);
 
     try {
-      // PAYWALL DISABLED — skip payment, create session directly
       const { sessionId, sessionToken } = await createSession({
         agentId: agent.id,
         channel,
@@ -90,9 +89,19 @@ function CheckoutContent() {
       });
       sessionStorage.setItem(`klawva_session_token:${sessionId}`, sessionToken);
 
-      const endsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const params = new URLSearchParams({ agent: agent.id, channel, endsAt });
-      router.push(`/session/${sessionId}?${params.toString()}`);
+      const paymentInit = await initializePayment({
+        sessionId,
+        customerEmail: customerEmail.trim(),
+        provider: 'nomba',
+        amountMinor: 250000,
+        currency: 'NGN',
+      });
+
+      if (paymentInit.checkoutUrl) {
+        window.location.href = paymentInit.checkoutUrl;
+      } else {
+        throw new Error('Payment initialization failed to return a checkout URL');
+      }
     } catch {
       setErrorMessage('Unable to initialize payment. Please try again.');
     } finally {
