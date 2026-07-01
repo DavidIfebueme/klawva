@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     openclaw_config_path: str = "/home/klawva/.openclaw/openclaw.json"
     openclaw_workspaces_dir: str = "/home/klawva/.openclaw/workspaces"
     openclaw_agents_dir: str = "/home/klawva/.openclaw/agents"
+    openclaw_credentials_dir: str = "/home/klawva/.openclaw/credentials"
     openclaw_restart_command: str = ""
 
     zai_base_url: str = "https://api.z.ai/api/paas/v4/"
