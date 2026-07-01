@@ -312,10 +312,44 @@ def lock_telegram_account(config: dict, account_id: str, telegram_user_id: str) 
 def reset_telegram_account_access(config: dict, account_id: str) -> dict:
     tg = config.get("channels", {}).get("telegram", {})
     account = tg.get("accounts", {}).get(account_id, {})
-    account["dmPolicy"] = "open"
-    account["allowFrom"] = ["*"]
+    account["dmPolicy"] = "pairing"
+    account.pop("allowFrom", None)
     tg.setdefault("accounts", {})[account_id] = account
     return config
+
+
+def read_pending_telegram_pairings(account_id: str | None = None) -> list[dict[str, Any]]:
+    creds_dir = Path(settings.openclaw_credentials_dir)
+    pairing_file = creds_dir / "telegram-pairing.json"
+    if not pairing_file.exists():
+        return []
+    try:
+        data = json.loads(pairing_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    pending = []
+    for code, entry in data.items():
+        if not isinstance(entry, dict):
+            continue
+        if account_id and entry.get("account") != account_id:
+            continue
+        entry_copy = dict(entry)
+        entry_copy["code"] = code
+        pending.append(entry_copy)
+    return pending
+
+
+def approve_telegram_pairing(code: str) -> bool:
+    cmd = f"openclaw pairing approve telegram {code}"
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=15
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
 
 
 async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool:
