@@ -3,6 +3,7 @@ import json
 import subprocess
 import uuid
 from pathlib import Path
+from typing import Any
 
 import httpx
 import websockets
@@ -159,8 +160,56 @@ def read_telegram_peer_id(agent_id: str) -> str | None:
     return None
 
 
-def check_agent_sessions(agent_id: str) -> dict:
-    result = {"has_sessions": False, "channel_connected": False, "intro_sent": False, "peer_id": None, "provider": None}
+def _read_first_user_message(session_file_path: Path) -> str | None:
+    if not session_file_path.exists():
+        return None
+    try:
+        with open(session_file_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if entry.get("type") != "prompt.submitted":
+                    continue
+                data = entry.get("data", {})
+                messages = data.get("messages", [])
+                for msg in messages:
+                    if msg.get("role") != "user":
+                        continue
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                    if isinstance(content, list):
+                        for part in content:
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                text = str(part.get("text", "")).strip()
+                                if text:
+                                    return text
+                return None
+    except OSError:
+        return None
+    return None
+
+
+def _validate_start_command(message: str, expected_session_id: str) -> bool:
+    if not message.startswith("/start"):
+        return False
+    payload = message[len("/start"):].strip()
+    return payload == expected_session_id
+
+
+def check_agent_sessions(agent_id: str, expected_session_id: str | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "has_sessions": False,
+        "channel_connected": False,
+        "intro_sent": False,
+        "peer_id": None,
+        "provider": None,
+    }
     sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
     if not sessions_path.exists():
         return result
@@ -182,6 +231,17 @@ def check_agent_sessions(agent_id: str) -> dict:
             result["provider"] = provider
             from_id = str(origin.get("from", ""))
             if provider == "telegram" and from_id.startswith("telegram:"):
+                if expected_session_id:
+                    session_file = Path(value.get("sessionFile", ""))
+                    if not session_file.is_absolute():
+                        session_file = sessions_path.parent / session_file
+                    first_message = _read_first_user_message(session_file)
+                    if not first_message or not _validate_start_command(
+                        first_message, expected_session_id
+                    ):
+                        result["channel_connected"] = False
+                        result["peer_id"] = None
+                        return result
                 result["peer_id"] = from_id.split(":", 1)[1]
             elif provider == "whatsapp" and from_id.startswith("whatsapp:"):
                 raw = from_id.split(":", 1)[1]
@@ -234,8 +294,8 @@ def lock_whatsapp_account(config: dict, account_id: str, phone_number: str) -> d
 def reset_whatsapp_account_access(config: dict, account_id: str) -> dict:
     wa = config.get("channels", {}).get("whatsapp", {})
     account = wa.get("accounts", {}).get(account_id, {})
-    account["dmPolicy"] = "allowlist"
-    account["allowFrom"] = []
+    account["dmPolicy"] = "open"
+    account["allowFrom"] = ["*"]
     wa.setdefault("accounts", {})[account_id] = account
     return config
 
@@ -252,8 +312,8 @@ def lock_telegram_account(config: dict, account_id: str, telegram_user_id: str) 
 def reset_telegram_account_access(config: dict, account_id: str) -> dict:
     tg = config.get("channels", {}).get("telegram", {})
     account = tg.get("accounts", {}).get(account_id, {})
-    account["dmPolicy"] = "allowlist"
-    account["allowFrom"] = []
+    account["dmPolicy"] = "open"
+    account["allowFrom"] = ["*"]
     tg.setdefault("accounts", {})[account_id] = account
     return config
 
@@ -269,7 +329,7 @@ async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool
         return False
 
 
-async def _ws_connect_v3(ws) -> None:
+async def _ws_connect_v3(ws: Any) -> None:
     raw = await asyncio.wait_for(ws.recv(), timeout=10)
     challenge = json.loads(raw)
     if challenge.get("event") != "connect.challenge":
