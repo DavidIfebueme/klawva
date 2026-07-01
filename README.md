@@ -12,7 +12,7 @@
 
 **klawva** is an ai employee-as-a-service platform. employers hire ai agents that work on telegram, whatsapp, and other channels. each agent has a soul, a brief, and a shift — just like a real employee.
 
-you hire a worker. it shows up. it does the job. you get a report.
+you hire an ai worker. it shows up. it does the job. you get a report.
 
 ## how it works
 
