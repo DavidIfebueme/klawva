@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
@@ -195,6 +196,11 @@ async def _attempt_session_extension(db: AsyncSession, session: Session) -> None
     billing = resolve_billing_profile_from_country("NG")
     agent_cost = billing.amount_minor
 
+    from app.features.payments.wallet_service import debit_wallet, get_wallet_balance
+
+    expiry_window = session.expires_at.strftime("%Y%m%dT%H") if session.expires_at else "unknown"
+    debit_ref = f"auto_renew:{session.id}:{expiry_window}"
+
     if wallet.balance_minor < agent_cost:
         already_warned = await check_if_already_warned(db, session.id)
         if not already_warned:
@@ -227,16 +233,16 @@ async def _attempt_session_extension(db: AsyncSession, session: Session) -> None
             await record_warning_event(db, session.id)
         return
 
-    wallet.balance_minor -= agent_cost
-    tx = WalletTransaction(
+    tx = await debit_wallet(
+        db,
         wallet_id=wallet.id,
-        type="debit",
         amount_minor=agent_cost,
+        reference=debit_ref,
         description=f"Auto-renewal extension: {session.agent_id} (24h)",
         source="auto_reprovision",
-        balance_after=wallet.balance_minor,
     )
-    db.add(tx)
+    if tx is None:
+        return
 
     session.expires_at += timedelta(hours=24)
 
@@ -255,13 +261,14 @@ async def _attempt_session_extension(db: AsyncSession, session: Session) -> None
         )
     )
 
+    remaining_balance = await get_wallet_balance(db, wallet_id=wallet.id)
     subject = f"Your Klawva worker shift has been extended"
     expiry_formatted = session.expires_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
     body = (
         f"Your Klawva worker (<strong>{session.agent_id.capitalize()}</strong>) shift has been successfully "
         f"extended by 24 hours via auto-renewal.<br/>"
         f"New shift expiration: <strong>{expiry_formatted}</strong><br/>"
-        f"Balance remaining: <strong>₦{wallet.balance_minor / 100:.2f}</strong>"
+        f"Balance remaining: <strong>₦{remaining_balance / 100:.2f}</strong>"
     )
     html = _render_template(
         title="Worker shift extended",
