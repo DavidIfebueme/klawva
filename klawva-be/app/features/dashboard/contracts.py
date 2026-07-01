@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 
 
@@ -34,6 +34,7 @@ class DashboardSessionEntry(BaseModel):
 
 
 class UpdateAutoRenewPayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     auto_renew: bool = Field(alias="autoRenew")
 
 

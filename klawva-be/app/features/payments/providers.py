@@ -262,8 +262,8 @@ class NombaProvider:
             expected_hex = expected_bytes.hex()
             expected_b64 = base64.b64encode(expected_bytes).decode("utf-8")
 
-            logger.warning("Nomba expected hex: %s", expected_hex)
-            logger.warning("Nomba expected base64: %s", expected_b64)
+            logger.debug("Nomba expected hex: %s", expected_hex)
+            logger.debug("Nomba expected base64: %s", expected_b64)
 
             return hmac.compare_digest(expected_hex, signature_header) or hmac.compare_digest(expected_b64, signature_header)
         except Exception as e:
@@ -423,7 +423,13 @@ class StripeProvider:
         )
 
 
+_provider_instances: dict[PaymentProviderName, PaymentProvider] = {}
+
+
 def get_provider(name: PaymentProviderName) -> PaymentProvider:
-    if name == "nomba":
-        return NombaProvider()
-    return StripeProvider()
+    if name not in _provider_instances:
+        if name == "nomba":
+            _provider_instances[name] = NombaProvider()
+        else:
+            _provider_instances[name] = StripeProvider()
+    return _provider_instances[name]
