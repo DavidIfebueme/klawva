@@ -117,15 +117,19 @@ async def process_webhook(
     if provider_name == "nomba" and parsed.provider_reference and parsed.provider_reference.startswith("klawva_"):
         import json
         from app.features.payments.models import VirtualAccount
-        from app.features.payments.wallet_service import credit_wallet, get_or_create_wallet
+        from app.features.payments.wallet_service import credit_wallet, debit_wallet, get_or_create_wallet
 
         payload = json.loads(raw_body.decode("utf-8"))
         data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
 
         transaction_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
-        amount_minor = int(round(float(transaction_data.get("transactionAmount", 0.0)) * 100))
-        if amount_minor <= 0:
-            amount_minor = int(round(float(data.get("amount", 0.0)) * 100))
+        gross_minor = int(round(float(transaction_data.get("transactionAmount", 0.0)) * 100))
+        if gross_minor <= 0:
+            gross_minor = int(round(float(data.get("amount", 0.0)) * 100))
+
+        fee_val = transaction_data.get("fee")
+        fee_minor = int(round(float(fee_val) * 100)) if fee_val is not None else 0
+        net_minor = max(0, gross_minor - fee_minor)
 
         va_stmt = select(VirtualAccount).where(VirtualAccount.nomba_account_ref == parsed.provider_reference)
         va_res = await db.execute(va_stmt)
@@ -135,14 +139,28 @@ async def process_webhook(
 
         wallet = await get_or_create_wallet(db, user_id=va.user_id)
 
-        await credit_wallet(
-            db,
-            wallet_id=wallet.id,
-            amount_minor=amount_minor,
-            reference=parsed.event_id,
-            description="Virtual account funding",
-            source="virtual_account",
-        )
+        is_reversal = "reversal" in parsed.event_type.lower() or "revert" in parsed.event_type.lower()
+        if is_reversal:
+            description = f"Reversal of virtual account funding (Gross: -₦{gross_minor / 100:.2f}, Fee: ₦{fee_minor / 100:.2f})"
+            await debit_wallet(
+                db,
+                wallet_id=wallet.id,
+                amount_minor=net_minor,
+                reference=parsed.event_id,
+                description=description,
+                source="virtual_account",
+                allow_negative=True,
+            )
+        else:
+            description = f"Virtual account funding (Gross: ₦{gross_minor / 100:.2f}, Fee: ₦{fee_minor / 100:.2f})"
+            await credit_wallet(
+                db,
+                wallet_id=wallet.id,
+                amount_minor=net_minor,
+                reference=parsed.event_id,
+                description=description,
+                source="virtual_account",
+            )
 
         expires_at = datetime.now(UTC) + timedelta(days=30)
         db.add(
