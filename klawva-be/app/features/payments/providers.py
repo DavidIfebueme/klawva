@@ -284,7 +284,14 @@ class NombaProvider:
             or transaction_data.get("aliasAccountReference")
         )
 
-        event_id = str(data.get("id") or reference or hashlib.sha256(body).hexdigest())
+        event_id = str(
+            payload.get("requestId")
+            or payload.get("event_id")
+            or payload.get("eventId")
+            or data.get("id")
+            or reference
+            or hashlib.sha256(body).hexdigest()
+        )
         return WebhookParseResult(
             event_id=event_id,
             event_type=event_type,
