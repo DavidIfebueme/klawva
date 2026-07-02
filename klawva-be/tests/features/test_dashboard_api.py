@@ -284,6 +284,37 @@ def test_wallet_funding_webhook(test_client: TestClient) -> None:
     assert tx_data[0]["type"] == "credit"
     assert tx_data[0]["amountMinor"] == 750000
 
+    reversal_payload = {
+        "event_id": "tx_revert_1",
+        "event": "payment_reversal",
+        "data": {
+            "amount": 7500.00,
+            "currency": "NGN",
+            "status": "reversed",
+            "reference": va_ref,
+        },
+    }
+    reversal_res = test_client.post(
+        "/api/payments/nomba/webhook",
+        json=reversal_payload,
+        headers={"nomba-signature": "sig"},
+    )
+    assert reversal_res.status_code == 200
+
+    wallet_res = test_client.get("/api/dashboard/wallet", headers=headers)
+    assert wallet_res.status_code == 200
+    assert wallet_res.json()["balanceMinor"] == 0
+
+    tx_res = test_client.get("/api/dashboard/wallet/transactions", headers=headers)
+    assert tx_res.status_code == 200
+    tx_data = tx_res.json()
+    assert len(tx_data) == 2
+    assert tx_data[0]["type"] == "debit"
+    assert tx_data[0]["amountMinor"] == 750000
+    assert "Reversal" in tx_data[0]["description"]
+    assert tx_data[1]["type"] == "credit"
+    assert tx_data[1]["amountMinor"] == 750000
+
 
 def test_zero_downtime_auto_renewal_extension(test_client: TestClient) -> None:
     response = test_client.post(
