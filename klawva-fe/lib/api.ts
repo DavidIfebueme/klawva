@@ -13,6 +13,8 @@ import {
   SessionQRResponse,
   SessionActivityResponse,
   SessionReportResponse,
+  TelegramAuthPayload,
+  TelegramAuthResponse,
   WhatsAppLockAccessResponse,
   UserProfileResponse,
   DashboardSessionEntry,
@@ -196,6 +198,23 @@ export async function getSessionReport(sessionId: string, sessionToken: string):
 export async function getSharedSessionReport(sessionId: string, shareToken: string): Promise<SessionReportResponse> {
   const res = await fetch(`${BASE}/api/reports/shared/${sessionId}?shareToken=${encodeURIComponent(shareToken)}`);
   if (!res.ok) throw new Error('Failed to fetch shared report');
+  return res.json();
+}
+
+export async function submitTelegramAuth(
+  sessionId: string,
+  sessionToken: string,
+  payload: TelegramAuthPayload,
+): Promise<TelegramAuthResponse> {
+  const res = await fetch(`${BASE}/api/channels/telegram/auth`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...sessionTokenHeaders(sessionToken),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { stored: false };
   return res.json();
 }
 
