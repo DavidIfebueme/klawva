@@ -14,9 +14,10 @@ import {
   getSessionStatus,
   lockTelegramAccess,
   lockWhatsAppAccess,
+  submitTelegramAuth,
 } from '../../../lib/api';
 
-type HandshakeState = 'provisioning' | 'qr' | 'whatsapp-number' | 'telegram';
+type HandshakeState = 'telegram-auth' | 'provisioning' | 'qr' | 'whatsapp-number' | 'telegram';
 
 const PRIVACY_NOTICE = 'Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.';
 
@@ -41,37 +42,49 @@ export default function SessionHandshakePage() {
   const [telegramOnboardingState, setTelegramOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [whatsappOnboardingState, setWhatsappOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [telegramAuthError, setTelegramAuthError] = useState<string | null>(null);
 
   const [provisioningReady, setProvisioningReady] = useState(false);
+  const [shouldActivate, setShouldActivate] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    const token = sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
+    if (!token) {
+      setErrorMessage('Session token missing. Please restart checkout.');
+      return;
+    }
+    setSessionToken(token);
 
-    const runHandshake = async () => {
-      const token = sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
-      if (!token) {
-        setErrorMessage('Session token missing. Please restart checkout.');
-        return;
-      }
-      setSessionToken(token);
+    if (channel === 'telegram') {
+      setState('telegram-auth');
+      setStatusText('Connect your Telegram to secure this session.');
+    } else {
+      setState('provisioning');
       setStatusText('Activating your worker...');
       setProgress(20);
+      setShouldActivate(true);
+    }
+  }, [channel, sessionId]);
 
+  useEffect(() => {
+    if (!shouldActivate || !sessionToken) return;
+    let cancelled = false;
+
+    const runActivation = async () => {
       let activation = null;
-      const maxActivationAttempts = 30; // 30 attempts * 3 seconds = 90 seconds max wait
-      
+      const maxActivationAttempts = 30;
+
       for (let attempt = 0; attempt < maxActivationAttempts; attempt++) {
         if (cancelled) return;
         try {
-          activation = await activateSession(sessionId, token);
+          activation = await activateSession(sessionId, sessionToken);
           break;
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : '';
           const isPending = errMsg === 'payment_not_confirmed' || errMsg === 'payment_not_initialized';
-          
+
           if (isPending && attempt < maxActivationAttempts - 1) {
             setStatusText('Waiting for payment confirmation...');
-            // Progress goes from 20% to 50% during payment confirmation polling
             setProgress(20 + Math.min(30, attempt * 2));
             await new Promise((r) => setTimeout(r, 3000));
           } else {
@@ -114,8 +127,8 @@ export default function SessionHandshakePage() {
               await new Promise((r) => setTimeout(r, 3000));
               try {
                 const [sessionStatus, sessionActivity] = await Promise.all([
-                  getSessionStatus(sessionId, token),
-                  getSessionActivity(sessionId, token),
+                  getSessionStatus(sessionId, sessionToken),
+                  getSessionActivity(sessionId, sessionToken),
                 ]);
                 const activityTexts = sessionActivity.activities.map((e) => e.text.toLowerCase());
                 const connected = sessionStatus.connected
@@ -143,12 +156,68 @@ export default function SessionHandshakePage() {
       }
     };
 
-    void runHandshake();
+    void runActivation();
 
     return () => {
       cancelled = true;
     };
-  }, [channel, sessionId]);
+  }, [shouldActivate, sessionToken, channel, sessionId]);
+
+  useEffect(() => {
+    if (state !== 'telegram-auth') return;
+
+    const existing = document.getElementById('telegram-widget-script');
+    if (!existing) {
+      const script = document.createElement('script');
+      script.id = 'telegram-widget-script';
+      script.src = 'https://telegram.org/js/telegram-widget.js?22';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, [state]);
+
+  const handleTelegramAuth = async (user: Record<string, unknown>) => {
+    if (!sessionToken) {
+      setTelegramAuthError('Session token missing. Please restart checkout.');
+      return;
+    }
+    setTelegramAuthError(null);
+    setState('provisioning');
+    setStatusText('Securing your session...');
+    setProgress(30);
+
+    try {
+      const response = await submitTelegramAuth(sessionId, sessionToken, {
+        sessionId,
+        user: user as {
+          id: number;
+          firstName?: string;
+          lastName?: string;
+          username?: string;
+          photoUrl?: string;
+          authDate: number;
+          hash: string;
+        },
+      });
+      if (!response.stored) {
+        setTelegramAuthError('Telegram authentication failed. Please try again.');
+        setState('telegram-auth');
+        return;
+      }
+      setShouldActivate(true);
+    } catch {
+      setTelegramAuthError('Failed to secure session. Please try again.');
+      setState('telegram-auth');
+    }
+  };
+
+  useEffect(() => {
+    (window as unknown as { onTelegramAuth?: (user: Record<string, unknown>) => void }).onTelegramAuth = (
+      user: Record<string, unknown>,
+    ) => {
+      void handleTelegramAuth(user);
+    };
+  }, [sessionId, sessionToken]);
 
   useEffect(() => {
     if (!provisioningReady) return;
@@ -431,6 +500,36 @@ export default function SessionHandshakePage() {
             <Button variant="primary" size="lg" className="w-full" onClick={goToStatus}>
               I scanned, continue →
             </Button>
+          )}
+
+          <p className="font-mono text-klawva-dim text-xs mt-6 max-w-xs">{PRIVACY_NOTICE}</p>
+        </motion.div>
+      )}
+
+      {state === 'telegram-auth' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-klawva-surface border border-klawva-border rounded-lg p-8 md:p-12 flex flex-col items-center text-center max-w-md w-full"
+        >
+          <PulseRing size={64} className="mb-8" />
+          <h2 className="font-syne font-bold text-2xl text-klawva-text mb-4">Secure your session</h2>
+          <p className="font-mono text-klawva-muted text-sm mb-8">
+            Connect your Telegram account so only you can message this worker.
+          </p>
+
+          <div
+            className="mb-6"
+            data-telegram-login={process.env.NEXT_PUBLIC_TELEGRAM_AUTH_BOT_USERNAME}
+            data-size="large"
+            data-onauth="onTelegramAuth"
+            data-request-access="write"
+          />
+
+          {telegramAuthError && (
+            <div className="font-mono text-klawva-orange text-xs mb-6">
+              {telegramAuthError}
+            </div>
           )}
 
           <p className="font-mono text-klawva-dim text-xs mt-6 max-w-xs">{PRIVACY_NOTICE}</p>
