@@ -165,21 +165,7 @@ export default function SessionHandshakePage() {
 
   const telegramAuthBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_AUTH_BOT_USERNAME;
 
-  useEffect(() => {
-    if (state !== 'telegram-auth' || !telegramAuthBotUsername) return;
 
-    const scriptId = 'telegram-widget-script';
-    const existing = document.getElementById(scriptId);
-    if (existing) {
-      existing.remove();
-    }
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.async = true;
-    document.body.appendChild(script);
-  }, [state, telegramAuthBotUsername]);
 
   const handleTelegramAuth = async (user: Record<string, unknown>) => {
     if (!sessionToken) {
@@ -525,11 +511,18 @@ export default function SessionHandshakePage() {
 
           {telegramAuthBotUsername ? (
             <div
-              className="mb-6"
-              data-telegram-login={telegramAuthBotUsername}
-              data-size="large"
-              data-onauth="onTelegramAuth"
-              data-request-access="write"
+              ref={(container) => {
+                if (!container || !telegramAuthBotUsername) return;
+                if (container.querySelector('script[src*="telegram-widget.js"]')) return;
+                const script = document.createElement('script');
+                script.async = true;
+                script.src = 'https://telegram.org/js/telegram-widget.js?22';
+                script.setAttribute('data-telegram-login', telegramAuthBotUsername);
+                script.setAttribute('data-size', 'large');
+                script.setAttribute('data-onauth', 'onTelegramAuth');
+                script.setAttribute('data-request-access', 'write');
+                container.appendChild(script);
+              }}
             />
           ) : (
             <div className="font-mono text-klawva-orange text-xs mb-6 max-w-xs">
