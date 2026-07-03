@@ -163,18 +163,23 @@ export default function SessionHandshakePage() {
     };
   }, [shouldActivate, sessionToken, channel, sessionId]);
 
-  useEffect(() => {
-    if (state !== 'telegram-auth') return;
+  const telegramAuthBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_AUTH_BOT_USERNAME;
 
-    const existing = document.getElementById('telegram-widget-script');
-    if (!existing) {
-      const script = document.createElement('script');
-      script.id = 'telegram-widget-script';
-      script.src = 'https://telegram.org/js/telegram-widget.js?22';
-      script.async = true;
-      document.body.appendChild(script);
+  useEffect(() => {
+    if (state !== 'telegram-auth' || !telegramAuthBotUsername) return;
+
+    const scriptId = 'telegram-widget-script';
+    const existing = document.getElementById(scriptId);
+    if (existing) {
+      existing.remove();
     }
-  }, [state]);
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = 'https://telegram.org/js/telegram-widget.js?22';
+    script.async = true;
+    document.body.appendChild(script);
+  }, [state, telegramAuthBotUsername]);
 
   const handleTelegramAuth = async (user: Record<string, unknown>) => {
     if (!sessionToken) {
@@ -518,13 +523,19 @@ export default function SessionHandshakePage() {
             Connect your Telegram account so only you can message this worker.
           </p>
 
-          <div
-            className="mb-6"
-            data-telegram-login={process.env.NEXT_PUBLIC_TELEGRAM_AUTH_BOT_USERNAME}
-            data-size="large"
-            data-onauth="onTelegramAuth"
-            data-request-access="write"
-          />
+          {telegramAuthBotUsername ? (
+            <div
+              className="mb-6"
+              data-telegram-login={telegramAuthBotUsername}
+              data-size="large"
+              data-onauth="onTelegramAuth"
+              data-request-access="write"
+            />
+          ) : (
+            <div className="font-mono text-klawva-orange text-xs mb-6 max-w-xs">
+              Telegram auth bot username is not configured. Please contact support.
+            </div>
+          )}
 
           {telegramAuthError && (
             <div className="font-mono text-klawva-orange text-xs mb-6">
