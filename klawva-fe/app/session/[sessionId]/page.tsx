@@ -12,6 +12,7 @@ import {
   getSessionActivity,
   getSessionQR,
   getSessionStatus,
+  getTelegramAuthBotId,
   lockTelegramAccess,
   lockWhatsAppAccess,
   submitTelegramAuth,
@@ -43,6 +44,8 @@ export default function SessionHandshakePage() {
   const [whatsappOnboardingState, setWhatsappOnboardingState] = useState<'pending' | 'linked' | 'intro_sent'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [telegramAuthError, setTelegramAuthError] = useState<string | null>(null);
+  const [telegramAuthBotId, setTelegramAuthBotId] = useState<string | null>(null);
+  const [telegramAuthLoading, setTelegramAuthLoading] = useState(false);
 
   const [provisioningReady, setProvisioningReady] = useState(false);
   const [shouldActivate, setShouldActivate] = useState(false);
@@ -65,6 +68,23 @@ export default function SessionHandshakePage() {
       setShouldActivate(true);
     }
   }, [channel, sessionId]);
+
+  useEffect(() => {
+    if (state !== 'telegram-auth') return;
+
+    const scriptId = 'telegram-login-api-script';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://telegram.org/js/telegram-widget.js?22';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+
+    getTelegramAuthBotId()
+      .then((data) => setTelegramAuthBotId(data.botId))
+      .catch(() => setTelegramAuthError('Failed to load Telegram login. Please refresh.'));
+  }, [state]);
 
   useEffect(() => {
     if (!shouldActivate || !sessionToken) return;
@@ -163,10 +183,6 @@ export default function SessionHandshakePage() {
     };
   }, [shouldActivate, sessionToken, channel, sessionId]);
 
-  const telegramAuthBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_AUTH_BOT_USERNAME;
-
-
-
   const handleTelegramAuth = async (user: Record<string, unknown>) => {
     if (!sessionToken) {
       setTelegramAuthError('Session token missing. Please restart checkout.');
@@ -202,13 +218,34 @@ export default function SessionHandshakePage() {
     }
   };
 
-  useEffect(() => {
-    (window as unknown as { onTelegramAuth?: (user: Record<string, unknown>) => void }).onTelegramAuth = (
-      user: Record<string, unknown>,
-    ) => {
-      void handleTelegramAuth(user);
-    };
-  }, [sessionId, sessionToken]);
+  const handleTelegramLoginClick = () => {
+    if (!telegramAuthBotId) {
+      setTelegramAuthError('Telegram login is not ready. Please refresh.');
+      return;
+    }
+    const telegram = (window as unknown as {
+      Telegram?: {
+        Login?: {
+          auth: (
+            options: { bot_id: string; request_access: string },
+            callback: (user: Record<string, unknown>) => void,
+          ) => void;
+        };
+      };
+    }).Telegram;
+    if (!telegram?.Login?.auth) {
+      setTelegramAuthError('Telegram login script is still loading. Please wait.');
+      return;
+    }
+    setTelegramAuthLoading(true);
+    telegram.Login.auth(
+      { bot_id: telegramAuthBotId, request_access: 'write' },
+      (user) => {
+        setTelegramAuthLoading(false);
+        void handleTelegramAuth(user);
+      },
+    );
+  };
 
   useEffect(() => {
     if (!provisioningReady) return;
@@ -509,24 +546,19 @@ export default function SessionHandshakePage() {
             Connect your Telegram account so only you can message this worker.
           </p>
 
-          {telegramAuthBotUsername ? (
-            <div
-              ref={(container) => {
-                if (!container || !telegramAuthBotUsername) return;
-                if (container.querySelector('script[src*="telegram-widget.js"]')) return;
-                const script = document.createElement('script');
-                script.async = true;
-                script.src = 'https://telegram.org/js/telegram-widget.js?22';
-                script.setAttribute('data-telegram-login', telegramAuthBotUsername);
-                script.setAttribute('data-size', 'large');
-                script.setAttribute('data-onauth', 'onTelegramAuth(user)');
-                script.setAttribute('data-request-access', 'write');
-                container.appendChild(script);
-              }}
-            />
+          {telegramAuthBotId ? (
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full mb-6"
+              loading={telegramAuthLoading}
+              onClick={handleTelegramLoginClick}
+            >
+              Connect with Telegram
+            </Button>
           ) : (
             <div className="font-mono text-klawva-orange text-xs mb-6 max-w-xs">
-              Telegram auth bot username is not configured. Please contact support.
+              Telegram login is not configured. Please contact support.
             </div>
           )}
 
