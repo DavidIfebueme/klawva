@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from app.features.channels.service import (
 from app.features.provisioning.agent_config import _agent_gateway_id
 from app.features.sessions.auth import assert_session_access, get_session_token_header
 from app.platform.clients import openclaw_gateway
+from app.platform.config import settings
 from app.platform.db.session import get_async_session
 
 router = APIRouter(tags=["channels"])
@@ -244,6 +245,19 @@ async def record_intro_delivered_endpoint(
         target=link.link_target,
         callbackEventId=link.worker_intro_callback_id,
     )
+
+
+class TelegramAuthBotIdResponse(BaseModel):
+    bot_id: str = Field(alias="botId")
+
+
+@router.get("/api/channels/telegram/auth-bot-id", response_model=TelegramAuthBotIdResponse)
+async def get_telegram_auth_bot_id_endpoint() -> TelegramAuthBotIdResponse:
+    bot_token = settings.telegram_auth_bot_token
+    if not bot_token:
+        raise HTTPException(status_code=503, detail="telegram_auth_bot_not_configured")
+    bot_id = bot_token.split(":", 1)[0]
+    return TelegramAuthBotIdResponse(botId=bot_id)
 
 
 class TelegramLockAccessRequest(BaseModel):

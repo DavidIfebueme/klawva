@@ -201,6 +201,12 @@ export async function getSharedSessionReport(sessionId: string, shareToken: stri
   return res.json();
 }
 
+export async function getTelegramAuthBotId(): Promise<{ botId: string }> {
+  const res = await fetch(`${BASE}/api/channels/telegram/auth-bot-id`);
+  if (!res.ok) throw new Error('Failed to fetch Telegram auth bot id');
+  return res.json();
+}
+
 export async function submitTelegramAuth(
   sessionId: string,
   sessionToken: string,
