@@ -1,11 +1,17 @@
+import hashlib
+import hmac
+import time
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-from datetime import UTC, datetime
 
-from app.main import app
+from app.features.channels.models import ChannelLink
+from app.features.provisioning.service import _resolve_channel_binding
 from app.features.sessions.models import Session
+from app.main import app
 from app.platform.config import settings
 from app.platform.db.base import Base
 from app.platform.db.registry import load_model_registry
@@ -46,7 +52,9 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     async def fake_get_whatsapp_qr(account_id: str):
         return "mock_qr_data", 60
 
-    monkeypatch.setattr("app.platform.clients.openclaw_gateway.get_whatsapp_qr", fake_get_whatsapp_qr)
+    monkeypatch.setattr(
+        "app.platform.clients.openclaw_gateway.get_whatsapp_qr", fake_get_whatsapp_qr
+    )
 
     client = TestClient(app)
     yield client
@@ -265,7 +273,9 @@ def test_onboarding_event_is_idempotent_for_replayed_callback_id(test_client: Te
     )
     assert activity.status_code == 200
     connected_events = [
-        item for item in activity.json()["activities"] if item.get("text") == "Telegram channel connected"
+        item
+        for item in activity.json()["activities"]
+        if item.get("text") == "Telegram channel connected"
     ]
     assert len(connected_events) == 1
 
@@ -303,3 +313,114 @@ def test_assign_telegram_reuses_token_from_completed_session(test_client: TestCl
     )
     assert second_assign.status_code == 200
     assert second_assign.json()["token"] == "tokenA"
+
+
+def _telegram_widget_payload(user_id: int, bot_token: str) -> dict:
+    auth_date = int(time.time())
+    data = {
+        "id": user_id,
+        "first_name": "Test",
+        "auth_date": auth_date,
+    }
+    data_pairs = [f"{k}={v}" for k, v in sorted(data.items())]
+    data_check_string = "\n".join(data_pairs)
+    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
+    hash_value = hmac.new(
+        secret_key, data_check_string.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    data["hash"] = hash_value
+    return data
+
+
+def test_telegram_auth_stores_user_id(
+    test_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot_token = "test-auth-bot-token"
+    monkeypatch.setattr(settings, "telegram_auth_bot_token", bot_token)
+
+    session_id, session_token = _create_session(
+        test_client, agent="researcher", channel="telegram"
+    )
+
+    user = _telegram_widget_payload(123456789, bot_token)
+    response = test_client.post(
+        "/api/channels/telegram/auth",
+        json={"sessionId": session_id, "user": user},
+        headers={"x-session-token": session_token},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stored"] is True
+    assert payload["telegramUserId"] == "123456789"
+
+
+def test_telegram_auth_rejects_invalid_hash(
+    test_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot_token = "test-auth-bot-token"
+    monkeypatch.setattr(settings, "telegram_auth_bot_token", bot_token)
+
+    session_id, session_token = _create_session(
+        test_client, agent="researcher", channel="telegram"
+    )
+
+    user = _telegram_widget_payload(123456789, bot_token)
+    user["hash"] = "invalid-hash"
+    response = test_client.post(
+        "/api/channels/telegram/auth",
+        json={"sessionId": session_id, "user": user},
+        headers={"x-session-token": session_token},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["stored"] is False
+
+
+def test_telegram_auth_rejects_non_telegram_session(
+    test_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot_token = "test-auth-bot-token"
+    monkeypatch.setattr(settings, "telegram_auth_bot_token", bot_token)
+
+    session_id, session_token = _create_session(
+        test_client, agent="scrapper", channel="whatsapp"
+    )
+
+    user = _telegram_widget_payload(123456789, bot_token)
+    response = test_client.post(
+        "/api/channels/telegram/auth",
+        json={"sessionId": session_id, "user": user},
+        headers={"x-session-token": session_token},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["stored"] is False
+
+
+def test_resolve_channel_binding_pre_locks_telegram(
+    test_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        map_path = f"{tmpdir}/telegram_accounts.json"
+        monkeypatch.setattr(settings, "telegram_accounts_map_path", map_path)
+
+        session = Session(agent_id="scrapper", channel="telegram", brief={"task": "work"})
+        link = ChannelLink(
+            session_id=session.id,
+            channel="telegram",
+            status="assigned",
+            external_id="bot-token-123",
+            telegram_user_id="12345",
+        )
+        channel_type, account_id, account_config = _resolve_channel_binding(session, link)
+
+        assert channel_type == "telegram"
+        assert account_config["dmPolicy"] == "allowlist"
+        assert account_config["allowFrom"] == ["12345"]
+        assert account_config["enabled"] is True

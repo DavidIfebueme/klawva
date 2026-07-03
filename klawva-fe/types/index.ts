@@ -181,3 +181,23 @@ export interface WhatsAppLockAccessResponse {
   whatsappPhoneNumber?: string;
   overlapWarning?: boolean;
 }
+
+export interface TelegramAuthUser {
+  id: number;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  photoUrl?: string;
+  authDate: number;
+  hash: string;
+}
+
+export interface TelegramAuthPayload {
+  sessionId: string;
+  user: TelegramAuthUser;
+}
+
+export interface TelegramAuthResponse {
+  stored: boolean;
+  telegramUserId?: string;
+}
