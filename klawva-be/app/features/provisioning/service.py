@@ -61,7 +61,8 @@ def _resolve_channel_binding(
         account_config = {
             "enabled": True,
             "botToken": token,
-            "dmPolicy": "pairing",
+            "dmPolicy": "allowlist",
+            "allowFrom": [channel_link.telegram_user_id] if channel_link.telegram_user_id else [],
             "groupPolicy": "disabled",
         }
         return "telegram", account_id, account_config
