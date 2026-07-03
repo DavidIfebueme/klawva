@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     frontend_api_base_url: str = "http://localhost:8000"
     telegram_bot_token_pool: str = ""
+    telegram_auth_bot_token: str | None = None
     telegram_accounts_map_path: str = "/home/klawva/.openclaw/telegram_accounts.json"
     history_magic_link_secret: str | None = None
     history_magic_link_ttl_minutes: int = 20
