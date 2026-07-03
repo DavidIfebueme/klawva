@@ -156,16 +156,6 @@ async def get_session_status_endpoint(
         agent_id = _agent_gateway_id(session_id)
 
         try:
-            pending = openclaw_gateway.read_pending_telegram_pairings()
-            for pairing in pending:
-                code = pairing.get("code", "")
-                if code:
-                    openclaw_gateway.approve_telegram_pairing(code)
-                    logger.info("auto-approved pairing %s", code)
-        except Exception:
-            logger.warning("pairing approval failed for session %s", session_id, exc_info=True)
-
-        try:
             agent_state = openclaw_gateway.check_agent_sessions(agent_id)
         except Exception:
             agent_state = {
