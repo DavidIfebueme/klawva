@@ -1,7 +1,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +34,28 @@ class TelegramAssignRequest(BaseModel):
 class TelegramAssignResponse(BaseModel):
     token: str
     deep_link: str | None = Field(default=None, alias="deepLink")
+
+
+class TelegramAuthPayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    first_name: str | None = Field(default=None, alias="firstName")
+    last_name: str | None = Field(default=None, alias="lastName")
+    username: str | None = None
+    photo_url: str | None = Field(default=None, alias="photoUrl")
+    auth_date: int = Field(alias="authDate")
+    hash: str
+
+
+class TelegramAuthRequest(BaseModel):
+    session_id: str = Field(alias="sessionId")
+    user: TelegramAuthPayload
+
+
+class TelegramAuthResponse(BaseModel):
+    stored: bool
+    telegram_user_id: str | None = Field(default=None, alias="telegramUserId")
 
 
 class ChannelOnboardingEventRequest(BaseModel):
@@ -109,6 +131,53 @@ async def assign_telegram_endpoint(
 ) -> TelegramAssignResponse:
     token, deep_link = await assign_telegram_bot_token(db, session_id=payload.session_id)
     return TelegramAssignResponse(token=token, deepLink=deep_link)
+
+
+@router.post("/api/channels/telegram/auth", response_model=TelegramAuthResponse)
+async def telegram_auth_endpoint(
+    payload: TelegramAuthRequest,
+    session_token: str = Depends(get_session_token_header),
+    db: AsyncSession = Depends(get_async_session),
+) -> TelegramAuthResponse:
+    from app.features.channels.service import (
+        store_telegram_user_id,
+        verify_telegram_widget_payload,
+    )
+    from app.features.sessions.auth import assert_session_access
+    from app.platform.config import settings
+
+    session = await assert_session_access(
+        db,
+        session_id=payload.session_id,
+        session_token=session_token,
+    )
+    if session.channel != "telegram":
+        return TelegramAuthResponse(stored=False, telegramUserId=None)
+
+    bot_token = settings.telegram_auth_bot_token
+    if not bot_token:
+        return TelegramAuthResponse(stored=False, telegramUserId=None)
+
+    user_payload = {
+        "id": payload.user.id,
+        "first_name": payload.user.first_name,
+        "last_name": payload.user.last_name,
+        "username": payload.user.username,
+        "photo_url": payload.user.photo_url,
+        "auth_date": payload.user.auth_date,
+        "hash": payload.user.hash,
+    }
+    user_payload = {k: v for k, v in user_payload.items() if v is not None}
+    if not verify_telegram_widget_payload(user_payload, bot_token):
+        return TelegramAuthResponse(stored=False, telegramUserId=None)
+
+    telegram_user_id = str(payload.user.id)
+    await store_telegram_user_id(
+        db,
+        session_id=payload.session_id,
+        telegram_user_id=telegram_user_id,
+    )
+    return TelegramAuthResponse(stored=True, telegramUserId=telegram_user_id)
 
 
 @router.post("/api/channels/onboarding/event", response_model=ChannelOnboardingEventResponse)
