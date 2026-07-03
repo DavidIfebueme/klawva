@@ -12,36 +12,6 @@ log = logging.getLogger(__name__)
 _INTERVAL_SECONDS = 300
 
 
-async def _process_pending_telegram_pairings(db: AsyncSession) -> int:
-    from app.features.channels.models import ChannelLink
-    from app.features.sessions.models import Session
-    from app.platform.clients import openclaw_gateway
-
-    stmt = (
-        select(Session)
-        .join(ChannelLink, ChannelLink.session_id == Session.id)
-        .where(Session.status == "provisioning")
-        .where(ChannelLink.channel == "telegram")
-        .where(ChannelLink.peer_id.is_(None))
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
-    if not rows:
-        return 0
-
-    approved = 0
-    pending = openclaw_gateway.read_pending_telegram_pairings()
-    for pairing in pending:
-        code = pairing.get("code", "")
-        if not code:
-            continue
-        ok = openclaw_gateway.approve_telegram_pairing(code)
-        if ok:
-            approved += 1
-        log.info("auto-approved pairing %s: %s", code, ok)
-    return approved
-
-
 async def _process_pending_telegram_locks(db: AsyncSession) -> int:
     from app.features.activity.models import ActivityEvent
     from app.features.channels.models import ChannelLink
@@ -113,13 +83,11 @@ async def _scheduler_loop() -> None:
                 await process_upcoming_auto_renewals(db)
                 await execute_due_terminations(db)
                 sent = await dispatch_due_shift_emails(db)
-                pairings_approved = await _process_pending_telegram_pairings(db)
                 telegram_locked = await _process_pending_telegram_locks(db)
                 log.info(
                     "Scheduler tick: auto-renewals + terminations processed, "
-                    "%d shift emails sent, %d pairings approved, %d telegram sessions locked",
+                    "%d shift emails sent, %d telegram sessions locked",
                     sent,
-                    pairings_approved,
                     telegram_locked,
                 )
         except Exception:
