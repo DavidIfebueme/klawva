@@ -1,7 +1,10 @@
+import hashlib
+import hmac
 import json
+import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 from fastapi import HTTPException
@@ -14,6 +17,71 @@ from app.features.provisioning.service import _load_telegram_accounts_map
 from app.features.sessions.models import Session
 from app.platform.clients import openclaw_gateway
 from app.platform.config import settings
+
+_TELEGRAM_WIDGET_AUTH_MAX_AGE_SECONDS = 300
+
+
+def verify_telegram_widget_hash(payload: dict[str, Any], bot_token: str) -> bool:
+    received_hash = payload.get("hash", "")
+    if not received_hash:
+        return False
+
+    data_pairs = []
+    for key, value in payload.items():
+        if key == "hash":
+            continue
+        data_pairs.append(f"{key}={value}")
+    data_pairs.sort()
+    data_check_string = "\n".join(data_pairs)
+
+    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
+    calculated_hash = hmac.new(
+        secret_key, data_check_string.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(calculated_hash, received_hash)
+
+
+def verify_telegram_widget_payload(payload: dict[str, Any], bot_token: str) -> bool:
+    if not verify_telegram_widget_hash(payload, bot_token):
+        return False
+    auth_date = payload.get("auth_date")
+    if not isinstance(auth_date, int):
+        try:
+            auth_date = int(auth_date)
+        except (TypeError, ValueError):
+            return False
+    age = int(time.time()) - auth_date
+    return age <= _TELEGRAM_WIDGET_AUTH_MAX_AGE_SECONDS
+
+
+async def store_telegram_user_id(
+    db: AsyncSession, *, session_id: str, telegram_user_id: str
+) -> ChannelLink:
+    statement = select(ChannelLink).where(ChannelLink.session_id == session_id)
+    result = await db.execute(statement)
+    link = result.scalar_one_or_none()
+    if link is None:
+        session = await db.get(Session, session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="session_not_found")
+        if session.channel != "telegram":
+            raise HTTPException(status_code=409, detail="channel_link_mismatch")
+        link = ChannelLink(
+            session_id=session_id,
+            channel="telegram",
+            status="assigned",
+            telegram_user_id=telegram_user_id,
+        )
+        db.add(link)
+    else:
+        if link.channel != "telegram":
+            raise HTTPException(status_code=409, detail="channel_link_mismatch")
+        link.telegram_user_id = telegram_user_id
+
+    await db.commit()
+    await db.refresh(link)
+    return link
 
 
 def _parse_token_pool(raw_pool: str) -> list[str]:
