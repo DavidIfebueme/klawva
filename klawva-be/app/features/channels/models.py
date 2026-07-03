@@ -26,6 +26,7 @@ class ChannelLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     report_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     terminated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     peer_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    telegram_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     worker_link_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     worker_intro_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     worker_report_callback_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
