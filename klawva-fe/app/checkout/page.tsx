@@ -8,6 +8,7 @@ import { createSession, initializePayment } from '../../lib/api';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
+import { CSVImport } from '../../components/ui/CSVImport';
 import { WhatsAppIcon } from '../../components/icons/WhatsAppIcon';
 import { TelegramIcon } from '../../components/icons/TelegramIcon';
 import { ScrapperIcon } from '../../components/icons/ScrapperIcon';
@@ -149,9 +150,14 @@ function CheckoutContent() {
             <div className="flex flex-col gap-8 mb-12">
               {agent.briefFields.map((field) => (
                 <div key={field.id} className="flex flex-col gap-2">
-                  <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
-                    {field.label} {field.required && <span className="text-klawva-orange">*</span>}
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
+                      {field.label} {field.required && <span className="text-klawva-orange">*</span>}
+                    </label>
+                    {field.csvImport && (
+                      <CSVImport onImport={(text) => setBrief({ ...brief, [field.id]: text })} />
+                    )}
+                  </div>
                   {field.type === 'textarea' ? (
                     <textarea
                       className="bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors min-h-[120px] resize-y"
