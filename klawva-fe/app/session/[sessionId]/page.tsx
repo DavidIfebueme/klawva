@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'motion/react';
-import { QRCodeSVG } from 'qrcode.react';
+
 import { KlawvaMark } from '../../../components/icons/KlawvaMark';
 import { PulseRing } from '../../../components/icons/PulseRing';
 import { Button } from '../../../components/ui/Button';
@@ -482,14 +482,7 @@ export default function SessionHandshakePage() {
           <h2 className="font-syne font-bold text-2xl text-klawva-text mb-8">Scan to connect</h2>
           
           <div className="bg-white p-4 rounded-lg mb-8 relative">
-            <QRCodeSVG
-              value={qrCode}
-              size={240}
-              bgColor="#FFFFFF"
-              fgColor="#0A0A0A"
-              level="H"
-              includeMargin={false}
-            />
+            <img src={qrCode} alt="WhatsApp QR code" className="w-60 h-60" />
             {qrExpiresIn === 20 && (
               <motion.div
                 initial={{ opacity: 1 }}
