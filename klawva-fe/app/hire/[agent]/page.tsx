@@ -112,17 +112,11 @@ export default async function HireAgentPage({ params }: { params: Promise<{ agen
               </span>
             </div>
 
-             {agent.comingSoon ? (
-              <Button variant="primary" size="lg" className="w-full mb-4 opacity-40 cursor-not-allowed" disabled>
-                Coming soon →
-              </Button>
-            ) : (
-              <Link href={`/checkout?agent=${agentId}`} className="block w-full">
+             <Link href={`/checkout?agent=${agentId}`} className="block w-full">
                 <Button variant="primary" size="lg" className="w-full mb-4">
                   Hire {agent.name.split(' ').pop()} →
                 </Button>
               </Link>
-            )}
 
             <div className="text-center">
               <Badge variant="pending" className="px-3 py-1 text-xs tracking-widest">[ 24HRS ]</Badge>
