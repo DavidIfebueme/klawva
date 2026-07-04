@@ -92,6 +92,21 @@ def _parse_account_pool(raw_pool: str) -> list[str]:
     return [item.strip() for item in raw_pool.split(",") if item.strip()]
 
 
+def _normalize_whatsapp_number(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    cleaned = "".join(c for c in raw.strip() if c.isdigit() or c == "+")
+    if cleaned.startswith("+"):
+        normalized = cleaned
+    elif cleaned.startswith("0"):
+        normalized = "+234" + cleaned[1:]
+    else:
+        normalized = "+" + cleaned
+    if len(normalized) <= 1:
+        return None
+    return normalized
+
+
 def _load_whatsapp_numbers_map() -> dict[str, str]:
     map_path = Path(settings.whatsapp_numbers_map_path)
     if not map_path.exists():
@@ -276,6 +291,26 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
 
     await db.commit()
     return assigned, deep_link
+
+
+async def auto_lock_whatsapp(
+    db: AsyncSession, session_id: str, phone_number: str
+) -> bool:
+    stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
+    link = (await db.execute(stmt)).scalar_one_or_none()
+    if not link or not link.external_id:
+        return False
+
+    config = await openclaw_gateway.read_config()
+    config = openclaw_gateway.lock_whatsapp_account(
+        config, link.external_id, phone_number
+    )
+    openclaw_gateway.write_config(config)
+    openclaw_gateway.restart_gateway()
+
+    link.peer_id = phone_number
+    db.add(link)
+    return True
 
 
 async def auto_lock_telegram(db: AsyncSession, session_id: str, telegram_user_id: str) -> bool:
