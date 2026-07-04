@@ -347,6 +347,7 @@ async def _ws_connect_v3(ws: Any) -> None:
                 "operator.approvals",
                 "operator.pairing",
             ],
+            # operator.admin is required for web.login.start / web.login.wait
             "auth": {
                 "token": settings.openclaw_gateway_token or "",
             },

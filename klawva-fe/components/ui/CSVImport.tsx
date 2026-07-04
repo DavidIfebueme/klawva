@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Upload, X, Check, FileDown } from 'lucide-react';
 import { parseProductCSV, productsToPlainText } from '../../lib/csv';
 import { Button } from './Button';
@@ -14,6 +14,16 @@ Product A,5000 NGN,High quality widget,10
 Product B,3000 NGN,Another great item,5
 Product C,7500 NGN,Premium option,2`;
 
+const ALLOWED_EXTENSIONS = new Set(['.csv', '.txt']);
+
+function debounce<T extends (...args: Parameters<T>) => void>(fn: T, delayMs: number) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return (...args: Parameters<T>) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delayMs);
+  };
+}
+
 export function CSVImport({ onImport }: CSVImportProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [csvContent, setCsvContent] = useState('');
@@ -23,42 +33,77 @@ export function CSVImport({ onImport }: CSVImportProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const parseCSV = useCallback((content: string) => {
+    setIsParsing(true);
+    setError('');
+
+    setTimeout(() => {
+      try {
+        const products = parseProductCSV(content);
+        setParsedProducts(products);
+        if (products.length === 0) {
+          setError('No products found. Check CSV format.');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to parse CSV.';
+        setError(message);
+        setParsedProducts([]);
+      } finally {
+        setIsParsing(false);
+      }
+    }, 0);
+  }, []);
+
+  const debouncedParseCSV = useMemo(
+    () => debounce((content: string) => parseCSV(content), 300),
+    [parseCSV],
+  );
+
   useEffect(() => {
     if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('keydown', handleEscape);
+
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = originalOverflow;
+      document.removeEventListener('keydown', handleEscape);
     };
   }, [isOpen]);
 
-  const parseCSV = (content: string) => {
-    setIsParsing(true);
-    setError('');
-    try {
-      const products = parseProductCSV(content);
-      setParsedProducts(products);
-      if (products.length === 0) {
-        setError('No products found. Check CSV format.');
-      }
-    } catch {
-      setError('Failed to parse CSV. Make sure it is valid comma-separated data.');
-      setParsedProducts([]);
-    } finally {
-      setIsParsing(false);
+  const validateFile = (file: File): boolean => {
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(extension)) {
+      setError('Please upload a .csv or .txt file.');
+      return false;
     }
+    if (file.size > 1024 * 1024) {
+      setError('File too large. Max size is 1MB.');
+      return false;
+    }
+    return true;
   };
 
   const handleFile = (file: File) => {
-    if (file.size > 1024 * 1024) {
-      setError('File too large. Max size is 1MB.');
-      return;
-    }
+    setError('');
+    if (!validateFile(file)) return;
+
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
+      const content = event.target?.result;
+      if (typeof content !== 'string') {
+        setError('Failed to read file.');
+        return;
+      }
       setCsvContent(content);
       parseCSV(content);
     };
+    reader.onerror = () => setError('Failed to read file.');
     reader.readAsText(file);
   };
 
@@ -85,7 +130,7 @@ export function CSVImport({ onImport }: CSVImportProps) {
     a.href = url;
     a.download = 'klawva-products-template.csv';
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   };
 
   if (!isOpen) {
@@ -135,7 +180,7 @@ export function CSVImport({ onImport }: CSVImportProps) {
         >
           <Upload size={32} className="text-klawva-muted mx-auto mb-4" />
           <p className="text-sm text-klawva-muted">Click to upload or drag & drop a CSV file</p>
-          <p className="text-xs text-klawva-dim mt-2">Max 1MB</p>
+          <p className="text-xs text-klawva-dim mt-2">Max 1MB · .csv or .txt</p>
         </div>
         <input
           ref={fileInputRef}
@@ -150,8 +195,15 @@ export function CSVImport({ onImport }: CSVImportProps) {
           <textarea
             value={csvContent}
             onChange={(e) => {
-              setCsvContent(e.target.value);
-              parseCSV(e.target.value);
+              const content = e.target.value;
+              setCsvContent(content);
+              setError('');
+              setParsedProducts([]);
+              if (content.trim()) {
+                debouncedParseCSV(content);
+              } else {
+                setIsParsing(false);
+              }
             }}
             placeholder="name,price,description,stock&#10;Product A,5000,High quality widget,10"
             className="w-full h-32 bg-klawva-bg border border-klawva-border rounded p-3 text-xs font-mono text-klawva-text focus:border-klawva-accent focus:outline-none"

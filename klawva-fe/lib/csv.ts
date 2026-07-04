@@ -33,6 +33,12 @@ function detectHeaders(rows: string[][]): { headers: string[]; dataRows: string[
 export function parseProductCSV(csvContent: string): Product[] {
   const cleanContent = stripBom(csvContent);
   const parseResult = Papa.parse<string[]>(cleanContent, { skipEmptyLines: true });
+
+  if (parseResult.errors.length > 0) {
+    const firstError = parseResult.errors[0];
+    throw new Error(`CSV parse error on row ${firstError.row ?? '?'}: ${firstError.message}`);
+  }
+
   const rows = parseResult.data as string[][];
   const { headers, dataRows } = detectHeaders(rows);
 

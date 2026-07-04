@@ -155,7 +155,7 @@ function CheckoutContent() {
                       {field.label} {field.required && <span className="text-klawva-orange">*</span>}
                     </label>
                     {field.csvImport && (
-                      <CSVImport onImport={(text) => setBrief({ ...brief, [field.id]: text })} />
+                      <CSVImport onImport={(text) => setBrief((prev) => ({ ...prev, [field.id]: text }))} />
                     )}
                   </div>
                   {field.type === 'textarea' ? (
