@@ -339,6 +339,14 @@ async def _ws_connect_v3(ws: Any) -> None:
                 "mode": "backend",
                 "version": "2026.4.21",
             },
+            "role": "operator",
+            "scopes": [
+                "operator.admin",
+                "operator.read",
+                "operator.write",
+                "operator.approvals",
+                "operator.pairing",
+            ],
             "auth": {
                 "token": settings.openclaw_gateway_token or "",
             },
