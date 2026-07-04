@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
 from app.features.channels.service import (
+    _normalize_whatsapp_number,
     assign_klawva_whatsapp_number,
     assign_telegram_bot_token,
     auto_lock_telegram,
+    get_vendor_whatsapp_qr,
 )
 from app.features.emails.service import send_shift_started_email
 from app.features.payments.service import require_confirmed_session_payment
@@ -84,9 +86,25 @@ async def activate_session_endpoint(
     wa_me_link: str | None = None
 
     if session.channel == "whatsapp":
-        whatsapp_number, wa_me_link = await assign_klawva_whatsapp_number(
-            db, session_id=current_session_id
-        )
+        if session.agent_id == "vendor":
+            qr, expires_in = await get_vendor_whatsapp_qr(
+                db, session_id=current_session_id
+            )
+            vendor_number = _normalize_whatsapp_number(
+                session.brief.get("whatsapp_number")
+            )
+            if vendor_number:
+                stmt = select(ChannelLink).where(
+                    ChannelLink.session_id == current_session_id
+                )
+                vendor_link = (await db.execute(stmt)).scalar_one_or_none()
+                if vendor_link:
+                    vendor_link.link_target = vendor_number
+                    await db.commit()
+        else:
+            whatsapp_number, wa_me_link = await assign_klawva_whatsapp_number(
+                db, session_id=current_session_id
+            )
     else:
         _, telegram_deep_link = await assign_telegram_bot_token(
             db,
