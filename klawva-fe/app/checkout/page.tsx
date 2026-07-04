@@ -8,6 +8,7 @@ import { createSession, initializePayment } from '../../lib/api';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
+import { CSVImport } from '../../components/ui/CSVImport';
 import { WhatsAppIcon } from '../../components/icons/WhatsAppIcon';
 import { TelegramIcon } from '../../components/icons/TelegramIcon';
 import { ScrapperIcon } from '../../components/icons/ScrapperIcon';
@@ -149,9 +150,14 @@ function CheckoutContent() {
             <div className="flex flex-col gap-8 mb-12">
               {agent.briefFields.map((field) => (
                 <div key={field.id} className="flex flex-col gap-2">
-                  <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
-                    {field.label} {field.required && <span className="text-klawva-orange">*</span>}
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
+                      {field.label} {field.required && <span className="text-klawva-orange">*</span>}
+                    </label>
+                    {field.csvImport && (
+                      <CSVImport onImport={(text) => setBrief((prev) => ({ ...prev, [field.id]: text }))} />
+                    )}
+                  </div>
                   {field.type === 'textarea' ? (
                     <textarea
                       className="bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors min-h-[120px] resize-y"
@@ -196,15 +202,16 @@ function CheckoutContent() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
               <button
-                disabled
-                className="flex flex-col items-start text-left p-6 rounded-lg border bg-[#111111] border-klawva-border opacity-40 cursor-not-allowed"
+                onClick={() => setChannel('whatsapp')}
+                className={`flex flex-col items-start text-left p-6 rounded-lg border transition-all duration-200 ${
+                  channel === 'whatsapp' ? 'bg-[#1A1A1A] border-klawva-accent' : 'bg-[#111111] border-klawva-border hover:border-klawva-muted'
+                }`}
               >
-                <WhatsAppIcon size={48} className="text-klawva-muted mb-6" />
+                <WhatsAppIcon size={48} className="text-klawva-accent mb-6" />
                 <h3 className="font-syne font-bold text-xl text-klawva-text mb-2">WhatsApp</h3>
-                <p className="font-mono text-klawva-muted text-sm mb-3">
-                  Connect your agent via WhatsApp. You&apos;ll receive a number to message after checkout.
+                <p className="font-mono text-klawva-muted text-sm">
+                  Connect via WhatsApp. For Vendor, you will scan a QR code to link your own business number. For other agents, a Klawva number is assigned.
                 </p>
-                <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider">Coming soon</span>
               </button>
               
               <button
@@ -281,26 +288,15 @@ function CheckoutContent() {
               <p className="font-mono text-klawva-dim text-xs text-center">
                 Your messages are processed by our AI during the session. After your shift ends, access is revoked and conversation logs are deleted.
               </p>
-              {agent.comingSoon ? (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full opacity-40 cursor-not-allowed"
-                  disabled
-                >
-                  Coming soon
-                </Button>
-              ) : (
-                <Button 
-                  variant="primary" 
-                  size="lg" 
-                  className="w-full"
-                  onClick={handlePayment}
-                  disabled={loading}
-                >
-                  {loading ? 'Launching...' : 'Launch session'}
-                </Button>
-              )}
+              <Button 
+                variant="primary" 
+                size="lg" 
+                className="w-full"
+                onClick={handlePayment}
+                disabled={loading}
+              >
+                {loading ? 'Launching...' : 'Launch session'}
+              </Button>
             </div>
 
             {errorMessage && (
