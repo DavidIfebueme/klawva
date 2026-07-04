@@ -333,32 +333,49 @@ async def lock_whatsapp_access_endpoint(
     session_token: str = Depends(get_session_token_header),
     db: AsyncSession = Depends(get_async_session),
 ) -> WhatsAppLockAccessResponse:
-    await assert_session_access(
+    session = await assert_session_access(
         db,
         session_id=payload.session_id,
         session_token=session_token,
     )
 
     agent_id = _agent_gateway_id(payload.session_id)
-    phone_number = openclaw_gateway.read_whatsapp_peer_id(agent_id)
-    if not phone_number:
-        return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=None)
+    detected_peer = openclaw_gateway.read_whatsapp_peer_id(agent_id)
 
     stmt = select(ChannelLink).where(ChannelLink.session_id == payload.session_id)
     link = (await db.execute(stmt)).scalar_one_or_none()
     if not link or not link.external_id:
-        return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=phone_number)
+        return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=detected_peer)
 
     account_id = link.external_id
+
+    if session.agent_id == "vendor":
+        from app.features.channels.service import _normalize_whatsapp_number
+        vendor_number = _normalize_whatsapp_number(link.link_target)
+        if not vendor_number:
+            return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=detected_peer)
+        if detected_peer and detected_peer != vendor_number:
+            return WhatsAppLockAccessResponse(
+                locked=False,
+                whatsappPhoneNumber=vendor_number,
+                overlapWarning=True,
+            )
+        phone_number = vendor_number
+    else:
+        if not detected_peer:
+            return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=None)
+        phone_number = detected_peer
 
     config = await openclaw_gateway.read_config()
     config = openclaw_gateway.lock_whatsapp_account(config, account_id, phone_number)
     openclaw_gateway.write_config(config)
     openclaw_gateway.restart_gateway()
 
-    overlap = phone_number in CLAWRAG_WHATSAPP_ALLOW_FROM
+    link.peer_id = phone_number
+    await db.commit()
+
     return WhatsAppLockAccessResponse(
         locked=True,
         whatsappPhoneNumber=phone_number,
-        overlapWarning=overlap,
+        overlapWarning=False,
     )

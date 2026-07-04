@@ -331,13 +331,13 @@ async def _ws_connect_v3(ws: Any) -> None:
         "id": connect_id,
         "method": "connect",
         "params": {
-            "minProtocol": 3,
-            "maxProtocol": 3,
+            "minProtocol": 4,
+            "maxProtocol": 4,
             "client": {
                 "id": "gateway-client",
                 "platform": "linux",
                 "mode": "backend",
-                "version": "2026.4.21",
+                "version": "2026.6.10",
             },
             "role": "operator",
             "scopes": [
@@ -347,7 +347,6 @@ async def _ws_connect_v3(ws: Any) -> None:
                 "operator.approvals",
                 "operator.pairing",
             ],
-            # operator.admin is required for web.login.start / web.login.wait
             "auth": {
                 "token": settings.openclaw_gateway_token or "",
             },
@@ -368,8 +367,7 @@ async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
         "id": request_id,
         "method": "web.login.start",
         "params": {
-            "channel": "whatsapp",
-            "account": account_id,
+            "accountId": account_id,
         },
     }
 
@@ -414,8 +412,8 @@ async def wait_for_whatsapp_link(account_id: str = "default", timeout: float = 1
         "id": request_id,
         "method": "web.login.wait",
         "params": {
-            "channel": "whatsapp",
-            "account": account_id,
+            "accountId": account_id,
+            "timeoutMs": int(timeout * 1000),
         },
     }
 
