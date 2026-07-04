@@ -136,6 +136,7 @@ export default function SessionHandshakePage() {
           if (activation.qr) {
             setQrCode(activation.qr);
             setQrExpiresIn(activation.expiresIn || 60);
+            setProvisioningReady(true);
           }
 
           setStatusText('Waiting for agent to come online...');
