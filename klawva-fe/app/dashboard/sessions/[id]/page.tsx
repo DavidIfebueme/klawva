@@ -6,6 +6,7 @@ import { getDashboardSession, getDashboardSessionBrief, updateDashboardSessionBr
 import { DashboardSessionEntry } from '@/types';
 import { agents, AgentId } from '@/lib/agents';
 import { Button } from '@/components/ui/Button';
+import { CSVImport } from '@/components/ui/CSVImport';
 import { ArrowLeft, Save, Bot, Calendar, ToggleLeft, ToggleRight, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'motion/react';
@@ -217,9 +218,14 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
               <div className="space-y-5">
                 {agentDef.briefFields.map((field) => (
                   <div key={field.id} className="space-y-2">
-                    <label htmlFor={field.id} className="block text-xs uppercase tracking-wider text-klawva-muted">
-                      {field.label} {field.required && <span className="text-klawva-accent">*</span>}
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label htmlFor={field.id} className="block text-xs uppercase tracking-wider text-klawva-muted">
+                        {field.label} {field.required && <span className="text-klawva-accent">*</span>}
+                      </label>
+                      {field.csvImport && (
+                        <CSVImport onImport={(text) => handleBriefChange(field.id, text)} />
+                      )}
+                    </div>
                     {field.type === 'textarea' ? (
                       <textarea
                         id={field.id}
