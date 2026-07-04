@@ -319,7 +319,15 @@ async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool
         return False
 
 
-async def _ws_connect_v3(ws: Any) -> None:
+async def _recv_rpc_response(ws: Any, request_id: str, timeout: float = 15) -> dict:
+    while True:
+        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        msg = json.loads(raw)
+        if msg.get("type") == "res" and msg.get("id") == request_id:
+            return msg
+
+
+async def _ws_connect(ws: Any) -> str:
     raw = await asyncio.wait_for(ws.recv(), timeout=10)
     challenge = json.loads(raw)
     if challenge.get("event") != "connect.challenge":
@@ -337,7 +345,7 @@ async def _ws_connect_v3(ws: Any) -> None:
                 "id": "gateway-client",
                 "platform": "linux",
                 "mode": "backend",
-                "version": "2026.6.10",
+                "version": "2026.6.11",
             },
             "role": "operator",
             "scopes": [
@@ -353,11 +361,14 @@ async def _ws_connect_v3(ws: Any) -> None:
         },
     }
     await ws.send(json.dumps(connect_payload))
-    raw = await asyncio.wait_for(ws.recv(), timeout=10)
-    connect_resp = json.loads(raw)
-    if not connect_resp.get("ok"):
-        err = connect_resp.get("error", {}).get("message", "unknown")
-        raise OpenClawGatewayError(f"ws_connect_failed:{err}")
+    while True:
+        raw = await asyncio.wait_for(ws.recv(), timeout=10)
+        connect_resp = json.loads(raw)
+        if connect_resp.get("type") == "res" and connect_resp.get("id") == connect_id:
+            if not connect_resp.get("ok"):
+                err = connect_resp.get("error", {}).get("message", "unknown")
+                raise OpenClawGatewayError(f"ws_connect_failed:{err}")
+            return connect_id
 
 
 async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
@@ -374,35 +385,25 @@ async def get_whatsapp_qr(account_id: str = "default") -> tuple[str, int]:
     try:
         async with websockets.connect(
             settings.openclaw_gateway_ws_url,
-            additional_headers=_gateway_headers(),
             open_timeout=10,
         ) as ws:
-            await _ws_connect_v3(ws)
+            await _ws_connect(ws)
             await ws.send(json.dumps(payload))
-            raw = await asyncio.wait_for(ws.recv(), timeout=15)
+            raw = await _recv_rpc_response(ws, request_id, timeout=15)
     except OpenClawGatewayError:
         raise
     except Exception as exc:
         raise OpenClawGatewayError(f"gateway_ws_qr_failed:{exc}") from exc
 
-    try:
-        response = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise OpenClawGatewayError("gateway_ws_qr_invalid_json") from exc
-
-    if not response.get("ok"):
-        error_msg = response.get("error", {}).get("message", "unknown")
-        raise OpenClawGatewayError(f"gateway_ws_qr_error:{error_msg}")
-
-    result = response.get("payload", response.get("result", {}))
-    qr_data = result.get("qr", result.get("qrCode", ""))
+    result = raw.get("payload", raw.get("result", {}))
+    qr_data_url = result.get("qrDataUrl", "")
     expires_ms = result.get("expiresMs", 60000)
     expires_s = max(expires_ms // 1000, 10)
 
-    if not qr_data:
+    if not qr_data_url:
         raise OpenClawGatewayError("gateway_ws_qr_empty")
 
-    return qr_data, expires_s
+    return qr_data_url, expires_s
 
 
 async def wait_for_whatsapp_link(account_id: str = "default", timeout: float = 120.0) -> bool:
@@ -420,20 +421,14 @@ async def wait_for_whatsapp_link(account_id: str = "default", timeout: float = 1
     try:
         async with websockets.connect(
             settings.openclaw_gateway_ws_url,
-            additional_headers=_gateway_headers(),
             open_timeout=10,
         ) as ws:
-            await _ws_connect_v3(ws)
+            await _ws_connect(ws)
             await ws.send(json.dumps(payload))
-            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            response = await _recv_rpc_response(ws, request_id, timeout=timeout)
     except OpenClawGatewayError:
         raise
     except Exception as exc:
         raise OpenClawGatewayError(f"gateway_ws_link_wait_failed:{exc}") from exc
-
-    try:
-        response = json.loads(raw)
-    except json.JSONDecodeError:
-        return False
 
     return bool(response.get("ok"))
