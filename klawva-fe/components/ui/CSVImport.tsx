@@ -18,9 +18,17 @@ const ALLOWED_EXTENSIONS = new Set(['.csv', '.txt']);
 
 function debounce<T extends (...args: Parameters<T>) => void>(fn: T, delayMs: number) {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
+  return {
+    invoke: (...args: Parameters<T>) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delayMs);
+    },
+    cancel: () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
   };
 }
 
@@ -147,7 +155,10 @@ export function CSVImport({ onImport }: CSVImportProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) setIsOpen(false); }}
+    >
       <div className="bg-klawva-surface border border-klawva-border rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-syne font-bold text-lg text-klawva-text">Import Products CSV</h3>
@@ -200,8 +211,9 @@ export function CSVImport({ onImport }: CSVImportProps) {
               setError('');
               setParsedProducts([]);
               if (content.trim()) {
-                debouncedParseCSV(content);
+                debouncedParseCSV.invoke(content);
               } else {
+                debouncedParseCSV.cancel();
                 setIsParsing(false);
               }
             }}
