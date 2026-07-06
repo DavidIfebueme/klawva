@@ -294,19 +294,20 @@ async def assign_telegram_bot_token(db: AsyncSession, *, session_id: str) -> tup
 
 
 async def auto_lock_whatsapp(
-    db: AsyncSession, session_id: str, phone_number: str
+    db: AsyncSession, session_id: str, phone_number: str, *, is_vendor: bool = False
 ) -> bool:
     stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
     link = (await db.execute(stmt)).scalar_one_or_none()
     if not link or not link.external_id:
         return False
 
-    config = await openclaw_gateway.read_config()
-    config = openclaw_gateway.lock_whatsapp_account(
-        config, link.external_id, phone_number
-    )
-    openclaw_gateway.write_config(config)
-    openclaw_gateway.restart_gateway()
+    if not is_vendor:
+        config = await openclaw_gateway.read_config()
+        config = openclaw_gateway.lock_whatsapp_account(
+            config, link.external_id, phone_number
+        )
+        openclaw_gateway.write_config(config)
+        openclaw_gateway.restart_gateway()
 
     link.peer_id = phone_number
     db.add(link)
