@@ -40,19 +40,38 @@ async def _process_pending_whatsapp_locks(db: AsyncSession) -> int:
             continue
 
         detected_peer = agent_state["peer_id"]
-        if session.agent_id == "vendor":
-            vendor_number = _normalize_whatsapp_number(link.link_target)
-            if vendor_number and detected_peer != vendor_number:
-                log.warning(
-                    "vendor whatsapp peer mismatch for session %s: expected %s got %s",
-                    session.id,
-                    vendor_number,
-                    detected_peer,
+        is_vendor = session.agent_id == "vendor"
+
+        if is_vendor:
+            owner_number = _normalize_whatsapp_number(link.link_target)
+            link.peer_id = owner_number or detected_peer
+            db.add(link)
+            session.status = "active"
+            db.add(
+                ActivityEvent(
+                    session_id=session.id,
+                    event_type="channel_connected",
+                    payload={
+                        "text": "channel connected",
+                        "provider": agent_state.get("provider", ""),
+                    },
+                    occurred_at=datetime.now(UTC),
                 )
-                continue
-            lock_target = vendor_number or detected_peer
-        else:
-            lock_target = detected_peer
+            )
+            if agent_state.get("intro_sent"):
+                db.add(
+                    ActivityEvent(
+                        session_id=session.id,
+                        event_type="intro_sent",
+                        payload={"text": "intro message sent"},
+                        occurred_at=datetime.now(UTC),
+                    )
+                )
+            await db.commit()
+            locked += 1
+            continue
+
+        lock_target = detected_peer
 
         try:
             await auto_lock_whatsapp(db, session.id, lock_target)
