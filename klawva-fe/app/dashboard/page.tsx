@@ -294,7 +294,7 @@ function SessionCard({
       {session.status === 'completed' && (
         <div className="mt-5 pt-4 border-t border-klawva-border flex justify-end">
           <Link
-            href={`/report/${session.id}?agent=${session.agentId}`}
+            href={`/report/${session.id}?agent=${session.agentId}${session.shareToken ? `&shareToken=${encodeURIComponent(session.shareToken)}` : ''}`}
             className="flex items-center gap-1.5 text-xs text-klawva-accent uppercase tracking-wider font-syne font-bold hover:brightness-110"
           >
             <span>View Report</span>

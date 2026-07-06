@@ -169,8 +169,8 @@ async def send_shift_started_email(db: AsyncSession, *, session: Session) -> Non
     html = _render_template(
         title="Your worker shift has started",
         body=body,
-        cta_label="View Session",
-        cta_href=f"{settings.frontend_base_url}/session/{session.id}/status",
+        cta_label="Open Dashboard",
+        cta_href=f"{settings.frontend_base_url}/dashboard",
     )
     text = (
         "Your worker shift has started. "
@@ -221,8 +221,8 @@ async def send_shift_ending_soon_email(db: AsyncSession, *, session: Session) ->
     html = _render_template(
         title="One hour left in your worker shift",
         body=body,
-        cta_label="Open Live Session",
-        cta_href=f"{settings.frontend_base_url}/session/{session.id}/status",
+        cta_label="Open Dashboard",
+        cta_href=f"{settings.frontend_base_url}/dashboard",
     )
     text = (
         "Your worker shift ends in 1 hour. "

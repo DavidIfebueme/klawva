@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
+from app.features.reports.models import MissionReport
 from app.features.dashboard.auth import (
     decode_token,
     generate_token,
@@ -103,6 +104,17 @@ async def list_user_sessions(
     )
     res = await db.execute(stmt)
     sessions = res.scalars().all()
+
+    session_ids = [s.id for s in sessions]
+    share_token_map: dict[str, str | None] = {}
+    if session_ids:
+        report_stmt = select(MissionReport.session_id, MissionReport.share_token).where(
+            MissionReport.session_id.in_(session_ids)
+        )
+        report_res = await db.execute(report_stmt)
+        for row in report_res:
+            share_token_map[row.session_id] = row.share_token
+
     return [
         DashboardSessionEntry(
             id=s.id,
@@ -114,6 +126,7 @@ async def list_user_sessions(
             expiresAt=s.expires_at,
             completedAt=s.completed_at,
             createdAt=s.created_at,
+            shareToken=share_token_map.get(s.id),
         )
         for s in sessions
     ]
@@ -128,6 +141,9 @@ async def get_user_session(
     s = await db.get(Session, session_id)
     if not s or s.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="session_not_found")
+    report_stmt = select(MissionReport.share_token).where(MissionReport.session_id == s.id)
+    report_res = await db.execute(report_stmt)
+    share_token = report_res.scalar_one_or_none()
     return DashboardSessionEntry(
         id=s.id,
         agentId=s.agent_id,
@@ -138,6 +154,7 @@ async def get_user_session(
         expiresAt=s.expires_at,
         completedAt=s.completed_at,
         createdAt=s.created_at,
+        shareToken=share_token,
     )
 
 
@@ -154,6 +171,9 @@ async def toggle_auto_renew(
     s.auto_renew = payload.auto_renew
     await db.commit()
     await db.refresh(s)
+    report_stmt = select(MissionReport.share_token).where(MissionReport.session_id == s.id)
+    report_res = await db.execute(report_stmt)
+    share_token = report_res.scalar_one_or_none()
     return DashboardSessionEntry(
         id=s.id,
         agentId=s.agent_id,
@@ -164,6 +184,7 @@ async def toggle_auto_renew(
         expiresAt=s.expires_at,
         completedAt=s.completed_at,
         createdAt=s.created_at,
+        shareToken=share_token,
     )
 
 
