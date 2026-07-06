@@ -32,6 +32,14 @@ async def create_session(
     from app.features.users.models import User
     from app.features.payments.wallet_service import get_or_create_wallet
 
+    if agent_id == "vendor" and channel == "whatsapp":
+        from app.features.channels.service import _normalize_whatsapp_number
+        if not _normalize_whatsapp_number(brief.get("whatsapp_number")):
+            raise HTTPException(
+                status_code=422,
+                detail="A valid WhatsApp number is required for vendor agents",
+            )
+
     user_id = None
     if customer_email and customer_email.strip():
         email_clean = customer_email.strip().lower()
