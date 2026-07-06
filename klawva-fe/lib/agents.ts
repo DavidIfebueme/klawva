@@ -69,7 +69,7 @@ export const agents: Record<AgentId, Agent> = {
     examplePrompt: 'I\'m running a flash sale. Here\'s my product list. Handle all incoming messages and escalate only if a customer is very upset.',
     channels: ['whatsapp'],
     briefFields: [
-      { id: 'whatsapp_number', label: 'Your WhatsApp business number', placeholder: '+234 800 000 0000', type: 'tel', required: true, hint: 'Use a separate number from your personal WhatsApp. This number will be linked to your Vendor.' },
+      { id: 'whatsapp_number', label: 'Your WhatsApp business number', placeholder: '+234 800 000 0000', type: 'tel', required: true, hint: 'This number identifies you as the owner for admin access. For the agent to message you directly, use a different number when connecting via QR.' },
       { id: 'products', label: 'Your products and prices', placeholder: 'Paste your product list here — names, prices, descriptions', type: 'textarea', required: true, csvImport: true },
       { id: 'orders', label: 'Current orders (optional)', placeholder: 'Paste any active orders the Vendor should know about', type: 'textarea', required: false },
       { id: 'instructions', label: 'Special instructions', placeholder: 'e.g. Do not offer discounts. Always mention our return policy.', type: 'textarea', required: false },
