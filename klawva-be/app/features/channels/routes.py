@@ -351,20 +351,18 @@ async def lock_whatsapp_access_endpoint(
 
     if session.agent_id == "vendor":
         from app.features.channels.service import _normalize_whatsapp_number
-        vendor_number = _normalize_whatsapp_number(link.link_target)
-        if not vendor_number:
-            return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=detected_peer)
-        if detected_peer and detected_peer != vendor_number:
-            return WhatsAppLockAccessResponse(
-                locked=False,
-                whatsappPhoneNumber=vendor_number,
-                overlapWarning=True,
-            )
-        phone_number = vendor_number
-    else:
-        if not detected_peer:
-            return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=None)
-        phone_number = detected_peer
+        owner_number = _normalize_whatsapp_number(link.link_target)
+        link.peer_id = owner_number or detected_peer
+        await db.commit()
+        return WhatsAppLockAccessResponse(
+            locked=True,
+            whatsappPhoneNumber=owner_number or detected_peer,
+            overlapWarning=False,
+        )
+
+    if not detected_peer:
+        return WhatsAppLockAccessResponse(locked=False, whatsappPhoneNumber=None)
+    phone_number = detected_peer
 
     config = await openclaw_gateway.read_config()
     config = openclaw_gateway.lock_whatsapp_account(config, account_id, phone_number)
