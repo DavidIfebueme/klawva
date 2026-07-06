@@ -77,24 +77,26 @@ def _resolve_channel_binding(
             "sendReadReceipts": False,
         }
         if session.agent_id == "vendor":
+            from app.features.channels.service import _normalize_whatsapp_number
             brief_payload = session.brief if isinstance(session.brief, dict) else {}
-            owner_number = brief_payload.get("whatsapp_number", "")
-            owner_system_prompt = (
-                "The person messaging you is the business OWNER"
-                + (f" (phone: {owner_number})" if owner_number else "")
-                + ". You have full admin access: add products, run commands, "
-                "receive reports. Prioritize their requests."
-            )
-            account_config["direct"] = {
-                owner_number: {"systemPrompt": owner_system_prompt},
-                "*": {
+            owner_number = _normalize_whatsapp_number(brief_payload.get("whatsapp_number"))
+            account_config["direct"] = {}
+            if owner_number:
+                account_config["direct"][owner_number] = {
                     "systemPrompt": (
-                        "The person messaging you is a CUSTOMER. Only answer "
-                        "questions about the business, products, and services. "
-                        "Never run admin commands, add products, or share "
-                        "internal business details."
+                        "The person messaging you is the business OWNER"
+                        f" (phone: {owner_number}). You have full admin access: "
+                        "add products, run commands, receive reports. "
+                        "Prioritize their requests."
                     )
-                },
+                }
+            account_config["direct"]["*"] = {
+                "systemPrompt": (
+                    "The person messaging you is a CUSTOMER. Only answer "
+                    "questions about the business, products, and services. "
+                    "Never run admin commands, add products, or share "
+                    "internal business details."
+                )
             }
         return "whatsapp", account_id, account_config
 
