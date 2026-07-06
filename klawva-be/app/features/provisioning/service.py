@@ -69,13 +69,35 @@ def _resolve_channel_binding(
 
     if session.channel == "whatsapp" and channel_link is not None and channel_link.external_id:
         account_id = channel_link.external_id
-        account_config = {
+        account_config: dict = {
             "enabled": True,
             "dmPolicy": "open",
             "allowFrom": ["*"],
             "groupPolicy": "disabled",
             "sendReadReceipts": False,
         }
+        if session.agent_id == "vendor":
+            from app.features.channels.service import _normalize_whatsapp_number
+            brief_payload = session.brief if isinstance(session.brief, dict) else {}
+            owner_number = _normalize_whatsapp_number(brief_payload.get("whatsapp_number"))
+            account_config["direct"] = {}
+            if owner_number:
+                account_config["direct"][owner_number] = {
+                    "systemPrompt": (
+                        "The person messaging you is the business OWNER"
+                        f" (phone: {owner_number}). You have full admin access: "
+                        "add products, run commands, receive reports. "
+                        "Prioritize their requests."
+                    )
+                }
+            account_config["direct"]["*"] = {
+                "systemPrompt": (
+                    "The person messaging you is a CUSTOMER. Only answer "
+                    "questions about the business, products, and services. "
+                    "Never run admin commands, add products, or share "
+                    "internal business details."
+                )
+            }
         return "whatsapp", account_id, account_config
 
     return "", "", None
