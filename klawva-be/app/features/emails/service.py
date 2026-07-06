@@ -258,7 +258,12 @@ async def send_shift_ending_soon_email(db: AsyncSession, *, session: Session) ->
     )
 
 
-async def send_shift_ended_email(db: AsyncSession, *, session: Session, report_url: str | None = None) -> None:
+async def send_shift_ended_email(
+    db: AsyncSession,
+    *,
+    session: Session,
+    report_url: str | None = None,
+) -> None:
     if not session.customer_email:
         return
     if await _has_email_event(db, session_id=session.id, email_type="shift_ended"):

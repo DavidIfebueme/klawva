@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.activity.models import ActivityEvent
 from app.features.channels.models import ChannelLink
-from app.features.reports.models import MissionReport
 from app.features.dashboard.auth import (
     decode_token,
     generate_token,
@@ -30,6 +29,7 @@ from app.features.dashboard.contracts import (
 from app.features.payments.models import VirtualAccount, Wallet, WalletTransaction
 from app.features.provisioning.agent_config import build_agent_fragment
 from app.features.provisioning.workspace import create_agent_workspace
+from app.features.reports.models import MissionReport
 from app.features.sessions.models import Session
 from app.features.sessions.service import normalize_session_status
 from app.features.users.models import User
