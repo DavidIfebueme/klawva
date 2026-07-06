@@ -258,7 +258,7 @@ async def send_shift_ending_soon_email(db: AsyncSession, *, session: Session) ->
     )
 
 
-async def send_shift_ended_email(db: AsyncSession, *, session: Session) -> None:
+async def send_shift_ended_email(db: AsyncSession, *, session: Session, report_url: str | None = None) -> None:
     if not session.customer_email:
         return
     if await _has_email_event(db, session_id=session.id, email_type="shift_ended"):
@@ -273,8 +273,8 @@ async def send_shift_ended_email(db: AsyncSession, *, session: Session) -> None:
     html = _render_template(
         title="Shift complete",
         body=body,
-        cta_label="Hire Again",
-        cta_href=f"{settings.frontend_base_url}/",
+        cta_label="View Report" if report_url else "Hire Again",
+        cta_href=report_url or f"{settings.frontend_base_url}/",
     )
     text = (
         "Your worker shift has ended. "
@@ -282,6 +282,7 @@ async def send_shift_ended_email(db: AsyncSession, *, session: Session) -> None:
         f"{_format_dt(session.started_at)}. "
         "End: "
         f"{_format_dt(session.expires_at or session.completed_at)}."
+        + (f"\n\nView your mission report: {report_url}" if report_url else "")
     )
     try:
         message_id = await send_transactional_email(
