@@ -89,10 +89,21 @@ async def execute_due_terminations(db: AsyncSession) -> int:
         report_result = await db.execute(report_statement)
         report = report_result.scalar_one_or_none()
         if report is None:
+            summary = "Shift complete"
+            report_data: dict = {"stats": []}
+
+            pjob_stmt = select(ProvisioningJob).where(ProvisioningJob.session_id == session.id)
+            pjob_result = await db.execute(pjob_stmt)
+            pjob = pjob_result.scalar_one_or_none()
+            if pjob and pjob.agent_id_in_gateway:
+                agent_summary = openclaw_gateway.read_agent_summary(pjob.agent_id_in_gateway)
+                if agent_summary:
+                    summary = agent_summary
+
             report = MissionReport(
                 session_id=session.id,
-                summary="Shift complete",
-                report_data={"stats": []},
+                summary=summary,
+                report_data=report_data,
                 report_card_url=None,
                 share_token=_generate_share_token(),
                 delivered_at=now,
