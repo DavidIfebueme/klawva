@@ -190,7 +190,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
             <Button
               variant="secondary"
               size="sm"
-              href={`/session/${session.id}/status`}
+              href="/dashboard"
               className="w-full flex items-center justify-center gap-2"
             >
               <span>View Onboarding & Live Status</span>
