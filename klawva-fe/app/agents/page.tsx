@@ -8,7 +8,7 @@ export default function AgentsPage() {
     <main className="min-h-screen bg-klawva-bg text-klawva-text font-mono selection:bg-klawva-accent selection:text-klawva-bg">
       <Navbar />
       <div className="pt-24">
-        <AgentGrid />
+        <AgentGrid showAll showSeeAllButton={false} />
       </div>
       <Footer />
     </main>
