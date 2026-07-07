@@ -8,26 +8,26 @@ import { AgentActivityFeed } from './AgentActivityFeed';
 
 export function Hero() {
   return (
-    <section className="relative w-full min-h-screen lg:h-screen overflow-hidden bg-klawva-bg">
+    <section className="relative w-full h-screen overflow-hidden bg-klawva-bg">
       <AgentActivityFeed />
 
       <div className="absolute top-0 left-0 right-0 h-48 z-10 bg-gradient-to-b from-[#0A0A0A] to-transparent pointer-events-none" />
       <div className="absolute bottom-0 left-0 right-0 h-48 z-10 bg-gradient-to-t from-[#0A0A0A] to-transparent pointer-events-none" />
 
-      <div className="relative z-20 flex flex-col items-center justify-center min-h-screen lg:h-full text-center px-4 md:px-6 max-w-4xl mx-auto py-20 lg:py-0 lg:pt-16">
+      <div className="relative z-20 flex flex-col items-center justify-center h-full text-center px-6 max-w-4xl mx-auto pt-16">
         
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3, ease: 'easeOut' }}
-          className="mb-6 lg:mb-8"
+          className="mb-8"
         >
-          <span className="font-mono text-klawva-muted text-[10px] sm:text-xs tracking-[0.2em] uppercase">
+          <span className="font-mono text-klawva-muted text-xs tracking-[0.2em] uppercase">
             [ AUTONOMOUS · 24-HOUR · DISPOSABLE ]
           </span>
         </motion.div>
 
-        <h1 className="font-syne font-extrabold text-4xl sm:text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-tight mb-8">
+        <h1 className="font-syne font-extrabold text-5xl md:text-7xl lg:text-8xl leading-[0.9] tracking-tight mb-8">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -35,7 +35,7 @@ export function Hero() {
             className="text-klawva-text"
           >
             HIRE AN{' '}
-            <span style={{ WebkitTextStroke: '1px #E8FF47', color: 'transparent' }}>
+            <span style={{ WebkitTextStroke: '2px #E8FF47', color: 'transparent' }}>
               AI EMPLOYEE
             </span>
           </motion.span>
