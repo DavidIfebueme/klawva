@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://klawva.xyz">website</a> · <a href="https://klawva.xyz/dashboard">dashboard</a> · <a href="#how-it-works">how it works</a> · <a href="#api">api</a> · <a href="#deployment">deployment</a>
+  <a href="https://klawva.xyz">website</a> · <a href="https://klawva.xyz/dashboard">dashboard</a> · <a href="#how-it-works">how it works</a> · <a href="#architecture">architecture</a> · <a href="#api">api</a> · <a href="#deployment">deployment</a>
 </p>
 
 ---
@@ -23,6 +23,22 @@ you hire an ai worker. it shows up. it does the job. you get a report.
 5. **report** — at shift end, klawva generates a mission report with summary and stats
 
 auto-renewal keeps shifts running. wallets handle billing. the dashboard tracks everything.
+
+## architecture
+
+The complete platform design is documented in [architecture.md](docs/architecture.md).
+
+### Why Virtual Account Funding Over a Subscription Engine?
+
+> **Core Architectural Decision**:
+>
+> 1. **Autonomous Agent Delegated Spending (Future-Proofing)**:
+>    A standard subscription model only pays for agent runtime. In future updates, Klawva AI agents will act as direct proxies—performing procurement actions (like purchasing goods or paying for third-party API/service usage) directly on behalf of users. To execute these, agents require access to a funded, persistent wallet balance.
+> 
+> 2. **User Convenience & Persistent Top-Ups**:
+>    Rather than generating temporary deposit accounts or checkout screens repeatedly, users get a persistent virtual account mapped directly to their wallet. They can fund it dynamically at any time via bank transfer.
+
+For other key architecture details—including the automated check-and-reversal engine, webhook signature verification, OpenClaw AI gateway isolation, and deployment structure—please check the [System Architecture Guide](docs/architecture.md).
 
 ## tech stack
 
