@@ -130,8 +130,8 @@ def test_underpayment_reversal_flow(recon_client: TestClient) -> None:
         json=webhook_payload,
         headers={"nomba-signature": "sig"}
     )
-    assert response.status_code == 400
-    assert response.json()["error"]["message"] == "insufficient_payment_amount_reversed"
+    assert response.status_code == 200
+    assert response.json() == {"processed": True}
 
     assert len(recon_client.provider.payout_calls) == 1
     assert recon_client.provider.payout_calls[0]["amount_minor"] == 500
@@ -226,8 +226,8 @@ def test_va_funding_underpayment_reversal_flow(recon_client: TestClient) -> None
         json=webhook_payload,
         headers={"nomba-signature": "sig"}
     )
-    assert response.status_code == 400
-    assert response.json()["error"]["message"] == "va_funding_below_minimum_reversed"
+    assert response.status_code == 200
+    assert response.json() == {"processed": True}
 
     assert len(recon_client.provider.payout_calls) == 1
     assert recon_client.provider.payout_calls[0]["amount_minor"] == 200000
