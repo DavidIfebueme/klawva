@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'motion/react';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import { Navbar } from '../../../components/layout/Navbar';
 import { Footer } from '../../../components/layout/Footer';
 import { KlawvaMark } from '../../../components/icons/KlawvaMark';
@@ -39,6 +39,7 @@ export default function MissionReportCardPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(
     canLoad ? null : 'Session token missing. Please restart from checkout.',
   );
+  const [isDownloading, setIsDownloading] = useState(false);
 
   React.useEffect(() => {
     if (!canLoad) return;
@@ -80,19 +81,20 @@ export default function MissionReportCardPage() {
   };
 
   const handleDownload = async () => {
-    if (!cardRef.current) return;
+    if (!cardRef.current || isDownloading) return;
+    setIsDownloading(true);
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: '#0A0A0A',
-        scale: 2, // High res
-      });
-      const dataUrl = canvas.toDataURL('image/png');
+      const dataUrl = await toPng(cardRef.current, { pixelRatio: 2 });
       const link = document.createElement('a');
       link.download = `klawva-report-${sessionId.substring(0, 8)}.png`;
       link.href = dataUrl;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     } catch (err) {
       console.error('Failed to generate image', err);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -187,8 +189,8 @@ export default function MissionReportCardPage() {
               <Button variant="secondary" onClick={handleShare}>
                 {copied ? 'Copied!' : 'Share this report'}
               </Button>
-              <Button variant="secondary" onClick={handleDownload}>
-                Download as image
+              <Button variant="secondary" onClick={handleDownload} disabled={isDownloading}>
+                {isDownloading ? 'Generating...' : 'Download as image'}
               </Button>
             </div>
             
