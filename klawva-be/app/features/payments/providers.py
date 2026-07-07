@@ -273,12 +273,15 @@ class NombaProvider:
             "narration": narration,
         }
 
+        from app.platform.config import settings
+        source_account_id = settings.nomba_subaccount_id or self._account_id
+
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
                 f"{self._base_url}/v2/transfers/bank",
                 headers={
                     "Authorization": f"Bearer {token}",
-                    "accountId": self._account_id,
+                    "accountId": source_account_id,
                     "Content-Type": "application/json",
                 },
                 json=payload,
