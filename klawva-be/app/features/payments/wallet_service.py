@@ -67,11 +67,14 @@ async def debit_wallet(
     reference: str,
     description: str,
     source: str,
+    allow_negative: bool = False,
 ) -> WalletTransaction | None:
+    stmt = update(Wallet).where(Wallet.id == wallet_id)
+    if not allow_negative:
+        stmt = stmt.where(Wallet.balance_minor >= amount_minor)
+    
     result = await db.execute(
-        update(Wallet)
-        .where(Wallet.id == wallet_id, Wallet.balance_minor >= amount_minor)
-        .values(balance_minor=Wallet.balance_minor - amount_minor)
+        stmt.values(balance_minor=Wallet.balance_minor - amount_minor)
         .returning(Wallet.balance_minor)
     )
     row = result.one_or_none()
