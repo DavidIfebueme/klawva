@@ -1,6 +1,7 @@
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
+from unittest.mock import ANY
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.features.activity.models import ActivityEvent
 from app.features.payments.models import VirtualAccount, Wallet, WalletTransaction
+from app.features.reports.models import MissionReport
+from app.features.reports.service import _generate_share_token
 from app.features.sessions.models import Session
 from app.features.termination.models import TerminationJob
 from app.features.users.models import User
@@ -409,3 +412,112 @@ def test_brief_update_endpoint(test_client: TestClient) -> None:
     get_res = test_client.get(f"/api/dashboard/sessions/{session_id}/brief", headers=headers)
     assert get_res.status_code == 200
     assert get_res.json()["brief"] == {"task": "updated brief"}
+
+
+def _create_mission_report(session_id: str) -> str:
+    """Create a MissionReport for the given session and return its share_token."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+
+        async def create() -> str:
+            dep = app.dependency_overrides[get_async_session]
+            async for s in dep():
+                token = _generate_share_token()
+                report = MissionReport(
+                    session_id=session_id,
+                    summary="Test report summary",
+                    report_data={"stats": [{"label": "Items", "value": "42"}]},
+                    report_card_url=None,
+                    share_token=token,
+                    delivered_at=datetime.now(UTC),
+                )
+                s.add(report)
+                await s.commit()
+                return token
+
+        return loop.run_until_complete(create())
+    finally:
+        loop.close()
+
+
+def test_list_sessions_returns_share_token(test_client: TestClient) -> None:
+    email = "share-token-list@example.com"
+    response = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "scrapper",
+            "channel": "whatsapp",
+            "brief": {"task": "test"},
+            "customerEmail": email,
+        },
+    )
+    assert response.status_code == 200, f"Session creation failed: {response.status_code} {response.json()}"
+    session_id = response.json()["sessionId"]
+    share_token = _create_mission_report(session_id)
+
+    from app.features.dashboard.auth import generate_token
+
+    auth_token = generate_token(email, exp_minutes=60, scope="dashboard_session")
+    headers = {"x-dashboard-token": auth_token}
+
+    list_res = test_client.get("/api/dashboard/sessions", headers=headers)
+    assert list_res.status_code == 200, f"Expected 200, got {list_res.status_code}: {list_res.json()}"
+    sessions = list_res.json()
+    matching = [s for s in sessions if s["id"] == session_id]
+    assert len(matching) == 1
+    assert matching[0]["shareToken"] == share_token
+
+
+def test_get_session_returns_share_token(test_client: TestClient) -> None:
+    email = "share-token-get@example.com"
+    response = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "researcher",
+            "channel": "telegram",
+            "brief": {"task": "test"},
+            "customerEmail": email,
+        },
+    )
+    assert response.status_code == 200, f"Session creation failed: {response.status_code} {response.json()}"
+    session_id = response.json()["sessionId"]
+    share_token = _create_mission_report(session_id)
+
+    from app.features.dashboard.auth import generate_token
+
+    auth_token = generate_token(email, exp_minutes=60, scope="dashboard_session")
+    headers = {"x-dashboard-token": auth_token}
+
+    get_res = test_client.get(f"/api/dashboard/sessions/{session_id}", headers=headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["shareToken"] == share_token
+
+
+def test_toggle_auto_renew_returns_share_token(test_client: TestClient) -> None:
+    email = "share-token-renew@example.com"
+    response = test_client.post(
+        "/api/sessions",
+        json={
+            "agentId": "scrapper",
+            "channel": "whatsapp",
+            "brief": {"task": "test"},
+            "customerEmail": email,
+        },
+    )
+    assert response.status_code == 200, f"Session creation failed: {response.status_code} {response.json()}"
+    session_id = response.json()["sessionId"]
+    share_token = _create_mission_report(session_id)
+
+    from app.features.dashboard.auth import generate_token
+
+    auth_token = generate_token(email, exp_minutes=60, scope="dashboard_session")
+    headers = {"x-dashboard-token": auth_token}
+
+    patch_res = test_client.patch(
+        f"/api/dashboard/sessions/{session_id}/auto-renew",
+        json={"autoRenew": True},
+        headers=headers,
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["shareToken"] == share_token

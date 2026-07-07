@@ -120,3 +120,55 @@ def test_execute_due_termination(test_client: TestClient) -> None:
     )
     assert status.status_code == 200
     assert status.json()["status"] == "completed"
+
+
+def test_execute_termination_share_token_in_email_url(
+    test_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id, _ = _create_session(test_client)
+    send_ended_url = None
+
+    async def capture_send_shift_ended_email(
+        db: AsyncSession, *, session: object, report_url: str | None = None
+    ) -> None:
+        nonlocal send_ended_url
+        send_ended_url = report_url
+
+    monkeypatch.setattr(
+        "app.features.termination.service.send_shift_ended_email",
+        capture_send_shift_ended_email,
+    )
+
+    test_client.post(
+        "/api/termination/schedule",
+        json={"sessionId": session_id},
+        headers={"x-internal-token": "internal-token"},
+    )
+
+    async def move_due() -> None:
+        override = app.dependency_overrides[get_async_session]
+        async for db in override():
+            statement = (
+                update(TerminationJob)
+                .where(TerminationJob.session_id == session_id)
+                .values(scheduled_for=datetime.now(UTC) - timedelta(minutes=1))
+            )
+            await db.execute(statement)
+            await db.commit()
+
+    import asyncio
+
+    asyncio.run(move_due())
+
+    execute = test_client.post(
+        "/api/termination/execute-due",
+        headers={"x-internal-token": "internal-token"},
+    )
+    assert execute.status_code == 200
+    assert execute.json() == {"terminated": 1}
+
+    assert send_ended_url is not None, "send_shift_ended_email was not called"
+    assert "shareToken=" in send_ended_url, (
+        f"Expected shareToken in report_url, got: {send_ended_url}"
+    )
+    assert "report/" in send_ended_url
