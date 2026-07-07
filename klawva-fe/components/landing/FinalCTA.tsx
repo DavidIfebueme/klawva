@@ -6,7 +6,7 @@ import { Button } from '../ui/Button';
 
 export function FinalCTA() {
   return (
-    <section className="relative w-full min-h-screen lg:h-screen flex items-center justify-center px-4 md:px-6 py-20 lg:py-0 bg-klawva-bg border-t border-klawva-border overflow-hidden">
+    <section className="relative h-screen flex items-center justify-center px-6 bg-klawva-bg border-t border-klawva-border overflow-hidden">
       {/* Background glow */}
       <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(232,255,71,0.08)_0%,transparent_60%)] pointer-events-none" />
 
@@ -16,7 +16,7 @@ export function FinalCTA() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="font-syne font-extrabold text-4xl sm:text-5xl md:text-7xl lg:text-8xl text-klawva-text mb-6 tracking-tight leading-[0.9]"
+          className="font-syne font-extrabold text-5xl md:text-7xl lg:text-8xl text-klawva-text mb-6 tracking-tight leading-[0.9]"
         >
           YOUR FIRST WORKER IS WAITING.
         </motion.h2>
