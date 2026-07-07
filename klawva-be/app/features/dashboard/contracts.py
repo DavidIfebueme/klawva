@@ -31,6 +31,7 @@ class DashboardSessionEntry(BaseModel):
     expires_at: datetime | None = Field(default=None, alias="expiresAt")
     completed_at: datetime | None = Field(default=None, alias="completedAt")
     created_at: datetime = Field(alias="createdAt")
+    share_token: str | None = Field(default=None, alias="shareToken")
 
 
 class UpdateAutoRenewPayload(BaseModel):
