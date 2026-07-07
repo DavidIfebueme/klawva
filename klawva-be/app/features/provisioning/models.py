@@ -17,4 +17,5 @@ class ProvisioningJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     agent_id_in_gateway: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    cron_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
