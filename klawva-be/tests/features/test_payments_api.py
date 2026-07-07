@@ -45,7 +45,7 @@ class FakeProvider:
             provider_reference=provider_reference,
             status="confirmed",
             session_id=self.session_id,
-            amount_minor=2500,
+            amount_minor=250000,
             currency="NGN",
         )
 
@@ -241,7 +241,7 @@ def test_webhook_idempotent_and_unlock_session(
                 provider_reference=provider_reference,
                 status="confirmed",
                 session_id=session_id,
-                amount_minor=2500,
+                amount_minor=250000,
                 currency="NGN",
             )
 
