@@ -638,4 +638,8 @@ async def require_confirmed_session_payment(db: AsyncSession, *, session_id: str
         if payment.status == "confirmed":
             return payment
 
+    for payment in payments:
+        if payment.status in ("failed", "reversed"):
+            raise HTTPException(status_code=400, detail="payment_failed")
+
     raise HTTPException(status_code=409, detail="payment_not_confirmed")
