@@ -17,6 +17,7 @@ def register_request_logging(app: FastAPI) -> None:
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         start = time.perf_counter()
+        logger.debug("request incoming: %s %s", request.method, request.url.path)
         response = await call_next(request)
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
