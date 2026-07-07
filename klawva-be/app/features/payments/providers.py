@@ -16,7 +16,6 @@ from app.features.payments.contracts import PaymentProviderName
 from app.platform.config import settings
 
 
-
 class PaymentProviderError(RuntimeError):
     pass
 
@@ -64,7 +63,10 @@ class PaymentProvider(Protocol):
     async def verify_transaction(self, provider_reference: str) -> ProviderVerificationResult: ...
 
     def verify_webhook_signature(
-        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+        self,
+        body: bytes,
+        signature_header: str | None,
+        additional_headers: dict[str, str] | None = None,
     ) -> bool: ...
 
     def parse_webhook(self, body: bytes) -> WebhookParseResult: ...
@@ -97,7 +99,7 @@ class NombaProvider:
                     "grant_type": "client_credentials",
                     "client_id": self._client_id,
                     "client_secret": self._client_secret,
-                }
+                },
             )
 
         if response.status_code >= 400:
@@ -105,7 +107,9 @@ class NombaProvider:
 
         res_json = response.json()
         if res_json.get("code") != "00":
-            raise PaymentProviderError(f"nomba_auth_failed_code:{res_json.get('code')}:{res_json.get('description')}")
+            raise PaymentProviderError(
+                f"nomba_auth_failed_code:{res_json.get('code')}:{res_json.get('description')}"
+            )
 
         data = res_json.get("data", {})
         self._token = str(data.get("access_token"))
@@ -161,12 +165,20 @@ class NombaProvider:
             )
 
         if response.status_code >= 400:
-            logger.error("Nomba checkout initialize failed: %s, body: %s", response.status_code, response.text)
-            raise PaymentProviderError(f"nomba_initialize_failed:{response.status_code}:{response.text}")
+            logger.error(
+                "Nomba checkout initialize failed: %s, body: %s",
+                response.status_code,
+                response.text,
+            )
+            raise PaymentProviderError(
+                f"nomba_initialize_failed:{response.status_code}:{response.text}"
+            )
 
         res_json = response.json()
         if res_json.get("code") != "00":
-            raise PaymentProviderError(f"nomba_initialize_failed_code:{res_json.get('code')}:{res_json.get('description')}")
+            raise PaymentProviderError(
+                f"nomba_initialize_failed_code:{res_json.get('code')}:{res_json.get('description')}"
+            )
 
         data = res_json.get("data", {})
         checkout_link = data.get("checkoutLink")
@@ -198,11 +210,19 @@ class NombaProvider:
 
         res_json = response.json()
         if res_json.get("code") != "00":
-            raise PaymentProviderError(f"nomba_verify_failed_code:{res_json.get('code')}:{res_json.get('description')}")
+            raise PaymentProviderError(
+                f"nomba_verify_failed_code:{res_json.get('code')}:{res_json.get('description')}"
+            )
 
         data = res_json.get("data", {})
         status_raw = data.get("status")
-        status = "confirmed" if status_raw == "SUCCESS" else "failed" if status_raw == "EXPIRED" else "pending"
+        status = (
+            "confirmed"
+            if status_raw == "SUCCESS"
+            else "failed"
+            if status_raw == "EXPIRED"
+            else "pending"
+        )
 
         amount_major = float(data.get("amount", 0.0))
         amount_minor = int(round(amount_major * 100))
@@ -215,7 +235,9 @@ class NombaProvider:
                 session_id = parts[1]
 
         tx_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
-        sender_account_number = data.get("senderAccountNumber") or tx_data.get("senderAccountNumber")
+        sender_account_number = data.get("senderAccountNumber") or tx_data.get(
+            "senderAccountNumber"
+        )
         sender_bank_code = data.get("senderBankCode") or tx_data.get("senderBankCode")
         sender_account_name = data.get("senderAccountName") or tx_data.get("senderAccountName")
 
@@ -250,7 +272,7 @@ class NombaProvider:
             "senderName": "Klawva AI",
             "narration": narration,
         }
-        
+
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
                 f"{self._base_url}/v2/transfers/bank",
@@ -261,16 +283,23 @@ class NombaProvider:
                 },
                 json=payload,
             )
-        
+
         if response.status_code >= 400:
-            logger.error("Nomba payout reversal failed: %s, body: %s", response.status_code, response.text)
-            raise PaymentProviderError(f"nomba_payout_failed:{response.status_code}:{response.text}")
-        
+            logger.error(
+                "Nomba payout reversal failed: %s, body: %s", response.status_code, response.text
+            )
+            raise PaymentProviderError(
+                f"nomba_payout_failed:{response.status_code}:{response.text}"
+            )
+
         res_json = response.json()
         return str(res_json.get("data", {}).get("transactionId") or tx_ref)
 
     def verify_webhook_signature(
-        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+        self,
+        body: bytes,
+        signature_header: str | None,
+        additional_headers: dict[str, str] | None = None,
     ) -> bool:
         logger.warning(
             "Nomba webhook signature verification - secret configured: %s, received header: %s",
@@ -281,42 +310,67 @@ class NombaProvider:
             return False
 
         import base64
-        import json
         import hashlib
+        import json
+
+        body_hash_bytes = hmac.new(
+            self._webhook_secret.encode("utf-8"), body, hashlib.sha256
+        ).digest()
+        body_hex = body_hash_bytes.hex()
+        body_b64 = base64.b64encode(body_hash_bytes).decode("utf-8")
+        if hmac.compare_digest(body_hex, signature_header) or hmac.compare_digest(
+            body_b64, signature_header
+        ):
+            return True
 
         try:
             payload = json.loads(body.decode("utf-8"))
             data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
             merchant = data.get("merchant", {}) if isinstance(data.get("merchant"), dict) else {}
-            transaction = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+            transaction = (
+                data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+            )
 
-            event_type = payload.get("event_type") or payload.get("event", "")
-            request_id = payload.get("requestId", "")
-            user_id = merchant.get("userId", "")
-            wallet_id = merchant.get("walletId", "")
-            transaction_id = transaction.get("transactionId", "")
-            transaction_type = transaction.get("type", "")
-            transaction_time = transaction.get("time", "")
+            event_type = payload.get("event_type") or payload.get("event") or ""
+            request_id = payload.get("requestId") or ""
+            user_id = merchant.get("userId") or ""
+            wallet_id = merchant.get("walletId") or ""
+            transaction_id = transaction.get("transactionId") or ""
+            transaction_type = transaction.get("type") or ""
+            transaction_time = transaction.get("time") or ""
 
-            transaction_response_code = transaction.get("responseCode", "")
+            transaction_response_code = transaction.get("responseCode")
             if transaction_response_code is None or transaction_response_code == "null":
                 transaction_response_code = ""
+            else:
+                transaction_response_code = str(transaction_response_code)
 
             timestamp = (additional_headers or {}).get("nomba-timestamp") or ""
 
             hashing_payload = f"{event_type}:{request_id}:{user_id}:{wallet_id}:{transaction_id}:{transaction_type}:{transaction_time}:{transaction_response_code}:{timestamp}"
 
             expected_bytes = hmac.new(
-                self._webhook_secret.encode("utf-8"), hashing_payload.encode("utf-8"), hashlib.sha256
+                self._webhook_secret.encode("utf-8"),
+                hashing_payload.encode("utf-8"),
+                hashlib.sha256,
             ).digest()
 
             expected_hex = expected_bytes.hex()
             expected_b64 = base64.b64encode(expected_bytes).decode("utf-8")
 
-            logger.debug("Nomba expected hex: %s", expected_hex)
-            logger.debug("Nomba expected base64: %s", expected_b64)
+            logger.info(
+                "Nomba signature mismatch details - header: %s, body hex: %s, body b64: %s, payload: %s, colon hex: %s, colon b64: %s",
+                signature_header,
+                body_hex,
+                body_b64,
+                hashing_payload,
+                expected_hex,
+                expected_b64,
+            )
 
-            return hmac.compare_digest(expected_hex, signature_header) or hmac.compare_digest(expected_b64, signature_header)
+            return hmac.compare_digest(expected_hex, signature_header) or hmac.compare_digest(
+                expected_b64, signature_header
+            )
         except Exception as e:
             logger.error("Error verifying Nomba webhook signature: %s", str(e))
             return False
@@ -325,10 +379,12 @@ class NombaProvider:
         payload = json.loads(body.decode("utf-8"))
         event_type = str(payload.get("event") or payload.get("event_type") or "unknown")
         data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
-        
+
         order_data = data.get("order", {}) if isinstance(data.get("order"), dict) else {}
-        transaction_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
-        
+        transaction_data = (
+            data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+        )
+
         reference = (
             order_data.get("orderReference")
             or data.get("reference")
@@ -430,7 +486,10 @@ class StripeProvider:
         )
 
     def verify_webhook_signature(
-        self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
+        self,
+        body: bytes,
+        signature_header: str | None,
+        additional_headers: dict[str, str] | None = None,
     ) -> bool:
         if not self._webhook_secret or not signature_header:
             return False
