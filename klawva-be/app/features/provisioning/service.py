@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -165,6 +166,26 @@ async def start_provisioning(
             agent_id_in_gateway=agent_id,
         )
         db.add(job)
+
+    if session.agent_id in ("jobseeker", "leadscout"):
+        task_name = "job search" if session.agent_id == "jobseeker" else "lead research"
+        cron_message = (
+            f"Run your periodic {task_name} and deliver a structured summary"
+            " of the best findings to the employer. Avoid duplicates from prior runs."
+        )
+        cron_job_id = openclaw_gateway.create_cron_job(
+            agent_id,
+            every_minutes=90,
+            message=cron_message,
+            announce=True,
+            timeout_seconds=300,
+        )
+        if cron_job_id:
+            job.cron_job_id = cron_job_id
+        else:
+            logging.getLogger(__name__).warning(
+                "Failed to create cron job for session %s", session_id
+            )
 
     session.status = "ready"
     await db.commit()

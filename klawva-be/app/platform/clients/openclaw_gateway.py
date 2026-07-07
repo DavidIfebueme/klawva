@@ -1,5 +1,6 @@
 import asyncio
 import json
+import shlex
 import subprocess
 import uuid
 from pathlib import Path
@@ -148,9 +149,9 @@ def create_cron_job(
     timeout_seconds: int = 300,
 ) -> str | None:
     cmd = (
-        f"openclaw cron add --agent {agent_id}"
+        f"openclaw cron add --agent {shlex.quote(agent_id)}"
         f" --every {every_minutes}m"
-        f" --message '{message}'"
+        f" --message {shlex.quote(message)}"
         f" --session isolated"
         f" --timeout-seconds {timeout_seconds}"
     )
@@ -171,7 +172,7 @@ def create_cron_job(
 def remove_cron_job(job_id: str) -> bool:
     try:
         result = subprocess.run(
-            f"openclaw cron rm {job_id}",
+            f"openclaw cron rm {shlex.quote(job_id)}",
             shell=True,
             capture_output=True,
             text=True,
