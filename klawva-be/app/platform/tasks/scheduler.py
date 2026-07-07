@@ -177,6 +177,14 @@ async def _scheduler_loop() -> None:
                 sent = await dispatch_due_shift_emails(db)
                 telegram_locked = await _process_pending_telegram_locks(db)
                 whatsapp_locked = await _process_pending_whatsapp_locks(db)
+                
+                from app.features.payments.service import retry_failed_reconciliations
+                try:
+                    reconciled = await retry_failed_reconciliations(db)
+                    if reconciled > 0:
+                        log.info("Reconciled %d failed payments in scheduler run", reconciled)
+                except Exception as rec_err:
+                    log.error("Failed to run failed reconciliation retry task: %s", rec_err, exc_info=True)
                 log.info(
                     "Scheduler tick: auto-renewals + terminations processed, "
                     "%d shift emails sent, %d telegram locked, %d whatsapp locked",
