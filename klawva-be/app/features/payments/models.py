@@ -77,15 +77,3 @@ class VirtualAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     user = relationship("User", back_populates="virtual_account")
-
-
-class FailedReconciliation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    __tablename__ = "failed_reconciliations"
-
-    provider_name: Mapped[str] = mapped_column(String(30), nullable=False)
-    provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    raw_payload: Mapped[str] = mapped_column(String(4000), nullable=False)
-    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # "pending", "retrying", "resolved", "failed"
-    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)

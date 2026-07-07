@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { KlawvaMark } from '../icons/KlawvaMark';
 import { useBillingProfile } from '@/hooks/use-billing-profile';
@@ -40,6 +40,7 @@ const baseSteps = [
 ];
 
 export function HowItWorks() {
+  const [isMobile, setIsMobile] = useState(false);
   const { profile } = useBillingProfile();
 
   const steps = baseSteps.map((step) =>
@@ -51,10 +52,17 @@ export function HowItWorks() {
       : step,
   );
 
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
-    <section id="how-it-works" className="py-20 lg:py-32 px-6 bg-klawva-bg border-t border-klawva-border">
+    <section id="how-it-works" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-16 lg:mb-24">
+        <div className="mb-24">
           <span className="font-mono text-klawva-dim text-sm tracking-[0.2em] uppercase">
             THE PROCESS
           </span>
@@ -63,25 +71,27 @@ export function HowItWorks() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-24">
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-12' : 'grid-cols-12 gap-24'}`}>
           {/* Left Column: Sticky List */}
-          <div className="hidden lg:block lg:col-span-5 relative">
-            <div className="sticky top-32 flex flex-col gap-6">
-              {steps.map((step, i) => (
-                <div key={i} className="flex items-center gap-4 group">
-                  <span className="font-mono text-klawva-dim text-sm group-hover:text-klawva-accent transition-colors duration-300">
-                    {step.num}
-                  </span>
-                  <span className="font-syne font-bold text-xl text-klawva-muted group-hover:text-klawva-text transition-colors duration-300">
-                    {step.title}
-                  </span>
-                </div>
-              ))}
+          {!isMobile && (
+            <div className="col-span-5 relative">
+              <div className="sticky top-32 flex flex-col gap-6">
+                {steps.map((step, i) => (
+                  <div key={i} className="flex items-center gap-4 group">
+                    <span className="font-mono text-klawva-dim text-sm group-hover:text-klawva-accent transition-colors duration-300">
+                      {step.num}
+                    </span>
+                    <span className="font-syne font-bold text-xl text-klawva-muted group-hover:text-klawva-text transition-colors duration-300">
+                      {step.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right Column: Scrolling Panels */}
-          <div className="col-span-1 lg:col-span-7 flex flex-col gap-12 lg:gap-32">
+          <div className={`${isMobile ? 'col-span-1' : 'col-span-7'} flex flex-col gap-16 md:gap-32`}>
             {steps.map((step, i) => (
               <motion.div
                 key={i}
@@ -92,15 +102,15 @@ export function HowItWorks() {
                 className="relative bg-klawva-surface border border-klawva-border rounded-xl p-8 md:p-12 overflow-hidden group hover:border-klawva-accent transition-colors duration-500"
               >
                 {/* Giant background number */}
-                <div className="absolute -top-10 -right-10 font-syne font-extrabold text-[150px] md:text-[180px] leading-none text-klawva-elevated select-none pointer-events-none group-hover:text-klawva-border transition-colors duration-500">
+                <div className="absolute -top-10 -right-10 font-syne font-extrabold text-[180px] leading-none text-klawva-elevated select-none pointer-events-none group-hover:text-klawva-border transition-colors duration-500">
                   {step.num}
                 </div>
 
                 <div className="relative z-10">
-                  <h3 className="font-syne font-bold text-2xl md:text-4xl text-klawva-text mb-6">
+                  <h3 className="font-syne font-bold text-3xl md:text-4xl text-klawva-text mb-6">
                     {step.title}
                   </h3>
-                  <p className="font-mono text-klawva-muted text-base md:text-lg leading-relaxed max-w-md">
+                  <p className="font-mono text-klawva-muted text-lg leading-relaxed max-w-md">
                     {step.desc}
                   </p>
 
