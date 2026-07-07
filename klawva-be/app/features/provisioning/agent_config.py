@@ -288,16 +288,10 @@ def build_agent_fragment(session: Session) -> dict:
     for key, value in brief_payload.items():
         brief_section += f"- **{key}**: {value}\n"
 
-    if session.agent_id in ("jobseeker", "leadscout"):
-        tools_config = {
-            "profile": "coding",
-            "deny": ["exec", "process", "nodes", "tts", "message"],
-        }
-    else:
-        tools_config = {
-            "profile": "minimal",
-            "deny": ["bash", "shell", "exec", "agents_list", "gateway", "nodes", "tts", "message"],
-        }
+    tools_config = {
+        "profile": "coding",
+        "deny": ["bash", "shell", "exec", "agents_list", "gateway", "nodes", "tts", "message"],
+    }
 
     return {
         "id": agent_id,
