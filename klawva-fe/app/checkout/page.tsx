@@ -14,11 +14,16 @@ import { TelegramIcon } from '../../components/icons/TelegramIcon';
 import { ScrapperIcon } from '../../components/icons/ScrapperIcon';
 import { VendorIcon } from '../../components/icons/VendorIcon';
 import { ResearcherIcon } from '../../components/icons/ResearcherIcon';
+import { JobSeekerIcon } from '../../components/icons/JobSeekerIcon';
+import { LeadScoutIcon } from '../../components/icons/LeadScoutIcon';
+import { DocxUpload } from '../../components/cv/DocxUpload';
 
 const iconMap = {
   scrapper: ScrapperIcon,
   vendor: VendorIcon,
   researcher: ResearcherIcon,
+  jobseeker: JobSeekerIcon,
+  leadscout: LeadScoutIcon,
 };
 
 function CheckoutContent() {
@@ -158,7 +163,22 @@ function CheckoutContent() {
                       <CSVImport onImport={(text) => setBrief((prev) => ({ ...prev, [field.id]: text }))} />
                     )}
                   </div>
-                  {field.type === 'textarea' ? (
+                  {field.type === 'file' ? (
+                    <DocxUpload
+                      onTextExtracted={(text) => setBrief((prev) => ({ ...prev, [field.id]: text }))}
+                    />
+                  ) : field.type === 'select' ? (
+                    <select
+                      className="bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors"
+                      value={brief[field.id] || ''}
+                      onChange={(e) => setBrief({ ...brief, [field.id]: e.target.value })}
+                    >
+                      <option value="">{field.placeholder || 'Select an option'}</option>
+                      {field.options?.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : field.type === 'textarea' ? (
                     <textarea
                       className="bg-[#111111] border border-klawva-border rounded p-4 font-mono text-klawva-text text-sm focus:outline-none focus:border-klawva-accent transition-colors min-h-[120px] resize-y"
                       placeholder={field.placeholder}

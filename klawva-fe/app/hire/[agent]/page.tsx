@@ -6,6 +6,8 @@ import { agents, AgentId } from '@/lib/agents';
 import { ScrapperIcon } from '@/components/icons/ScrapperIcon';
 import { VendorIcon } from '@/components/icons/VendorIcon';
 import { ResearcherIcon } from '@/components/icons/ResearcherIcon';
+import { JobSeekerIcon } from '@/components/icons/JobSeekerIcon';
+import { LeadScoutIcon } from '@/components/icons/LeadScoutIcon';
 import { HirePriceCardBits } from '@/components/billing/HirePriceCardBits';
 import { Badge } from '@/components/ui/Badge';
 import Link from 'next/link';
@@ -15,6 +17,8 @@ const iconMap = {
   scrapper: ScrapperIcon,
   vendor: VendorIcon,
   researcher: ResearcherIcon,
+  jobseeker: JobSeekerIcon,
+  leadscout: LeadScoutIcon,
 };
 
 export async function generateMetadata({ params }: { params: Promise<{ agent: string }> }) {
