@@ -386,3 +386,18 @@ export async function getDashboardWalletTransactions(token: string): Promise<Wal
   if (!res.ok) throw new Error('Failed to fetch transaction history');
   return res.json();
 }
+
+export async function uploadCV(sessionId: string, sessionToken: string, file: File): Promise<{ success: boolean; message: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/upload-cv`, {
+    method: 'POST',
+    headers: {
+      ...sessionTokenHeaders(sessionToken),
+    },
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Failed to upload CV');
+  return res.json();
+}
