@@ -63,12 +63,15 @@ def test_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _create_session(client: TestClient, *, agent: str, channel: str) -> tuple[str, str]:
+    brief = {"task": "work"}
+    if agent == "vendor" and channel == "whatsapp":
+        brief["whatsapp_number"] = "08012345678"
     response = client.post(
         "/api/sessions",
         json={
             "agentId": agent,
             "channel": channel,
-            "brief": {"task": "work"},
+            "brief": brief,
             "paymentRef": "pref",
         },
     )
