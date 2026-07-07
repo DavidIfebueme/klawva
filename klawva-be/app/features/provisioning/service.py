@@ -180,6 +180,10 @@ async def destroy_provisioning(db: AsyncSession, *, session_id: str) -> bool:
 
     agent_id = job.agent_id_in_gateway
 
+    if job.cron_job_id:
+        openclaw_gateway.remove_cron_job(job.cron_job_id)
+        job.cron_job_id = None
+
     stmt = select(ChannelLink).where(ChannelLink.session_id == session_id)
     link_result = await db.execute(stmt)
     channel_link = link_result.scalar_one_or_none()

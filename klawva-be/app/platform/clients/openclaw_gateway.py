@@ -139,6 +139,49 @@ def restart_gateway() -> None:
     subprocess.run(cmd, shell=True, check=True, timeout=30)
 
 
+def create_cron_job(
+    agent_id: str,
+    *,
+    every_minutes: int = 90,
+    message: str,
+    announce: bool = True,
+    timeout_seconds: int = 300,
+) -> str | None:
+    cmd = (
+        f"openclaw cron add --agent {agent_id}"
+        f" --every {every_minutes}m"
+        f" --message '{message}'"
+        f" --session isolated"
+        f" --timeout-seconds {timeout_seconds}"
+    )
+    if announce:
+        cmd += " --announce"
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return None
+        for line in result.stdout.strip().splitlines():
+            if line.startswith("Job ID:") or line.startswith("jobId:"):
+                return line.split(":", 1)[1].strip()
+        return result.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def remove_cron_job(job_id: str) -> bool:
+    try:
+        result = subprocess.run(
+            f"openclaw cron rm {job_id}",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def read_telegram_peer_id(agent_id: str) -> str | None:
     sessions_path = Path(settings.openclaw_agents_dir) / agent_id / "sessions" / "sessions.json"
     if not sessions_path.exists():
