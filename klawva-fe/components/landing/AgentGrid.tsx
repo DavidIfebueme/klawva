@@ -7,12 +7,16 @@ import { Button } from '../ui/Button';
 import { ScrapperIcon } from '../icons/ScrapperIcon';
 import { VendorIcon } from '../icons/VendorIcon';
 import { ResearcherIcon } from '../icons/ResearcherIcon';
+import { JobSeekerIcon } from '../icons/JobSeekerIcon';
+import { LeadScoutIcon } from '../icons/LeadScoutIcon';
 import { agents } from '@/lib/agents';
 
 const iconMap = {
   scrapper: ScrapperIcon,
   vendor: VendorIcon,
   researcher: ResearcherIcon,
+  jobseeker: JobSeekerIcon,
+  leadscout: LeadScoutIcon,
 };
 
 export function AgentGrid() {
@@ -61,6 +65,12 @@ export function AgentGrid() {
               </motion.div>
             );
           })}
+        </div>
+
+        <div className="mt-16 text-center">
+          <Button variant="ghost" onClick={() => window.location.href = '/agents'}>
+            See all employees →
+          </Button>
         </div>
       </div>
     </section>
