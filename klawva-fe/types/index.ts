@@ -58,6 +58,7 @@ export interface DashboardSessionEntry {
   expiresAt?: string;
   completedAt?: string;
   createdAt: string;
+  shareToken?: string;
 }
 
 export interface WalletDetailsResponse {
