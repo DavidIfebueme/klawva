@@ -41,8 +41,9 @@ async def initialize_payment(
     if session is None:
         raise HTTPException(status_code=404, detail="session_not_found")
 
-    from app.platform.config import settings
     import urllib.parse
+
+    from app.platform.config import settings
 
     ends_at_str = ""
     if session.expires_at:
@@ -57,7 +58,9 @@ async def initialize_payment(
         "agent": session.agent_id,
         "endsAt": ends_at_str,
     }
-    callback_url = f"{settings.frontend_base_url}/session/{session_id}?{urllib.parse.urlencode(params)}"
+    callback_url = (
+        f"{settings.frontend_base_url}/session/{session_id}?{urllib.parse.urlencode(params)}"
+    )
 
     provider = get_provider(provider_name)
     try:
@@ -100,6 +103,7 @@ async def _queue_failed_reconciliation(
     error_message: str,
 ) -> None:
     from app.features.payments.models import FailedReconciliation
+
     failed = FailedReconciliation(
         provider_name=provider_name,
         provider_reference=provider_reference,
@@ -113,10 +117,11 @@ async def _queue_failed_reconciliation(
 
 async def retry_failed_reconciliations(db: AsyncSession) -> int:
     from app.features.payments.models import FailedReconciliation
+
     stmt = select(FailedReconciliation).where(FailedReconciliation.status == "pending")
     result = await db.execute(stmt)
     failed_list = result.scalars().all()
-    
+
     resolved_count = 0
     for failed in failed_list:
         failed.attempts += 1
@@ -140,13 +145,13 @@ async def retry_failed_reconciliations(db: AsyncSession) -> int:
                 failed.status = "failed"
             else:
                 failed.status = "pending"
-        
+
         db.add(failed)
         try:
             await db.commit()
         except Exception:
             await db.rollback()
-            
+
     return resolved_count
 
 
@@ -158,15 +163,27 @@ async def _process_webhook_internal(
     parsed_provider_reference: str | None,
 ) -> bool:
     provider = get_provider(provider_name)
-    
-    if provider_name == "nomba" and parsed_provider_reference and parsed_provider_reference.startswith("klawva_"):
+
+    if (
+        provider_name == "nomba"
+        and parsed_provider_reference
+        and parsed_provider_reference.startswith("klawva_")
+    ):
         import json
+
         from app.features.payments.models import VirtualAccount
-        from app.features.payments.wallet_service import credit_wallet, debit_wallet, get_or_create_wallet
+        from app.features.payments.wallet_service import (
+            credit_wallet,
+            debit_wallet,
+            get_or_create_wallet,
+        )
+
         payload = json.loads(raw_body.decode("utf-8"))
         data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
 
-        transaction_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+        transaction_data = (
+            data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+        )
         gross_minor = int(round(float(transaction_data.get("transactionAmount", 0.0)) * 100))
         if gross_minor <= 0:
             gross_minor = int(round(float(data.get("amount", 0.0)) * 100))
@@ -176,7 +193,9 @@ async def _process_webhook_internal(
         net_minor = max(0, gross_minor - fee_minor)
 
         if gross_minor < 500000:
-            customer_data = data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
+            customer_data = (
+                data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
+            )
             sender_account_number = (
                 customer_data.get("accountNumber")
                 or transaction_data.get("senderAccountNumber")
@@ -192,7 +211,35 @@ async def _process_webhook_internal(
                 or transaction_data.get("senderAccountName")
                 or data.get("senderAccountName")
             )
-            
+
+            va_stmt = select(VirtualAccount).where(
+                VirtualAccount.nomba_account_ref == parsed_provider_reference
+            )
+            va_res = await db.execute(va_stmt)
+            va = va_res.scalar_one_or_none()
+            if va:
+                wallet = await get_or_create_wallet(db, user_id=va.user_id)
+                parsed_webhook = provider.parse_webhook(raw_body)
+
+                await credit_wallet(
+                    db,
+                    wallet_id=wallet.id,
+                    amount_minor=gross_minor,
+                    reference=parsed_webhook.event_id,
+                    description=f"Virtual account funding (Below minimum ₦5,000: ₦{gross_minor / 100:.2f})",
+                    source="virtual_account",
+                )
+
+                await debit_wallet(
+                    db,
+                    wallet_id=wallet.id,
+                    amount_minor=gross_minor,
+                    reference=f"rev_{parsed_webhook.event_id}",
+                    description=f"Reversal of below-minimum virtual account funding (Refunded to {sender_bank_code or 'Unknown'}/{sender_account_number or 'Unknown'})",
+                    source="virtual_account",
+                    allow_negative=True,
+                )
+
             if sender_account_number and sender_bank_code:
                 try:
                     payout_ref = await provider.trigger_payout(
@@ -200,14 +247,23 @@ async def _process_webhook_internal(
                         account_number=str(sender_account_number),
                         bank_code=str(sender_bank_code),
                         account_name=str(sender_account_name or "Customer"),
-                        narration=f"Reversal: VA funding under ₦5,000 limit (Received: ₦{gross_minor / 100:.2f})"
+                        narration=f"Reversal: VA funding under ₦5,000 limit (Received: ₦{gross_minor / 100:.2f})",
                     )
-                    logger.info("Automatic payout reversal triggered for VA funding underpayment, ref: %s", payout_ref)
+                    logger.info(
+                        "Automatic payout reversal triggered for VA funding underpayment, ref: %s",
+                        payout_ref,
+                    )
                 except Exception as payout_err:
-                    logger.error("Failed to automatically reverse underpaid VA funding: %s", payout_err, exc_info=True)
+                    logger.error(
+                        "Failed to automatically reverse underpaid VA funding: %s",
+                        payout_err,
+                        exc_info=True,
+                    )
             raise HTTPException(status_code=400, detail="va_funding_below_minimum_reversed")
 
-        va_stmt = select(VirtualAccount).where(VirtualAccount.nomba_account_ref == parsed_provider_reference)
+        va_stmt = select(VirtualAccount).where(
+            VirtualAccount.nomba_account_ref == parsed_provider_reference
+        )
         va_res = await db.execute(va_stmt)
         va = va_res.scalar_one_or_none()
         if not va:
@@ -216,7 +272,10 @@ async def _process_webhook_internal(
         wallet = await get_or_create_wallet(db, user_id=va.user_id)
 
         parsed_webhook = provider.parse_webhook(raw_body)
-        is_reversal = "reversal" in parsed_webhook.event_type.lower() or "revert" in parsed_webhook.event_type.lower()
+        is_reversal = (
+            "reversal" in parsed_webhook.event_type.lower()
+            or "revert" in parsed_webhook.event_type.lower()
+        )
         if is_reversal:
             description = f"Reversal of virtual account funding (Gross: -₦{gross_minor / 100:.2f}, Fee: ₦{fee_minor / 100:.2f})"
             await debit_wallet(
@@ -270,7 +329,10 @@ async def _process_webhook_internal(
         expected_amount = db_payment.amount_minor if db_payment is not None else None
         if expected_amount is None:
             from app.features.payments.billing import resolve_billing_profile_from_country
-            billing = resolve_billing_profile_from_country("NG" if provider_name == "nomba" else None)
+
+            billing = resolve_billing_profile_from_country(
+                "NG" if provider_name == "nomba" else None
+            )
             expected_amount = billing.amount_minor
 
         if verification.amount_minor < expected_amount:
@@ -289,12 +351,21 @@ async def _process_webhook_internal(
                 payment.status = "reversed"
                 payment.confirmed_at = None
 
+            sender_account_number = None
+            sender_bank_code = None
+            sender_account_name = None
+
             if provider_name == "nomba":
                 import json
+
                 payload = json.loads(raw_body.decode("utf-8"))
                 data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
-                tx_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
-                customer_data = data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
+                tx_data = (
+                    data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+                )
+                customer_data = (
+                    data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
+                )
                 sender_account_number = (
                     tx_data.get("senderAccountNumber")
                     or customer_data.get("accountNumber")
@@ -310,7 +381,7 @@ async def _process_webhook_internal(
                     or customer_data.get("senderName")
                     or verification.sender_account_name
                 )
-                
+
                 if sender_account_number and sender_bank_code:
                     try:
                         payout_ref = await provider.trigger_payout(
@@ -318,11 +389,54 @@ async def _process_webhook_internal(
                             account_number=sender_account_number,
                             bank_code=sender_bank_code,
                             account_name=sender_account_name or "Customer",
-                            narration=f"Reversal for underpaid checkout: {verification.provider_reference}"
+                            narration=f"Reversal for underpaid checkout: {verification.provider_reference}",
                         )
-                        logger.info("Automatic payout reversal triggered on Nomba, ref: %s", payout_ref)
+                        logger.info(
+                            "Automatic payout reversal triggered on Nomba, ref: %s", payout_ref
+                        )
                     except Exception as payout_err:
-                        logger.error("Failed to automatically reverse underpayment on Nomba: %s", payout_err, exc_info=True)
+                        logger.error(
+                            "Failed to automatically reverse underpayment on Nomba: %s",
+                            payout_err,
+                            exc_info=True,
+                        )
+
+            from app.features.payments.wallet_service import (
+                credit_wallet,
+                debit_wallet,
+                get_or_create_wallet,
+            )
+            from app.features.users.models import User
+
+            user = None
+            if session.user_id:
+                user = await db.get(User, session.user_id)
+            elif session.customer_email:
+                user_stmt = select(User).where(User.email == session.customer_email)
+                user_res = await db.execute(user_stmt)
+                user = user_res.scalar_one_or_none()
+
+            if user:
+                wallet = await get_or_create_wallet(db, user_id=user.id)
+                await credit_wallet(
+                    db,
+                    wallet_id=wallet.id,
+                    amount_minor=verification.amount_minor,
+                    reference=f"checkout_dep_{verification.provider_reference}",
+                    description=f"Underpaid checkout deposit for hiring {session.agent_id} (Expected: ₦{expected_amount / 100:.2f}, Received: ₦{verification.amount_minor / 100:.2f})",
+                    source="checkout",
+                )
+
+                await debit_wallet(
+                    db,
+                    wallet_id=wallet.id,
+                    amount_minor=verification.amount_minor,
+                    reference=f"checkout_rev_{verification.provider_reference}",
+                    description=f"Reversal of underpaid checkout (Refunded to {sender_bank_code or 'Unknown'}/{sender_account_number or 'Unknown'})",
+                    source="checkout",
+                    allow_negative=True,
+                )
+
             raise HTTPException(status_code=400, detail="insufficient_payment_amount_reversed")
 
     if payment is None:
@@ -361,7 +475,9 @@ async def process_webhook(
     additional_headers: dict[str, str] | None = None,
 ) -> bool:
     provider = get_provider(provider_name)
-    if not provider.verify_webhook_signature(raw_body, signature_header, additional_headers=additional_headers):
+    if not provider.verify_webhook_signature(
+        raw_body, signature_header, additional_headers=additional_headers
+    ):
         raise HTTPException(status_code=400, detail="invalid_webhook_signature")
 
     parsed = provider.parse_webhook(raw_body)
@@ -374,7 +490,10 @@ async def process_webhook(
     if existing is not None:
         return False
 
-    _NON_RETRYABLE_DETAILS = {"insufficient_payment_amount_reversed", "va_funding_below_minimum_reversed"}
+    _NON_RETRYABLE_DETAILS = {
+        "insufficient_payment_amount_reversed",
+        "va_funding_below_minimum_reversed",
+    }
 
     try:
         success = await _process_webhook_internal(
@@ -387,10 +506,14 @@ async def process_webhook(
             return False
     except HTTPException as exc:
         if exc.detail in _NON_RETRYABLE_DETAILS:
-            await _add_idempotency_key(db, scope, key, raw_body, parsed.provider_reference, status_code=exc.status_code)
+            await _add_idempotency_key(
+                db, scope, key, raw_body, parsed.provider_reference, status_code=exc.status_code
+            )
             await db.commit()
             return True
-        await _add_idempotency_key(db, scope, key, raw_body, parsed.provider_reference, status_code=exc.status_code)
+        await _add_idempotency_key(
+            db, scope, key, raw_body, parsed.provider_reference, status_code=exc.status_code
+        )
         await _queue_failed_reconciliation(
             db,
             provider_name=provider_name,
@@ -431,7 +554,9 @@ async def _add_idempotency_key(
     status_code: int = 200,
 ) -> None:
     from datetime import UTC, datetime, timedelta
+
     from app.platform.db.models.idempotency_key import IdempotencyKey
+
     expires_at = datetime.now(UTC) + timedelta(days=30)
     db.add(
         IdempotencyKey(
@@ -456,6 +581,7 @@ async def record_checkout_wallet_transactions(
     amount_minor: int,
 ) -> None:
     from app.features.users.models import User
+
     user = None
     if session.user_id:
         user = await db.get(User, session.user_id)
@@ -465,14 +591,18 @@ async def record_checkout_wallet_transactions(
         user = user_res.scalar_one_or_none()
 
     if user:
-        from app.features.payments.wallet_service import credit_wallet, debit_wallet, get_or_create_wallet
         from app.features.payments.models import WalletTransaction
-        
+        from app.features.payments.wallet_service import (
+            credit_wallet,
+            debit_wallet,
+            get_or_create_wallet,
+        )
+
         wallet = await get_or_create_wallet(db, user_id=user.id)
-        
+
         credit_ref = f"checkout_dep_{provider_reference}"
         debit_ref = f"checkout_hire_{provider_reference}"
-        
+
         tx_check_stmt = select(WalletTransaction).where(WalletTransaction.reference == credit_ref)
         tx_check_res = await db.execute(tx_check_stmt)
         if tx_check_res.scalar_one_or_none() is None:
