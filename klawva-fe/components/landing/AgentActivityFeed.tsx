@@ -44,9 +44,10 @@ interface FeedColumnProps {
   lines: string[];
   speed: number;
   offset: number;
+  className?: string;
 }
 
-function FeedColumn({ lines, speed, offset }: FeedColumnProps) {
+function FeedColumn({ lines, speed, offset, className = '' }: FeedColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,7 +72,7 @@ function FeedColumn({ lines, speed, offset }: FeedColumnProps) {
   const doubled = [...lines, ...lines];
 
   return (
-    <div className="h-full overflow-hidden relative">
+    <div className={`h-full overflow-hidden relative ${className}`}>
       <div
         ref={scrollRef}
         className="h-full overflow-y-hidden"
@@ -116,18 +117,18 @@ export function AgentActivityFeed() {
     <div className="absolute inset-0 z-0 overflow-hidden">
       <div className="w-full h-full max-w-7xl mx-auto px-6 md:px-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 pt-32">
         {columns.map((col, i) => {
-          let visibilityClass = "h-full";
-          if (i === 1) visibilityClass += " hidden md:block";
-          if (i >= 2) visibilityClass += " hidden lg:block";
-          
+          let className = "";
+          if (i === 1) className = "hidden md:block";
+          if (i >= 2) className = "hidden lg:block";
+
           return (
-            <div key={i} className={visibilityClass}>
-              <FeedColumn
-                lines={col.lines}
-                speed={col.speed}
-                offset={col.offset}
-              />
-            </div>
+            <FeedColumn
+              key={i}
+              lines={col.lines}
+              speed={col.speed}
+              offset={col.offset}
+              className={className}
+            />
           );
         })}
       </div>
