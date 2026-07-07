@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import random
 import time
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ class ProviderVerificationResult:
     session_id: str | None
     amount_minor: int
     currency: str
+    sender_account_number: str | None = None
+    sender_bank_code: str | None = None
+    sender_account_name: str | None = None
 
 
 @dataclass
@@ -210,13 +214,60 @@ class NombaProvider:
             if len(parts) >= 3:
                 session_id = parts[1]
 
+        tx_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
+        sender_account_number = data.get("senderAccountNumber") or tx_data.get("senderAccountNumber")
+        sender_bank_code = data.get("senderBankCode") or tx_data.get("senderBankCode")
+        sender_account_name = data.get("senderAccountName") or tx_data.get("senderAccountName")
+
         return ProviderVerificationResult(
             provider_reference=provider_reference,
             status=status,
             session_id=session_id,
             amount_minor=amount_minor,
             currency=currency,
+            sender_account_number=str(sender_account_number) if sender_account_number else None,
+            sender_bank_code=str(sender_bank_code) if sender_bank_code else None,
+            sender_account_name=str(sender_account_name) if sender_account_name else None,
         )
+
+    async def trigger_payout(
+        self,
+        *,
+        amount_minor: int,
+        account_number: str,
+        bank_code: str,
+        account_name: str,
+        narration: str = "Reversal for insufficient payment",
+    ) -> str:
+        token = await self._get_access_token()
+        tx_ref = f"rev_{int(time.time())}_{random.randint(1000, 9999)}"
+        payload = {
+            "amount": f"{amount_minor / 100:.2f}",
+            "accountNumber": account_number,
+            "accountName": account_name,
+            "bankCode": bank_code,
+            "merchantTxRef": tx_ref,
+            "senderName": "Klawva AI",
+            "narration": narration,
+        }
+        
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{self._base_url}/v2/transfers/bank",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "accountId": self._account_id,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        
+        if response.status_code >= 400:
+            logger.error("Nomba payout reversal failed: %s, body: %s", response.status_code, response.text)
+            raise PaymentProviderError(f"nomba_payout_failed:{response.status_code}:{response.text}")
+        
+        res_json = response.json()
+        return str(res_json.get("data", {}).get("transactionId") or tx_ref)
 
     def verify_webhook_signature(
         self, body: bytes, signature_header: str | None, additional_headers: dict[str, str] | None = None
