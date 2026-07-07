@@ -192,7 +192,9 @@ async def _process_webhook_internal(
         fee_minor = int(round(float(fee_val) * 100)) if fee_val is not None else 0
         net_minor = max(0, gross_minor - fee_minor)
 
-        if gross_minor < 500000:
+        from app.platform.config import settings
+        min_limit = 2000 if settings.env == "development" else 500000
+        if gross_minor < min_limit:
             customer_data = (
                 data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
             )
@@ -226,7 +228,7 @@ async def _process_webhook_internal(
                     wallet_id=wallet.id,
                     amount_minor=gross_minor,
                     reference=parsed_webhook.event_id,
-                    description=f"Virtual account funding (Below minimum ₦5,000: ₦{gross_minor / 100:.2f})",
+                    description=f"Virtual account funding (Below minimum ₦{min_limit / 100:,.2f}: ₦{gross_minor / 100:.2f})",
                     source="virtual_account",
                 )
 
