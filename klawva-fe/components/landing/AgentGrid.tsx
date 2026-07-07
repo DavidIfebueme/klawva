@@ -19,7 +19,11 @@ const iconMap = {
   leadscout: LeadScoutIcon,
 };
 
-export function AgentGrid() {
+export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAll?: boolean; showSeeAllButton?: boolean }) {
+  const displayedAgents = showAll
+    ? Object.values(agents)
+    : [agents.scrapper, agents.vendor, agents.researcher];
+
   return (
     <section id="agents" className="py-32 px-6 bg-klawva-bg">
       <div className="max-w-7xl mx-auto">
@@ -30,7 +34,7 @@ export function AgentGrid() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {Object.values(agents).map((agent, index) => {
+          {displayedAgents.map((agent, index) => {
             const Icon = iconMap[agent.id];
             return (
               <motion.div
@@ -67,11 +71,13 @@ export function AgentGrid() {
           })}
         </div>
 
-        <div className="mt-16 text-center">
-          <Button variant="ghost" onClick={() => window.location.href = '/agents'}>
-            See all employees →
-          </Button>
-        </div>
+        {showSeeAllButton && (
+          <div className="mt-16 text-center">
+            <Button variant="ghost" onClick={() => window.location.href = '/agents'}>
+              See all employees →
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );
