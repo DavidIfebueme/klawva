@@ -176,9 +176,22 @@ async def _process_webhook_internal(
         net_minor = max(0, gross_minor - fee_minor)
 
         if gross_minor < 500000:
-            sender_account_number = transaction_data.get("senderAccountNumber") or data.get("senderAccountNumber")
-            sender_bank_code = transaction_data.get("senderBankCode") or data.get("senderBankCode")
-            sender_account_name = transaction_data.get("senderAccountName") or data.get("senderAccountName")
+            customer_data = data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
+            sender_account_number = (
+                customer_data.get("accountNumber")
+                or transaction_data.get("senderAccountNumber")
+                or data.get("senderAccountNumber")
+            )
+            sender_bank_code = (
+                customer_data.get("bankCode")
+                or transaction_data.get("senderBankCode")
+                or data.get("senderBankCode")
+            )
+            sender_account_name = (
+                customer_data.get("senderName")
+                or transaction_data.get("senderAccountName")
+                or data.get("senderAccountName")
+            )
             
             if sender_account_number and sender_bank_code:
                 try:
@@ -281,9 +294,22 @@ async def _process_webhook_internal(
                 payload = json.loads(raw_body.decode("utf-8"))
                 data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
                 tx_data = data.get("transaction", {}) if isinstance(data.get("transaction"), dict) else {}
-                sender_account_number = tx_data.get("senderAccountNumber") or verification.sender_account_number
-                sender_bank_code = tx_data.get("senderBankCode") or verification.sender_bank_code
-                sender_account_name = tx_data.get("senderAccountName") or verification.sender_account_name
+                customer_data = data.get("customer", {}) if isinstance(data.get("customer"), dict) else {}
+                sender_account_number = (
+                    tx_data.get("senderAccountNumber")
+                    or customer_data.get("accountNumber")
+                    or verification.sender_account_number
+                )
+                sender_bank_code = (
+                    tx_data.get("senderBankCode")
+                    or customer_data.get("bankCode")
+                    or verification.sender_bank_code
+                )
+                sender_account_name = (
+                    tx_data.get("senderAccountName")
+                    or customer_data.get("senderName")
+                    or verification.sender_account_name
+                )
                 
                 if sender_account_number and sender_bank_code:
                     try:
@@ -363,7 +389,7 @@ async def process_webhook(
         if exc.detail in _NON_RETRYABLE_DETAILS:
             await _add_idempotency_key(db, scope, key, raw_body, parsed.provider_reference, status_code=exc.status_code)
             await db.commit()
-            raise
+            return True
         await _add_idempotency_key(db, scope, key, raw_body, parsed.provider_reference, status_code=exc.status_code)
         await _queue_failed_reconciliation(
             db,
