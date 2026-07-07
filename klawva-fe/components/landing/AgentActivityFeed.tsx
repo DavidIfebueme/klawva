@@ -115,14 +115,21 @@ export function AgentActivityFeed() {
   return (
     <div className="absolute inset-0 z-0 overflow-hidden">
       <div className="w-full h-full max-w-7xl mx-auto px-6 md:px-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 pt-32">
-        {columns.map((col, i) => (
-          <FeedColumn
-            key={i}
-            lines={col.lines}
-            speed={col.speed}
-            offset={col.offset}
-          />
-        ))}
+        {columns.map((col, i) => {
+          let visibilityClass = "h-full";
+          if (i === 1) visibilityClass += " hidden md:block";
+          if (i >= 2) visibilityClass += " hidden lg:block";
+          
+          return (
+            <div key={i} className={visibilityClass}>
+              <FeedColumn
+                lines={col.lines}
+                speed={col.speed}
+                offset={col.offset}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
