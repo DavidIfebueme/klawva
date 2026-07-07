@@ -1,4 +1,4 @@
-export type AgentId = 'scrapper' | 'vendor' | 'researcher'
+export type AgentId = 'scrapper' | 'vendor' | 'researcher' | 'jobseeker' | 'leadscout'
 export type Channel = 'whatsapp' | 'telegram'
 
 export interface Agent {
@@ -21,10 +21,11 @@ export interface BriefField {
   id: string
   label: string
   placeholder: string
-  type: 'text' | 'textarea' | 'tel'
+  type: 'text' | 'textarea' | 'tel' | 'file' | 'select'
   required: boolean
   hint?: string
   csvImport?: boolean
+  options?: string[]
 }
 
 export const agents: Record<AgentId, Agent> = {
@@ -97,6 +98,57 @@ export const agents: Record<AgentId, Agent> = {
       { id: 'topic', label: 'What should the Researcher investigate?', placeholder: 'e.g. Competitive landscape of Nigerian food delivery apps in 2025', type: 'textarea', required: true },
       { id: 'depth', label: 'How deep should it go?', placeholder: 'e.g. 1,500-word report with sources, or a bullet-point briefing', type: 'text', required: true },
       { id: 'context', label: 'Any context or specific angle?', placeholder: 'e.g. I\'m pitching to investors, focus on market size and growth', type: 'textarea', required: false },
+    ],
+    priceNGN: 2500,
+    priceUSD: 1.99,
+  },
+  jobseeker: {
+    id: 'jobseeker',
+    name: 'Klawva Job Seeker',
+    title: 'Talent Acquisition',
+    specialty: 'Finds jobs. Matches talent.',
+    tagline: 'Your career on autopilot. Opportunities delivered daily.',
+    description: 'The Job Seeker searches job boards, company career pages, and public listings to find opportunities matching your skills and preferences. Upload your CV and get tailored job matches delivered to your chat.',
+    capabilities: [
+      'Search job boards and company career pages daily',
+      'Compile listings with salary, requirements, and apply links',
+      'Track application deadlines and follow-up dates',
+      'Research company backgrounds and culture',
+      'Generate tailored cover letters and summaries',
+    ],
+    examplePrompt: 'Find software engineering roles in Lagos paying above ₦500k. Focus on fintech companies. Deliver a daily digest.',
+    channels: ['whatsapp', 'telegram'],
+    briefFields: [
+      { id: 'cv', label: 'Upload your CV', placeholder: '', type: 'file', required: true, hint: 'Upload a .docx file with your CV/resume' },
+      { id: 'role_preference', label: 'What roles are you looking for?', placeholder: 'e.g. Software Engineer, Product Manager, Data Analyst', type: 'textarea', required: true },
+      { id: 'location', label: 'Preferred location(s)', placeholder: 'e.g. Lagos, Remote, Hybrid', type: 'text', required: false },
+      { id: 'salary_range', label: 'Expected salary range', placeholder: 'e.g. ₦500k - ₦1M monthly', type: 'text', required: false },
+      { id: 'extra_criteria', label: 'Any other preferences?', placeholder: 'e.g. Must be fintech, must have health insurance', type: 'textarea', required: false },
+    ],
+    priceNGN: 2500,
+    priceUSD: 1.99,
+  },
+  leadscout: {
+    id: 'leadscout',
+    name: 'Klawva Lead Scout',
+    title: 'Sales Intelligence',
+    specialty: 'Finds leads. Qualifies prospects.',
+    tagline: 'Your pipeline stays full. You stay focused on closing.',
+    description: 'The Lead Scout searches the web for potential customers, partners, and business opportunities matching your ideal customer profile. It delivers qualified leads with contact info, company details, and source URLs.',
+    capabilities: [
+      'Search for potential customers matching your ICP',
+      'Research company backgrounds and funding status',
+      'Find key decision-makers and their contact info',
+      'Qualify leads based on your criteria',
+      'Maintain a deduplication log to avoid repeats',
+    ],
+    examplePrompt: 'Find 20 SaaS startups in Lagos that raised Series A in the last 6 months. I need CTO emails and company size.',
+    channels: ['whatsapp', 'telegram'],
+    briefFields: [
+      { id: 'ideal_customer', label: 'Describe your ideal customer', placeholder: 'e.g. SaaS startups in Lagos, 10-50 employees, Series A funded', type: 'textarea', required: true },
+      { id: 'industry', label: 'Target industry/industries', placeholder: 'e.g. Fintech, Healthcare, E-commerce', type: 'text', required: false },
+      { id: 'contact_preference', label: 'What contact info do you need?', placeholder: 'e.g. CTO email, LinkedIn profile, company phone', type: 'select', required: false, options: ['Email', 'Phone', 'LinkedIn', 'All of the above'] },
+      { id: 'extra_criteria', label: 'Any other criteria?', placeholder: 'e.g. Must have raised funding, must have a website', type: 'textarea', required: false },
     ],
     priceNGN: 2500,
     priceUSD: 1.99,
