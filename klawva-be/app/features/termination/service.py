@@ -22,6 +22,7 @@ async def _notify_telegram_employer(
     db: AsyncSession,
     session: Session,
     channel_link: ChannelLink | None,
+    share_token: str | None = None,
 ) -> None:
     if session.channel != "telegram" or channel_link is None or not channel_link.external_id:
         return
@@ -39,6 +40,8 @@ async def _notify_telegram_employer(
         return
 
     report_link = f"{settings.frontend_base_url}/report/{session.id}?agent={session.agent_id}"
+    if share_token:
+        report_link += f"&shareToken={share_token}"
     text = (
         "Your Klawva shift has ended. Thanks for hiring!\n\n"
         f"View your mission report: {report_link}"
@@ -100,7 +103,7 @@ async def execute_due_terminations(db: AsyncSession) -> int:
         channel_link_result = await db.execute(channel_link_stmt)
         channel_link = channel_link_result.scalar_one_or_none()
 
-        await _notify_telegram_employer(db, session, channel_link)
+        await _notify_telegram_employer(db, session, channel_link, share_token=report.share_token)
 
         await destroy_provisioning(db, session_id=session.id)
 
@@ -113,7 +116,10 @@ async def execute_due_terminations(db: AsyncSession) -> int:
         job.status = "terminated"
         job.executed_at = now
 
-        await send_shift_ended_email(db, session=session)
+        report_url = f"{settings.frontend_base_url}/report/{session.id}?agent={session.agent_id}"
+        if report.share_token:
+            report_url += f"&shareToken={report.share_token}"
+        await send_shift_ended_email(db, session=session, report_url=report_url)
 
         db.add(
             ActivityEvent(
