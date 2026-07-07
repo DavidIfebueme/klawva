@@ -1,7 +1,7 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -250,8 +250,52 @@ async def get_session_report_endpoint(
     )
     date_range, stats, summary, share_token = await get_session_report(db, session_id)
     return SessionReportResponse(
-        dateRange=date_range,
+        date_range=date_range,
         stats=[StatEntry(label=item["label"], value=item["value"]) for item in stats],
         summary=summary,
-        shareToken=share_token,
+        share_token=share_token,
     )
+
+
+@router.post("/{session_id}/upload-cv")
+async def upload_cv_endpoint(
+    session_id: str,
+    file: UploadFile = File(...),
+    session_token: str = Depends(get_session_token_header),
+    db: AsyncSession = Depends(get_async_session),
+) -> dict:
+    session = await assert_session_access(
+        db,
+        session_id=session_id,
+        session_token=session_token,
+    )
+
+    if session.agent_id not in ("jobseeker", "leadscout"):
+        raise HTTPException(status_code=400, detail="cv_upload_not_supported")
+
+    if not file.filename or not file.filename.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="only_docx_files_allowed")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="file_too_large_max_5mb")
+
+    try:
+        import io
+
+        import docx
+
+        doc = docx.Document(io.BytesIO(content))
+        cv_text = "\n".join(para.text for para in doc.paragraphs if para.text.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="failed_to_parse_docx") from exc
+
+    if not cv_text.strip():
+        raise HTTPException(status_code=400, detail="document_contains_no_text")
+
+    brief = dict(session.brief) if isinstance(session.brief, dict) else {}
+    brief["cv_text"] = cv_text
+    session.brief = brief
+    await db.commit()
+
+    return {"success": True, "message": "CV uploaded and parsed successfully"}
