@@ -268,7 +268,7 @@ def test_va_funding_underpayment_reversal_flow(recon_client: TestClient) -> None
         "event": "virtual-account.funding",
         "data": {
             "reference": "klawva_test_va",
-            "amount": 2000.0,
+            "amount": 10.0,
             "transaction": {
                 "senderAccountNumber": "1234567890",
                 "senderBankCode": "058",
@@ -283,7 +283,7 @@ def test_va_funding_underpayment_reversal_flow(recon_client: TestClient) -> None
     assert response.json() == {"processed": True}
 
     assert len(recon_client.provider.payout_calls) == 1
-    assert recon_client.provider.payout_calls[0]["amount_minor"] == 200000
+    assert recon_client.provider.payout_calls[0]["amount_minor"] == 1000
     assert recon_client.provider.payout_calls[0]["account_number"] == "1234567890"
 
     from app.features.dashboard.auth import generate_token
@@ -299,5 +299,5 @@ def test_va_funding_underpayment_reversal_flow(recon_client: TestClient) -> None
     descriptions = [t["description"] for t in statement_data["transactions"]]
     assert "credit" in types
     assert "debit" in types
-    assert any("Below minimum ₦5,000" in d for d in descriptions)
+    assert any("Below minimum ₦20.00" in d for d in descriptions)
     assert any("Reversal of below-minimum virtual account funding" in d for d in descriptions)
