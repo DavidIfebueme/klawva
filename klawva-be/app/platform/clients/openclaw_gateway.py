@@ -195,6 +195,59 @@ def _read_first_user_message(session_file_path: Path) -> str | None:
     return None
 
 
+def _extract_text_from_content(content: str | list) -> str | None:
+    if isinstance(content, str):
+        text = content.strip()
+        return text if text else None
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text = str(part.get("text", "")).strip()
+                if text:
+                    return text
+    return None
+
+
+def read_agent_summary(agent_id: str) -> str | None:
+    sessions_dir = Path(settings.openclaw_agents_dir) / agent_id / "sessions"
+    if not sessions_dir.exists():
+        return None
+
+    jsonl_files = sorted(
+        [f for f in sessions_dir.iterdir() if f.suffix == ".jsonl" and ".reset." not in f.name],
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+
+    for session_file in jsonl_files:
+        try:
+            last_assistant_text: str | None = None
+            with open(session_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except (json.JSONDecodeError, OSError):
+                        continue
+                    if entry.get("type") != "message":
+                        continue
+                    msg = entry.get("message", {})
+                    if msg.get("role") != "assistant":
+                        continue
+                    content = msg.get("content", "")
+                    text = _extract_text_from_content(content)
+                    if text:
+                        last_assistant_text = text
+            if last_assistant_text:
+                return last_assistant_text
+        except OSError:
+            continue
+
+    return None
+
+
 def _validate_start_command(message: str, expected_session_id: str) -> bool:
     if not message.startswith("/start"):
         return False
