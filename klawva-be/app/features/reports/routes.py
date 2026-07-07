@@ -6,6 +6,8 @@ from app.features.reports.contracts import MissionReportResponse, UpsertMissionR
 from app.features.reports.models import MissionReport
 from app.features.reports.service import get_mission_report, upsert_mission_report
 from app.features.sessions.auth import assert_session_access, get_session_token_header
+from app.features.sessions.contracts import SessionReportResponse, StatEntry
+from app.features.sessions.service import get_session_or_404
 from app.platform.db.session import get_async_session
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -37,18 +39,38 @@ async def upsert_mission_report_endpoint(
     return _to_response(report)
 
 
-@router.get("/shared/{session_id}", response_model=MissionReportResponse)
+@router.get("/shared/{session_id}", response_model=SessionReportResponse)
 async def get_shared_mission_report_endpoint(
     session_id: str,
     shareToken: str = Query(..., alias="shareToken"),
     db: AsyncSession = Depends(get_async_session),
-) -> MissionReportResponse:
+) -> SessionReportResponse:
     statement = select(MissionReport).where(MissionReport.session_id == session_id)
     result = await db.execute(statement)
     report = result.scalar_one_or_none()
     if report is None or report.share_token != shareToken:
         raise HTTPException(status_code=404, detail="report_not_found")
-    return _to_response(report)
+
+    session = await get_session_or_404(db, session_id)
+
+    stats_value = (
+        report.report_data.get("stats", []) if isinstance(report.report_data, dict) else []
+    )
+    stats: list[StatEntry] = []
+    for item in stats_value:
+        if isinstance(item, dict) and "label" in item and "value" in item:
+            stats.append(StatEntry(label=str(item["label"]), value=str(item["value"])))
+
+    started = session.created_at
+    ended = report.delivered_at or report.updated_at
+    date_range = f"{started.date().isoformat()} - {ended.date().isoformat()}"
+
+    return SessionReportResponse(
+        dateRange=date_range,
+        stats=stats,
+        summary=report.summary,
+        shareToken=report.share_token,
+    )
 
 
 @router.get("/{session_id}", response_model=MissionReportResponse)
