@@ -3,3 +3,14 @@ CLOUDINIT_BOOTSTRAP_PLAN.md
 RUNTIME_COMPLETION_CHECKLIST.md
 ARCHITECTURE_PIVOT_NOTES.md
 ARCHITECTURE_SHIFT.md
+
+# local plans, scratch, and agent artifacts. never committed.
+docs/
+spikes/
+
+# secrets and local state
+.env
+.env.*
+.dev.vars
+.wrangler/
+node_modules/
