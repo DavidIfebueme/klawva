@@ -1,228 +1,83 @@
 # klawva
 
-<p align="center">
-  <strong>hire autonomous ai workers. manage them from one dashboard.</strong>
-</p>
+> **Migration in progress.** klawva is being rebuilt on Cloudflare. The old Python and Next code is frozen under `legacy/`. The new stack lands under `apps/`. Nothing here is deployed yet.
 
-<p align="center">
-  <a href="https://klawva.xyz">website</a> · <a href="https://klawva.xyz/dashboard">dashboard</a> · <a href="#how-it-works">how it works</a> · <a href="#api">api</a> · <a href="#deployment">deployment</a>
-</p>
+Klawva is an AI employee platform. You hire an agent for a short shift, it works autonomously, and it files a mission report. Agents are published as listings, so the platform grows into a marketplace where anyone can publish an agent, hire one, and get paid.
 
----
+## status
 
-**klawva** is an ai employee-as-a-service platform. employers hire ai agents that work on telegram, whatsapp, and other channels. each agent has a soul, a brief, and a shift — just like a real employee.
-
-you hire an ai worker. it shows up. it does the job. you get a report.
+| Area | State |
+|---|---|
+| Product | Being revived. Server is gone, rebuilding on Cloudflare |
+| Backend | New stack in progress under `apps/worker`. Old code frozen in `legacy/klawva-be` |
+| Frontend | UI being ported to Vite and React under `apps/web`. Old code frozen in `legacy/klawva-fe` |
+| Domain | klawva.xyz on Vercel. Worker reached through a Vercel `/api` rewrite |
+| Channels | Telegram first, one bot. WhatsApp deferred |
+| Payments | Paystack for NGN. Breet for crypto, sandbox only and hidden |
+| Model | `@cf/zai-org/glm-4.7-flash` on Cloudflare Workers AI, free tier |
 
 ## how it works
 
-1. **hire** — employer picks an agent type and fills out a brief
-2. **provision** — klawva spins up an isolated openclaw agent with its own workspace, soul, and tools
-3. **connect** — agent connects to telegram (or whatsapp, slack, etc.) via a deep link
-4. **work** — employer messages the agent directly. it handles tasks autonomously
-5. **report** — at shift end, klawva generates a mission report with summary and stats
+1. hire. Pick an agent and fill out a brief.
+2. pay. Paystack for Naira. The wallet funds the shift.
+3. connect. The agent opens a Telegram chat through a deep link.
+4. work. The agent handles the task in an isolated runtime with a per-shift budget.
+5. report. At shift end the agent files a structured mission report.
 
-auto-renewal keeps shifts running. wallets handle billing. the dashboard tracks everything.
+## new stack
 
-## tech stack
-
-| layer | technology |
-|-------|-----------|
-| **backend** | python · fastapi · sqlalchemy · alembic · postgresql |
-| **ai gateway** | [openclaw](https://github.com/openclaw/openclaw) |
-| **frontend** | next.js · react · tailwind css · vercel |
-| **payments** | naira (nomba) · stripe (international) |
-| **email** | brevo smtp api |
-| **infrastructure** | linode · nginx · systemd · github actions ci/cd |
+| Layer | Technology |
+|---|---|
+| Runtime | Cloudflare Workers |
+| HTTP | Effect HttpApi on our own Workers adapter |
+| State | One Durable Object per session, SQLite backed |
+| Data | Cloudflare D1 |
+| Files | Cloudflare R2 |
+| Model | Cloudflare Workers AI |
+| Frontend | Vite, React, React Router, Tailwind |
+| Hosting | Worker on Cloudflare, frontend on Vercel |
+| Payments | Paystack, plus Breet for crypto later |
 
 ## project structure
 
 ```
 klawva/
-├── klawva-be/                  # fastapi backend
-│   ├── app/
-│   │   ├── features/
-│   │   │   ├── channels/       # telegram, whatsapp, slack channel management
-│   │   │   ├── dashboard/      # employer dashboard api + auth
-│   │   │   ├── emails/         # email events + dispatch
-│   │   │   ├── history/        # session history + magic links
-│   │   │   ├── payments/       # wallets, billing, nomba/stripe
-│   │   │   ├── provisioning/   # agent provisioning + workspace setup
-│   │   │   ├── reports/        # mission reports + share tokens
-│   │   │   ├── sessions/       # session lifecycle + activation
-│   │   │   ├── termination/    # shift termination + auto-renewal
-│   │   │   └── users/          # user model
-│   │   └── platform/
-│   │       ├── clients/        # openclaw gateway client
-│   │       ├── config/         # settings + env
-│   │       ├── db/             # database engine + sessions
-│   │       ├── email/          # brevo email service
-│   │       ├── http/           # fastapi app + middleware
-│   │       ├── logging/        # structured logging
-│   │       ├── observability/  # health + metrics
-│   │       ├── security/       # rate limiting + auth middleware
-│   │       └── tasks/          # background scheduler
-│   ├── alembic/                # database migrations
-│   └── pyproject.toml
-├── klawva-fe/                  # next.js frontend
-│   ├── app/
-│   │   ├── checkout/           # hire flow + payment
-│   │   ├── dashboard/          # employer dashboard
-│   │   ├── session/            # session status + live view
-│   │   └── report/             # mission report viewer
-│   ├── components/
-│   └── lib/
-├── .github/workflows/          # ci/cd (auto-deploy on push)
-└── scripts/                    # deployment + cleanup scripts
+├── apps/
+│   ├── worker/        # Effect HttpApi, Durable Objects, D1, Workers AI
+│   └── web/           # Vite React UI, ported from the old frontend
+├── legacy/
+│   ├── klawva-be/     # frozen Python backend. port only
+│   └── klawva-fe/     # frozen Next.js frontend. UI reference
+├── docs/              # local plans and scratch. not committed
+├── spikes/            # throwaway experiments. not committed
+├── AGENTS.md          # agent rules for this repo
+└── README.md
 ```
-
-## getting started
-
-### prerequisites
-
-- python 3.12+
-- node.js 18+
-- postgresql 16+
-- redis (optional, for caching)
-- an [openclaw](https://github.com/openclaw/openclaw) gateway running
-- a telegram bot token (from [@botfather](https://t.me/botfather))
-
-### backend
-
-```bash
-cd klawva-be
-
-# install dependencies
-uv sync
-
-# set up environment
-cp .env.example .env
-# edit .env with your database url, openclaw gateway url, telegram tokens, etc.
-
-# run migrations
-alembic upgrade head
-
-# start the server
-uvicorn app.platform.http.app:create_app --factory --reload
-```
-
-the api runs at `http://localhost:9000` by default.
-
-### frontend
-
-```bash
-cd klawva-fe
-
-# install dependencies
-npm install
-
-# set up environment
-cp .env.local.example .env.local
-# edit .env.local with your backend api url
-
-# start development server
-npm run dev
-```
-
-the frontend runs at `http://localhost:3000`.
-
-## api
-
-### core endpoints
-
-| method | endpoint | description |
-|--------|----------|-------------|
-| `POST` | `/api/sessions/{id}/activate` | provision and start a session |
-| `GET` | `/api/sessions/{id}/status` | check session + channel connection status |
-| `POST` | `/api/sessions/{id}/deactivate` | terminate a session |
-| `GET` | `/api/channels/link` | get deep link for employer to connect |
-| `POST` | `/api/channels/lock` | lock channel to specific user |
-| `GET` | `/api/reports/{id}` | get mission report |
-| `GET` | `/api/reports/{id}/share/{token}` | public shareable report link |
-
-### dashboard endpoints
-
-| method | endpoint | description |
-|--------|----------|-------------|
-| `POST` | `/api/dashboard/auth/request-magic-link` | request login magic link |
-| `POST` | `/api/dashboard/auth/verify` | verify magic link token |
-| `GET` | `/api/dashboard/sessions` | list employer's sessions |
-| `GET` | `/api/dashboard/wallet` | get wallet balance |
-
-### admin endpoints
-
-| method | endpoint | description |
-|--------|----------|-------------|
-| `POST` | `/api/termination/execute-due` | process due terminations |
-| `POST` | `/api/emails/dispatch-due` | send shift-ending-soon emails |
-
-## deployment
-
-the project uses github actions for ci/cd. pushing to `master` triggers an auto-deploy to the production server.
-
-```bash
-# manual deploy
-ssh root@<server-ip> "klawva-deploy"
-
-# cleanup (archive sessions, free bot tokens)
-ssh root@<server-ip> "klawva-clean"
-```
-
-### environment variables
-
-key variables (see `.env.example` for full list):
-
-```
-# database
-DATABASE_URL=postgresql+asyncpg://...
-
-# openclaw
-OPENCLAW_GATEWAY_URL=http://localhost:9090
-OPENCLAW_GATEWAY_TOKEN=...
-
-# telegram bot pool (comma-separated)
-TELEGRAM_BOT_TOKEN_POOL=token1,token2,token3,...
-
-# email (brevo)
-BREVO_API_KEY=...
-BREVO_SENDER_EMAIL=...
-BREVO_SENDER_NAME=Klawva
-
-# payments
-NOMBA_CLIENT_ID=...
-NOMBA_CLIENT_SECRET=...
-STRIPE_SECRET_KEY=...
-```
-
-## how agents work
-
-each klawva agent is an isolated [openclaw](https://github.com/openclaw/openclaw) instance with:
-
-- **soul** — identity and behavior instructions (from `SOUL.md`)
-- **brief** — employer-specific task details
-- **tools** — minimal tool profile (no system commands exposed)
-- **workspace** — isolated directory with soul, identity, and user files
-- **channel** — telegram deep link for direct employer communication
-
-agents are provisioned on-demand when an employer hires a worker, and terminated when the shift ends.
 
 ## agent types
 
-| agent | role | channels |
-|-------|------|----------|
-| `scrapper` | web intelligence & data — monitors prices, tracks competitors, extracts structured data from public websites | telegram, whatsapp |
-| `vendor` | business operations — handles customer inquiries on whatsapp using your product brief *(coming soon)* | whatsapp |
-| `researcher` | academic & market research — browses multiple sources and produces structured, readable reports | telegram, whatsapp |
+| Agent | Role | Channel |
+|---|---|---|
+| Scrapper | Web intelligence and data | Telegram |
+| Researcher | Multi source research reports | Telegram |
+| Job Seeker | Finds and ranks job openings | Telegram |
+| Lead Scout | Finds and qualifies leads | Telegram |
+| Vendor | Handles customer inquiries | WhatsApp, deferred |
 
-custom agent types can be added by extending the agent config in `klawva-be/app/features/provisioning/agent_config.py`.
+## running locally
+
+The new apps are not scaffolded yet. Once they land:
+
+```bash
+source ~/.config/klawva/cloudflare.env
+pnpm --dir apps/worker dev   # worker on http://127.0.0.1:8787
+pnpm --dir apps/web dev      # web on http://localhost:3000
+```
 
 ## contributing
 
-this is a private project. contributions are not currently accepted.
+Private project. Contributions are not accepted.
 
 ## license
 
-mit license. see [LICENSE](LICENSE) for details.
-
-<!-- Trigger Vercel deploy -->
-<!-- trigger vercel deploy -->
+MIT. See [LICENSE](LICENSE).
