@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { Toast, type ToastState } from "@/components/ui/Toast";
 import { FlaskConical, Send, Save, ArrowLeft } from "lucide-react";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
@@ -51,10 +52,15 @@ export function Component() {
   const { session, detail } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | "save" | "sandbox" | "submit">(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [outcome, setOutcome] = useState<{ score: number; band: string } | null>(null);
+
+  const showToast = (kind: ToastState["kind"], message: string) => {
+    setToast({ kind, message });
+    window.setTimeout(() => setToast(null), 5000);
+  };
 
   const [name, setName] = useState(detail.name);
   const [tagline, setTagline] = useState(detail.tagline);
@@ -67,13 +73,12 @@ export function Component() {
   const editable = detail.status === "draft" || detail.status === "rejected";
 
   const handleSave = async () => {
-    setBusy(true);
+    setBusyAction("save");
     setError("");
-    setNotice("");
     const priceMinor = Math.round(Number(priceNaira) * 100);
     if (!Number.isFinite(priceMinor) || priceMinor < 100000 || priceMinor > 2500000) {
       setError("Price must be between ₦1,000 and ₦25,000");
-      setBusy(false);
+      setBusyAction(null);
       return;
     }
     try {
@@ -89,45 +94,44 @@ export function Component() {
           .filter((v) => v.length > 0),
         soul,
       });
-      setNotice("Draft saved.");
+      showToast("success", "Draft saved.");
       revalidator.revalidate();
     } catch (err) {
       if (handleActionAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "Failed to save");
+      showToast("error", err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
   const handleSandbox = async () => {
-    setBusy(true);
+    setBusyAction("sandbox");
     setError("");
-    setNotice("");
     try {
       const result = await runStudioSandbox(session.token, detail.id);
       setOutcome(result);
+      showToast("success", `Sandbox score ${result.score}, band ${result.band}.`);
     } catch (err) {
       if (handleActionAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "Sandbox failed");
+      showToast("error", err instanceof Error ? err.message : "Sandbox failed");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
   const handleSubmit = async () => {
-    setBusy(true);
+    setBusyAction("submit");
     setError("");
-    setNotice("");
     try {
       const result = await submitStudioListing(session.token, detail.id);
       setOutcome({ score: result.score, band: result.band });
-      setNotice(`Submitted. New status: ${result.status.replace("_", " ")}.`);
+      showToast("success", `Submitted for review. New status: ${result.status.replace("_", " ")}.`);
       revalidator.revalidate();
     } catch (err) {
       if (handleActionAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "Submit failed");
+      showToast("error", err instanceof Error ? err.message : "Submit failed");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
 
@@ -161,11 +165,6 @@ export function Component() {
       {error && (
         <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
           {error}
-        </p>
-      )}
-      {notice && (
-        <p className="text-xs text-klawva-accent bg-klawva-accent/10 border border-klawva-accent/20 rounded p-3 font-mono">
-          {notice}
         </p>
       )}
 
@@ -282,13 +281,19 @@ export function Component() {
               variant="secondary"
               size="md"
               onClick={handleSave}
-              loading={busy}
+              loading={busyAction === "save"}
               disabled={!editable}
             >
               <Save size={16} />
               Save Draft
             </Button>
-            <Button variant="secondary" size="md" onClick={handleSandbox} loading={busy}>
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={handleSandbox}
+              loading={busyAction === "sandbox"}
+              disabled={busyAction !== null}
+            >
               <FlaskConical size={16} />
               Run Sandbox
             </Button>
@@ -296,8 +301,8 @@ export function Component() {
               variant="primary"
               size="md"
               onClick={handleSubmit}
-              loading={busy}
-              disabled={detail.status === "published"}
+              loading={busyAction === "submit"}
+              disabled={detail.status === "published" || busyAction !== null}
             >
               <Send size={16} />
               Submit for Review
@@ -305,6 +310,8 @@ export function Component() {
           </div>
         </div>
       </Card>
+
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }
