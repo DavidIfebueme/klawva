@@ -18,9 +18,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       email: result.email,
       admin: result.admin,
     });
-    const raw = sessionStorage.getItem("klawva_login_next");
+    const rawNext =
+      url.searchParams.get("next") ?? sessionStorage.getItem("klawva_login_next");
     sessionStorage.removeItem("klawva_login_next");
-    const next = raw !== null && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/studio";
+    const next =
+      rawNext !== null && rawNext.startsWith("/") && !rawNext.startsWith("//")
+        ? rawNext
+        : "/studio";
     return redirect(next);
   } catch (err) {
     return {
