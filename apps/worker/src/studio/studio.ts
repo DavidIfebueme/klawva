@@ -95,7 +95,6 @@ export interface DraftInput {
   readonly name: string;
   readonly tagline: string;
   readonly category: string;
-  readonly agentId: string;
   readonly priceMinor: number;
   readonly briefFields: ReadonlyArray<string>;
   readonly soul: string;
@@ -136,7 +135,7 @@ export const createAuthorDraft = (
       name: input.name,
       tagline: input.tagline,
       category: input.category,
-      agentId: input.agentId,
+      agentId: `author:${input.slug}`,
       briefFields: input.briefFields,
       priceMinor: input.priceMinor,
     };
@@ -179,6 +178,59 @@ export const listingDetail = (
       return listing;
     }
     return { ...listing, soul: version.soul, briefFields: version.briefFields };
+  });
+
+export interface UpdateInput {
+  readonly name: string;
+  readonly tagline: string;
+  readonly category: string;
+  readonly priceMinor: number;
+  readonly briefFields: ReadonlyArray<string>;
+  readonly soul: string;
+}
+
+export const updateAuthorDraft = (
+  db: DatabaseImpl,
+  userId: string,
+  listingId: string,
+  input: UpdateInput,
+): Effect.Effect<void, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    const listing = yield* ownedListing(db, userId, listingId);
+    if (listing === null) {
+      return yield* Effect.fail(new ListingNotFound({}));
+    }
+    const status = String(listing.status);
+    if (status !== "draft" && status !== "rejected") {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: `not_editable:${status}` }),
+      );
+    }
+    const slug = String(listing.slug);
+    const version = Number(listing.version);
+    const now = new Date().toISOString();
+    yield* db
+      .run(
+        "UPDATE agent_listings SET name = ?, tagline = ?, category = ?, price_minor = ?, updated_at = ? WHERE id = ?",
+        [input.name, input.tagline, input.category, input.priceMinor, now, listingId],
+      )
+      .pipe(Effect.orDie);
+    const definition: ListingDefinition = {
+      slug,
+      name: input.name,
+      tagline: input.tagline,
+      category: input.category,
+      agentId: `author:${slug}`,
+      briefFields: input.briefFields,
+      priceMinor: input.priceMinor,
+    };
+    const hash = yield* manifestHash(definition).pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE listing_versions SET soul = ?, brief_fields = ?, manifest_hash = ?, score = NULL WHERE listing_id = ? AND version = ?",
+        [input.soul, JSON.stringify(input.briefFields), hash, listingId, version],
+      )
+      .pipe(Effect.orDie);
   });
 
 export const runsToday = (
