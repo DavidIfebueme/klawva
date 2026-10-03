@@ -218,6 +218,27 @@ export const rejectListing = (
     return { status: "rejected" };
   });
 
+export const unpublishListing = (
+  db: DatabaseImpl,
+  actorEmail: string,
+  listingId: string,
+): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    const listing = yield* loadOwner(db, listingId);
+    const updated = yield* db
+      .first(
+        "UPDATE agent_listings SET status = 'unpublished', updated_at = ? WHERE id = ? AND status = 'published' RETURNING id AS id",
+        [new Date().toISOString(), listingId],
+      )
+      .pipe(Effect.orDie);
+    if (updated === null) {
+      return yield* Effect.fail(new ListingConflict({ reason: "not_published" }));
+    }
+    yield* recordAudit(db, actorEmail, "listing.unpublish", listingId, "{}");
+    void listing;
+    return { status: "unpublished" };
+  });
+
 export const seed = (db: DatabaseImpl): Effect.Effect<number> =>
   seedListings(db).pipe(Effect.orDie);
 
