@@ -41,12 +41,16 @@ const SharedReport = Schema.Struct({
   summary: Schema.String,
   stats: ReportStats,
   shareToken: Schema.String,
+  agentSlug: Schema.String,
+  agentName: Schema.String,
 });
 
 const ReportRow = Schema.Struct({
   summary: Schema.String,
   stats: Schema.fromJsonString(ReportStats),
   shareToken: Schema.String,
+  agentSlug: Schema.String,
+  agentName: Schema.String,
 });
 
 const ListingRow = Schema.Struct({
@@ -359,7 +363,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const row = yield* db
             .first(
-              "SELECT summary AS summary, stats AS stats, share_token AS shareToken FROM mission_reports WHERE session_id = ? AND share_token = ?",
+              "SELECT m.summary AS summary, m.stats AS stats, m.share_token AS shareToken, COALESCE(l.slug, '') AS agentSlug, COALESCE(l.name, 'Your employee') AS agentName FROM mission_reports m LEFT JOIN sessions s ON s.id = m.session_id LEFT JOIN agent_listings l ON l.id = s.listing_id WHERE m.session_id = ? AND m.share_token = ?",
               [params.sessionId, query.shareToken],
             )
             .pipe(Effect.orDie);
