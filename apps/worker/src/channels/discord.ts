@@ -51,20 +51,17 @@ const Interaction = Schema.Struct({
   ),
 });
 
+const InteractionJson = Schema.fromJsonString(Interaction);
+
+const decodeInteraction = (rawBody: string) =>
+  Schema.decodeUnknownOption(InteractionJson)(rawBody);
+
 export const pongFor = (rawBody: string): string | null => {
-  const decoded = Schema.decodeUnknownOption(Interaction)(safeParse(rawBody));
+  const decoded = decodeInteraction(rawBody);
   if (decoded._tag === "None") {
     return null;
   }
   return decoded.value.type === 1 ? JSON.stringify({ type: 1 }) : null;
-};
-
-const safeParse = (raw: string): unknown => {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
 };
 
 const askSession = (
@@ -107,7 +104,7 @@ export const handleDiscordInteraction = (
     if (pong !== null) {
       return pong;
     }
-    const decoded = Schema.decodeUnknownOption(Interaction)(safeParse(rawBody));
+    const decoded = decodeInteraction(rawBody);
     if (decoded._tag === "None" || decoded.value.type !== 2) {
       return reply("Klawva received an unsupported interaction.");
     }

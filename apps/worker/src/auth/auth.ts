@@ -14,6 +14,20 @@ const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
 const normalize = (email: string): string => email.trim().toLowerCase();
 
+const hashToken = (token: string): Effect.Effect<string, AuthError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(token),
+      );
+      return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+    },
+    catch: (cause) => new AuthError({ reason: String(cause) }),
+  });
+
 export const isAdmin = (env: Env, email: string): boolean => {
   const allow = env.ADMIN_EMAILS.split(",")
     .map((value) => value.trim().toLowerCase())
@@ -51,6 +65,7 @@ export const requestMagicLink = (
   env: Env,
   db: DatabaseImpl,
   email: string,
+  next: string,
 ): Effect.Effect<void, AuthError> =>
   Effect.gen(function* () {
     const normalized = normalize(email);
@@ -60,7 +75,9 @@ export const requestMagicLink = (
       exp: nowSeconds() + magicLinkTtlSeconds,
       scope: "magic_link",
     });
-    const link = `${env.FRONTEND_BASE_URL}/studio/auth/verify?token=${token}`;
+    const safeNext =
+      next.startsWith("/") && !next.startsWith("//") ? next : "/studio";
+    const link = `${env.FRONTEND_BASE_URL}/studio/auth/verify?token=${token}&next=${encodeURIComponent(safeNext)}`;
     yield* sendEmail({
       apiKey: env.BREVO_API_KEY,
       senderEmail: env.BREVO_SENDER_EMAIL,
@@ -87,7 +104,23 @@ export const verifyMagicLink = (
     if (payload.scope !== "magic_link") {
       return yield* Effect.fail(new AuthError({ reason: "wrong_scope" }));
     }
+    const tokenHash = yield* hashToken(token);
+    const alreadyUsed = yield* db
+      .first("SELECT token_hash AS tokenHash FROM used_tokens WHERE token_hash = ?", [
+        tokenHash,
+      ])
+      .pipe(Effect.orDie);
+    if (alreadyUsed !== null) {
+      return yield* Effect.fail(new AuthError({ reason: "token_used" }));
+    }
+    yield* db
+      .run("INSERT INTO used_tokens (token_hash, used_at) VALUES (?, ?)", [
+        tokenHash,
+        new Date().toISOString(),
+      ])
+      .pipe(Effect.orDie);
     const userId = yield* upsertUser(db, payload.email);
+    yield* backfillSessionsForUser(db, userId, payload.email);
     const sessionToken = yield* signToken(env.AUTH_SECRET, {
       email: payload.email,
       exp: nowSeconds() + sessionTtlSeconds,
@@ -114,7 +147,6 @@ export const identityFromToken = (
       return yield* Effect.fail(new AuthError({ reason: "wrong_scope" }));
     }
     const userId = yield* upsertUser(db, payload.email);
-    yield* backfillSessionsForUser(db, userId, payload.email);
     return {
       email: payload.email,
       userId,
@@ -133,5 +165,8 @@ export const tokenFromHeaders = (
   return direct !== undefined && direct.length > 0 ? direct : null;
 };
 
-export const RequestEmail = Schema.Struct({ email: Schema.String });
+export const RequestEmail = Schema.Struct({
+  email: Schema.String,
+  next: Schema.optionalKey(Schema.String),
+});
 export const VerifyToken = Schema.Struct({ token: Schema.String });
