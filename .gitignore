@@ -14,3 +14,6 @@ spikes/
 .dev.vars
 .wrangler/
 node_modules/
+
+# build output
+dist/

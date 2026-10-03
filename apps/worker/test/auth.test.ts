@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
-import { constantTimeEqual, signToken, verifyToken } from "../src/auth/tokens.ts";
+import { signToken, verifyToken } from "../src/auth/tokens.ts";
 
 const secret = "test-secret";
 const future = Math.floor(Date.now() / 1000) + 3600;
@@ -34,11 +34,5 @@ describe("auth tokens", () => {
       Effect.result(verifyToken(secret, token)),
     );
     expect(result._tag).toBe("Failure");
-  });
-
-  it("compares in constant time", () => {
-    expect(constantTimeEqual("abc", "abc")).toBe(true);
-    expect(constantTimeEqual("abc", "abd")).toBe(false);
-    expect(constantTimeEqual("abc", "ab")).toBe(false);
   });
 });

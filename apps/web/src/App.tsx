@@ -20,6 +20,7 @@ import StudioHome from "./app/studio/page.tsx";
 import StudioLogin from "./app/studio/login/page.tsx";
 import StudioVerify from "./app/studio/auth/verify/page.tsx";
 import StudioListing from "./app/studio/listings/[id]/page.tsx";
+import StudioCockpit from "./app/studio/cockpit/page.tsx";
 
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="login" element={<StudioLogin />} />
         <Route path="auth/verify" element={<StudioVerify />} />
         <Route path="listings/:id" element={<StudioListing />} />
+        <Route path="cockpit" element={<StudioCockpit />} />
       </Route>
     </Routes>
   );

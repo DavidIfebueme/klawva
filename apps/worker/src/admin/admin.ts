@@ -13,12 +13,15 @@ const scalar = (
     .first(sql, params)
     .pipe(
       Effect.orDie,
-      Effect.map((row) => {
+      Effect.flatMap((row) => {
         if (row === null) {
-          return 0;
+          return Effect.die("count_row_missing");
         }
         const [first] = Object.values(row);
-        return first === undefined ? 0 : Number(first);
+        if (first === undefined) {
+          return Effect.die("count_value_missing");
+        }
+        return Effect.succeed(Number(first));
       }),
     );
 
@@ -112,7 +115,11 @@ const notifyOwner = (
       toEmail: String(owner.email),
       subject,
       html: body,
-    }).pipe(Effect.catch(() => Effect.void));
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => console.error("owner_notification_failed", error)),
+      ),
+    );
   });
 
 const loadReviewable = (
