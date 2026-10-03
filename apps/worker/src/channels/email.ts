@@ -3,7 +3,8 @@ import * as Schema from "effect/Schema";
 import PostalMime from "postal-mime";
 import { make as makeDatabase } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
-import { escapeHtml, renderTemplate } from "../email/templates.ts";
+import { renderTemplate } from "../email/templates.ts";
+import { toEmailHtml } from "../lib/markdown.ts";
 import type { Env } from "../env.ts";
 
 export interface InboundEmail {
@@ -98,7 +99,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       subject: "Reply from your Klawva employee",
       html: renderTemplate({
         title: "Your employee replied",
-        body: escapeHtml(reply).replace(/\n/g, "<br/>"),
+        body: toEmailHtml(reply),
       }),
     }).pipe(Effect.catch(() => Effect.void));
   });
