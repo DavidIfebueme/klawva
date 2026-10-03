@@ -71,6 +71,11 @@ const PaymentRow = Schema.Struct({
   status: Schema.String,
 });
 
+const AuthorFeeRow = Schema.Struct({
+  user_id: Schema.String,
+  status: Schema.String,
+});
+
 export const handlePaystackWebhook = (
   request: Request,
   env: Env,
@@ -110,6 +115,32 @@ export const handlePaystackWebhook = (
       )
       .pipe(Effect.orDie);
     if (payment === null) {
+      const feeRow = yield* db
+        .first(
+          "SELECT user_id AS user_id, status AS status FROM author_fees WHERE provider_reference = ?",
+          [reference],
+        )
+        .pipe(Effect.orDie);
+      if (feeRow === null) {
+        return Response.json({ ok: true });
+      }
+      const fee = Schema.decodeUnknownSync(AuthorFeeRow)(feeRow);
+      if (fee.status === "confirmed") {
+        return Response.json({ ok: true });
+      }
+      const confirmedAt = new Date().toISOString();
+      yield* db
+        .run(
+          "UPDATE author_fees SET status = 'confirmed', confirmed_at = ?, updated_at = ? WHERE provider_reference = ?",
+          [confirmedAt, confirmedAt, reference],
+        )
+        .pipe(Effect.orDie);
+      yield* db
+        .run(
+          "UPDATE author_profiles SET fee_paid_at = ?, updated_at = ? WHERE user_id = ?",
+          [confirmedAt, confirmedAt, fee.user_id],
+        )
+        .pipe(Effect.orDie);
       return Response.json({ ok: true });
     }
     const decoded = Schema.decodeUnknownSync(PaymentRow)(payment);
