@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { requireSession, rethrowAuth } from "@/lib/studio-loader";
+import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
   approveListing,
   getAdminAudit,
@@ -58,6 +58,9 @@ export function Component() {
       setReasonFor(null);
       setReason("");
     } catch (err) {
+      if (handleActionAuthError(err)) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
       setBusyId(null);
@@ -158,9 +161,10 @@ export function Component() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() =>
-                        setReasonFor(reasonFor === item.id ? null : item.id)
-                      }
+                      onClick={() => {
+                        setReasonFor(reasonFor === item.id ? null : item.id);
+                        setReason("");
+                      }}
                     >
                       <X size={14} />
                       Reject
@@ -179,6 +183,7 @@ export function Component() {
                       variant="primary"
                       size="sm"
                       loading={busyId === item.id}
+                      disabled={reason.trim().length === 0}
                       onClick={() =>
                         run(item.id, () => rejectListing(session.token, item.id, reason))
                       }

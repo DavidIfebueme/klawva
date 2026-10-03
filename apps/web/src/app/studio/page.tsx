@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useLoaderData, useNavigate } from "react-router-dom";
-import { requireSession, rethrowAuth } from "@/lib/studio-loader";
+import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
   createStudioListing,
   getStudioListings,
@@ -54,6 +54,7 @@ export function Component() {
       const checkout = await startAuthorFee(session.token);
       window.location.href = checkout.checkoutUrl;
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to start payment");
       setBusy(false);
     }
@@ -83,6 +84,7 @@ export function Component() {
       });
       navigate(`/studio/listings/${created.id}`);
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to create listing");
       setBusy(false);
     }

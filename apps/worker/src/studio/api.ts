@@ -44,6 +44,7 @@ const Detail = Schema.Struct({
   category: Schema.String,
   status: Schema.String,
   priceMinor: Schema.Number,
+  version: Schema.Number,
   soul: Schema.String,
   briefFields: Schema.String,
 });

@@ -20,6 +20,7 @@ import DashboardVerify from "./app/dashboard/auth/verify/page.tsx";
 import DashboardSession from "./app/dashboard/sessions/[id]/page.tsx";
 import DashboardWallet from "./app/dashboard/wallet/page.tsx";
 import StudioLayout from "./app/studio/layout.tsx";
+import { clearStudioSession } from "./lib/studio-session.ts";
 
 function StudioRouteError() {
   const error = useRouteError();
@@ -35,12 +36,15 @@ function StudioRouteError() {
           Studio Error
         </h1>
         <p className="text-xs text-klawva-muted mb-6 break-words">{detail}</p>
-        <a
-          href="/studio/login"
+        <button
+          onClick={() => {
+            clearStudioSession();
+            window.location.assign("/studio/login");
+          }}
           className="text-xs text-klawva-accent uppercase tracking-wider font-syne font-bold"
         >
-          Back to login
-        </a>
+          Clear session and return to login
+        </button>
       </div>
     </div>
   );

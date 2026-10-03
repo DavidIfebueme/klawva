@@ -15,9 +15,18 @@ export const requireSession = (): StudioSession => {
 };
 
 export const rethrowAuth = (error: unknown): never => {
-  if (error instanceof ApiError && error.status === 401) {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
     clearStudioSession();
     throw redirect("/studio/login");
   }
   throw error;
+};
+
+export const handleActionAuthError = (error: unknown): boolean => {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    clearStudioSession();
+    window.location.assign("/studio/login");
+    return true;
+  }
+  return false;
 };

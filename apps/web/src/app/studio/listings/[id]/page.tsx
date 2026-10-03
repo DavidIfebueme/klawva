@@ -6,7 +6,7 @@ import {
   useRevalidator,
   type LoaderFunctionArgs,
 } from "react-router-dom";
-import { requireSession, rethrowAuth } from "@/lib/studio-loader";
+import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
   getStudioListing,
   runStudioSandbox,
@@ -91,6 +91,7 @@ export function Component() {
       setNotice("Draft saved.");
       revalidator.revalidate();
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setBusy(false);
@@ -105,6 +106,7 @@ export function Component() {
       const result = await runStudioSandbox(session.token, detail.id);
       setOutcome(result);
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Sandbox failed");
     } finally {
       setBusy(false);
@@ -121,6 +123,7 @@ export function Component() {
       setNotice(`Submitted. New status: ${result.status.replace("_", " ")}.`);
       revalidator.revalidate();
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       const message = err instanceof Error ? err.message : "Submit failed";
       setError(message);
       if (message === "FeeRequired") {
