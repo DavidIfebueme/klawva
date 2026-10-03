@@ -87,6 +87,34 @@ export async function getSessionLaunch(
   );
 }
 
+const chatMessage = Schema.Struct({
+  role: Schema.String,
+  content: Schema.String,
+  createdAt: Schema.String,
+});
+export type ChatMessage = typeof chatMessage.Type;
+
+export async function getChatMessages(
+  sessionId: string,
+): Promise<ReadonlyArray<ChatMessage>> {
+  return Schema.decodeUnknownSync(Schema.Array(chatMessage))(
+    await send(`/api/sessions/${encodeURIComponent(sessionId)}/messages`),
+  );
+}
+
+export async function sendChatMessage(
+  sessionId: string,
+  message: string,
+): Promise<{ reply: string }> {
+  return Schema.decodeUnknownSync(Schema.Struct({ reply: Schema.String }))(
+    await send(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    }),
+  );
+}
+
 export interface HireSessionInput {
   listingId: string;
   agentId: string;
