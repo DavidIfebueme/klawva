@@ -18,7 +18,7 @@ import {
 import { defaultModel, layer as agentLayer } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
-import { escapeHtml, renderTemplate } from "./email/templates.ts";
+import { escapeHtml, renderTemplate, welcomeEmail } from "./email/templates.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import {
   identityFromToken,
@@ -508,7 +508,7 @@ const rootGroup = HttpApiBuilder.group(
               : null;
           const listing = yield* db
             .first(
-              "SELECT l.current_version AS version, v.budget_minor AS budgetMinor FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
+              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
               [payload.listingId],
             )
             .pipe(Effect.orDie);
@@ -566,6 +566,30 @@ const rootGroup = HttpApiBuilder.group(
               ],
             )
             .pipe(Effect.orDie);
+          if (
+            userId !== null &&
+            payload.customerEmail !== undefined &&
+            payload.customerEmail.length > 0
+          ) {
+            const prior = yield* db
+              .first(
+                "SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND id != ?",
+                [userId, id],
+              )
+              .pipe(Effect.orDie);
+            if (prior !== null && Number(prior.n) === 0) {
+              const employeeName =
+                listing === null ? "Your Klawva employee" : String(listing.name);
+              yield* sendEmail({
+                apiKey: env.BREVO_API_KEY,
+                senderEmail: env.BREVO_SENDER_EMAIL,
+                senderName: "Klawva",
+                toEmail: payload.customerEmail,
+                subject: "Welcome to Klawva",
+                html: welcomeEmail(employeeName),
+              }).pipe(Effect.catch(() => Effect.void));
+            }
+          }
           return { id };
         }).pipe(Effect.orDie),
       );
