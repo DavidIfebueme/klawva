@@ -19,6 +19,7 @@ export interface Env {
   readonly AUTH_SECRET: string;
   readonly FRONTEND_BASE_URL: string;
   readonly TELEGRAM_BOT_USERNAME: string;
+  readonly CRON_SECRET: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(
