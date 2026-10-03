@@ -45,6 +45,7 @@ export const router = createBrowserRouter([
     path: "/employees/launch",
     lazy: () => import("./app/employees/launch/page.tsx"),
   },
+  { path: "/chat/:sessionId", lazy: () => import("./app/chat/[sessionId]/page.tsx") },
   { path: "/hire/:agent", lazy: () => import("./app/hire/[agent]/page.tsx") },
   { path: "/checkout", lazy: () => import("./app/checkout/page.tsx") },
   { path: "/store", loader: () => redirect("/employees") },
