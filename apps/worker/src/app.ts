@@ -27,6 +27,7 @@ import {
   submitListing,
 } from "./listings/publish.ts";
 import { runEval } from "./eval/eval.ts";
+import { ReportNotFound } from "./report/report.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import { generateAddress } from "./payments/breet.ts";
 
@@ -132,6 +133,7 @@ const sharedReportEndpoint = HttpApiEndpoint.get(
     params: Schema.Struct({ sessionId: Schema.String }),
     query: Schema.Struct({ shareToken: Schema.String }),
     success: SharedReport,
+    error: ReportNotFound,
   },
 );
 
@@ -275,7 +277,9 @@ const rootGroup = HttpApiBuilder.group(
             )
             .pipe(Effect.orDie);
           if (row === null) {
-            return { summary: "", stats: [], shareToken: "" };
+            return yield* Effect.fail(
+              new ReportNotFound({ sessionId: params.sessionId }),
+            );
           }
           return Schema.decodeUnknownSync(ReportRow)(row);
         }),
