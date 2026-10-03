@@ -1,0 +1,21 @@
+{
+  "name": "klawva",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "dc22b5614ced449009cac59911622f11",
+  "observability": { "enabled": true },
+  "vars": { "ENV": "development" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "klawva",
+      "database_id": "91bb658e-af7d-4108-84e7-79b413c90be6"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SESSION", "class_name": "SessionCounter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionCounter"] }],
+  "ai": { "binding": "AI" }
+}

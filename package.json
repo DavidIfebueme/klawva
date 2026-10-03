@@ -1,0 +1,9 @@
+{
+  "name": "klawva",
+  "private": true,
+  "packageManager": "pnpm@12.8.1",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}
