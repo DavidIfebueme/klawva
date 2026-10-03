@@ -1,0 +1,63 @@
+import * as Effect from "effect/Effect";
+import { make as makeDatabase } from "../db/database.ts";
+import type { Env } from "../env.ts";
+
+const dayMs = 24 * 60 * 60 * 1000;
+
+export interface SweepResult {
+  readonly ended: number;
+}
+
+export const sweep = (env: Env): Effect.Effect<SweepResult> =>
+  Effect.gen(function* () {
+    const db = makeDatabase(env.DB);
+    const now = new Date().toISOString();
+    const unpaidCutoff = new Date(Date.now() - 7 * dayMs).toISOString();
+    const transcriptCutoff = new Date(Date.now() - 7 * dayMs).toISOString();
+    const reportCutoff = new Date(Date.now() - 90 * dayMs).toISOString();
+
+    yield* db
+      .run(
+        "UPDATE sessions SET state = 'expired', updated_at = ? WHERE state = 'pending' AND created_at < ?",
+        [now, unpaidCutoff],
+      )
+      .pipe(Effect.orDie);
+
+    const due = yield* db
+      .all(
+        "SELECT id AS id FROM sessions WHERE state IN ('active', 'ready') AND window_end IS NOT NULL AND window_end < ?",
+        [now],
+      )
+      .pipe(Effect.orDie);
+
+    for (const row of due) {
+      const id = String(row.id);
+      yield* Effect.tryPromise({
+        try: () =>
+          env.SESSION.get(env.SESSION.idFromName(id)).fetch(
+            "https://session/report",
+            { method: "POST" },
+          ),
+        catch: (cause) => new Error(String(cause)),
+      }).pipe(Effect.catch(() => Effect.void));
+      yield* db
+        .run("UPDATE sessions SET state = 'completed', updated_at = ? WHERE id = ?", [
+          now,
+          id,
+        ])
+        .pipe(Effect.orDie);
+    }
+
+    yield* db
+      .run(
+        "DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE window_end IS NOT NULL AND window_end < ?)",
+        [transcriptCutoff],
+      )
+      .pipe(Effect.orDie);
+
+    yield* db
+      .run("DELETE FROM mission_reports WHERE created_at < ?", [reportCutoff])
+      .pipe(Effect.orDie);
+
+    return { ended: due.length };
+  });
