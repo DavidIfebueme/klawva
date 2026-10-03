@@ -78,6 +78,7 @@ import type { Env } from "./env.ts";
 import { ListingConflict, ListingNotFound } from "./errors.ts";
 import { rateLimited, verifyTurnstile } from "./lib/guard.ts";
 import { screenBrief } from "./moderation/moderation.ts";
+import { connectors } from "./mcp/connectors.ts";
 
 const HealthResponse = Schema.Struct({
   ok: Schema.Boolean,
@@ -131,6 +132,16 @@ const listingDetailBySlugEndpoint = HttpApiEndpoint.get(
 
 const configEndpoint = HttpApiEndpoint.get("config", "/api/config", {
   success: Schema.Struct({ telegramBotUsername: Schema.String }),
+});
+
+const connectorsEndpoint = HttpApiEndpoint.get("connectors", "/api/connectors", {
+  success: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      description: Schema.String,
+    }),
+  ),
 });
 
 const sessionLaunchEndpoint = HttpApiEndpoint.get(
@@ -254,6 +265,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(listListingsEndpoint)
   .add(listingDetailBySlugEndpoint)
   .add(configEndpoint)
+  .add(connectorsEndpoint)
   .add(sessionLaunchEndpoint)
   .add(chatMessagesEndpoint)
   .add(chatSendEndpoint)
@@ -392,6 +404,7 @@ const rootGroup = HttpApiBuilder.group(
       .handle("config", () =>
         Effect.succeed({ telegramBotUsername: env.TELEGRAM_BOT_USERNAME }),
       )
+      .handle("connectors", () => Effect.succeed([...connectors]))
       .handle("sessionLaunch", ({ params }) =>
         Effect.gen(function* () {
           const row = yield* db
