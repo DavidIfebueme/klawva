@@ -16,17 +16,6 @@ import DashboardVerify from "./app/dashboard/auth/verify/page.tsx";
 import DashboardSession from "./app/dashboard/sessions/[id]/page.tsx";
 import DashboardWallet from "./app/dashboard/wallet/page.tsx";
 import StudioLayout from "./app/studio/layout.tsx";
-import StudioHome, { loader as studioHomeLoader } from "./app/studio/page.tsx";
-import StudioLogin, { loader as studioLoginLoader } from "./app/studio/login/page.tsx";
-import StudioVerify, {
-  loader as studioVerifyLoader,
-} from "./app/studio/auth/verify/page.tsx";
-import StudioListing, {
-  loader as studioListingLoader,
-} from "./app/studio/listings/[id]/page.tsx";
-import StudioCockpit, {
-  loader as studioCockpitLoader,
-} from "./app/studio/cockpit/page.tsx";
 
 export const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
@@ -54,19 +43,17 @@ export const router = createBrowserRouter([
     path: "/studio",
     element: <StudioLayout />,
     children: [
-      { index: true, element: <StudioHome />, loader: studioHomeLoader },
-      { path: "login", element: <StudioLogin />, loader: studioLoginLoader },
+      { index: true, lazy: () => import("./app/studio/page.tsx") },
+      { path: "login", lazy: () => import("./app/studio/login/page.tsx") },
       {
         path: "auth/verify",
-        element: <StudioVerify />,
-        loader: studioVerifyLoader,
+        lazy: () => import("./app/studio/auth/verify/page.tsx"),
       },
       {
         path: "listings/:id",
-        element: <StudioListing />,
-        loader: studioListingLoader,
+        lazy: () => import("./app/studio/listings/[id]/page.tsx"),
       },
-      { path: "cockpit", element: <StudioCockpit />, loader: studioCockpitLoader },
+      { path: "cockpit", lazy: () => import("./app/studio/cockpit/page.tsx") },
     ],
   },
 ]);

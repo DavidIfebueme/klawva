@@ -49,7 +49,7 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
-export default function StudioListingPage() {
+export function Component() {
   const { session, detail } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const revalidator = useRevalidator();

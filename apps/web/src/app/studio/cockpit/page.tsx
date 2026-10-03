@@ -28,7 +28,7 @@ export const loader = async () => {
   return { session, admin: true as const, overview, reviews, audit };
 };
 
-export default function CockpitPage() {
+export function Component() {
   const data = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const [busyId, setBusyId] = useState<string | null>(null);

@@ -35,7 +35,7 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
-export default function StudioHomePage() {
+export function Component() {
   const { session, me, listings } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
