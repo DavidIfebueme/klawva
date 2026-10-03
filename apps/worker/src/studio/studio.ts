@@ -4,6 +4,7 @@ import { defaultModel, type AgentRuntimeImpl } from "../agent/runtime.ts";
 import { type DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
 import { runEval, type Band } from "../eval/eval.ts";
+import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { manifestHash } from "../listings/listings.ts";
 import { statusForBand } from "../listings/publish.ts";
 import type { ListingDefinition } from "../listings/definitions.ts";
@@ -13,17 +14,7 @@ import type { Identity } from "../auth/auth.ts";
 export const publishFeeMinor = 2000;
 export const sandboxDailyCap = 20;
 
-export class ListingNotFound extends Schema.TaggedError<ListingNotFound>()(
-  "ListingNotFound",
-  {},
-  { httpApiStatus: 404 },
-) {}
-
-export class ListingConflict extends Schema.TaggedError<ListingConflict>()(
-  "ListingConflict",
-  { reason: Schema.String },
-  { httpApiStatus: 409 },
-) {}
+export { ListingConflict, ListingNotFound };
 
 export class FeeRequired extends Schema.TaggedError<FeeRequired>()(
   "FeeRequired",
