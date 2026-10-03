@@ -338,6 +338,25 @@ const sessionGroup = HttpApiBuilder.group(
             return { ok: true };
           }
           yield* store.spend(50);
+          const day = new Date().toISOString().slice(0, 10);
+          const counterKey = `turns:${day}`;
+          const counter = yield* db
+            .first("SELECT value AS value FROM counters WHERE key = ?", [counterKey])
+            .pipe(Effect.orDie);
+          const used = counter === null ? 0 : Number(counter.value);
+          if (used >= 5000) {
+            const capacityReply =
+              "Klawva is at capacity for today. Please try again tomorrow.";
+            yield* store.append("assistant", capacityReply);
+            yield* mirror("assistant", capacityReply);
+            return { ok: true, reply: capacityReply };
+          }
+          yield* db
+            .run(
+              "INSERT INTO counters (key, value, updated_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at",
+              [counterKey, new Date().toISOString()],
+            )
+            .pipe(Effect.orDie);
           const soul = (yield* store.get("soul")) ?? "";
           const brief = Schema.decodeUnknownSync(Brief)(
             JSON.parse((yield* store.get("brief")) ?? "{}"),
