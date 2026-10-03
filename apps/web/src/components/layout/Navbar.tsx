@@ -16,13 +16,12 @@ export function Navbar() {
         </Link>
         <div className="flex items-center gap-4">
           <div className="hidden md:flex items-center gap-6 mr-4">
-            <Link href="/#agents" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Agents</Link>
+            <Link href="/employees" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Employees</Link>
             <Link href="/#pricing" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Pricing</Link>
-            <Link href="/history" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">History</Link>
-            <Link href="/dashboard" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors font-bold text-klawva-accent">Dashboard</Link>
+            <Link href="/studio/login" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors font-bold text-klawva-accent">Studio</Link>
           </div>
           <div className="hidden md:block">
-            <Button variant="primary" size="sm" href="/#agents">Hire an Agent</Button>
+            <Button variant="primary" size="sm" href="/employees">Hire an Employee</Button>
           </div>
           <button
             onClick={() => setIsOpen(!isOpen)}
@@ -48,11 +47,11 @@ export function Navbar() {
       {isOpen && (
         <div className="md:hidden border-b border-klawva-border bg-klawva-bg/95 backdrop-blur-md px-6 py-6 flex flex-col gap-4">
           <Link
-            href="/#agents"
+            href="/employees"
             onClick={() => setIsOpen(false)}
             className="text-lg text-klawva-muted hover:text-klawva-text transition-colors py-2 border-b border-klawva-border/50"
           >
-            Agents
+            Employees
           </Link>
           <Link
             href="/#pricing"
@@ -62,22 +61,15 @@ export function Navbar() {
             Pricing
           </Link>
           <Link
-            href="/history"
-            onClick={() => setIsOpen(false)}
-            className="text-lg text-klawva-muted hover:text-klawva-text transition-colors py-2 border-b border-klawva-border/50"
-          >
-            History
-          </Link>
-          <Link
-            href="/dashboard"
+            href="/studio/login"
             onClick={() => setIsOpen(false)}
             className="text-lg font-bold text-klawva-accent hover:text-klawva-text transition-colors py-2 border-b border-klawva-border/50"
           >
-            Dashboard
+            Studio
           </Link>
           <div className="pt-4">
-            <Button variant="primary" className="w-full justify-center" href="/#agents" onClick={() => setIsOpen(false)}>
-              Hire an Agent
+            <Button variant="primary" className="w-full justify-center" href="/employees" onClick={() => setIsOpen(false)}>
+              Hire an Employee
             </Button>
           </div>
         </div>

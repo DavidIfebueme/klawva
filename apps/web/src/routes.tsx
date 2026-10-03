@@ -1,14 +1,11 @@
 import {
   createBrowserRouter,
   isRouteErrorResponse,
+  redirect,
   useRouteError,
 } from "react-router-dom";
 import Landing from "./app/page.tsx";
-import Agents from "./app/agents/page.tsx";
-import Store from "./app/store/page.tsx";
-import Checkout from "./app/checkout/page.tsx";
 import CustomRequest from "./app/custom-request/page.tsx";
-import Hire from "./app/hire/[agent]/page.tsx";
 import History from "./app/history/page.tsx";
 import Report from "./app/report/[sessionId]/page.tsx";
 import Session from "./app/session/[sessionId]/page.tsx";
@@ -52,11 +49,16 @@ function StudioRouteError() {
 
 export const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
-  { path: "/agents", element: <Agents /> },
-  { path: "/store", element: <Store /> },
-  { path: "/checkout", element: <Checkout /> },
+  { path: "/employees", lazy: () => import("./app/employees/page.tsx") },
+  {
+    path: "/employees/launch",
+    lazy: () => import("./app/employees/launch/page.tsx"),
+  },
+  { path: "/hire/:agent", lazy: () => import("./app/hire/[agent]/page.tsx") },
+  { path: "/checkout", lazy: () => import("./app/checkout/page.tsx") },
+  { path: "/store", loader: () => redirect("/employees") },
+  { path: "/agents", loader: () => redirect("/employees") },
   { path: "/custom-request", element: <CustomRequest /> },
-  { path: "/hire/:agent", element: <Hire /> },
   { path: "/history", element: <History /> },
   { path: "/report/:sessionId", element: <Report /> },
   { path: "/session/:sessionId", element: <Session /> },

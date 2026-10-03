@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
+import { sendEmail } from "../email/brevo.ts";
+import { shiftStartedEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 
@@ -139,6 +141,7 @@ export const handlePaystackWebhook = (
       return Response.json({ ok: true });
     }
     const now = new Date().toISOString();
+    const endIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     yield* db
       .run(
         "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ?",
@@ -146,10 +149,10 @@ export const handlePaystackWebhook = (
       )
       .pipe(Effect.orDie);
     yield* db
-      .run("UPDATE sessions SET state = 'ready', updated_at = ? WHERE id = ?", [
-        now,
-        decoded.session_id,
-      ])
+      .run(
+        "UPDATE sessions SET state = 'ready', window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
+        [now, endIso, now, decoded.session_id],
+      )
       .pipe(Effect.orDie);
     yield* Effect.tryPromise({
       try: () =>
@@ -167,6 +170,33 @@ export const handlePaystackWebhook = (
         ),
       catch: (cause) => new PaystackError({ reason: String(cause) }),
     });
+    const sessionRow = yield* db
+      .first(
+        "SELECT customer_email AS email, listing_id AS listingId FROM sessions WHERE id = ?",
+        [decoded.session_id],
+      )
+      .pipe(Effect.orDie);
+    if (sessionRow !== null && sessionRow.email !== null) {
+      const listingRow = yield* db
+        .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
+          String(sessionRow.listingId),
+        ])
+        .pipe(Effect.orDie);
+      const employeeName =
+        listingRow !== null ? String(listingRow.name) : "Your Klawva employee";
+      yield* sendEmail({
+        apiKey: env.BREVO_API_KEY,
+        senderEmail: env.BREVO_SENDER_EMAIL,
+        senderName: "Klawva",
+        toEmail: String(sessionRow.email),
+        subject: "Your Klawva employee is now active",
+        html: shiftStartedEmail(employeeName, now, endIso),
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => console.error("shift_email_failed", error)),
+        ),
+      );
+    }
     return Response.json({ ok: true });
   });
 

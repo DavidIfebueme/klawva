@@ -1,132 +1,68 @@
-import React from 'react';
-import { Navigate, useParams } from 'react-router-dom';
-import { Navbar } from '@/components/layout/Navbar';
-import { Footer } from '@/components/layout/Footer';
-import { agents, AgentId } from '@/lib/agents';
-import { ScrapperIcon } from '@/components/icons/ScrapperIcon';
-import { VendorIcon } from '@/components/icons/VendorIcon';
-import { ResearcherIcon } from '@/components/icons/ResearcherIcon';
-import { JobSeekerIcon } from '@/components/icons/JobSeekerIcon';
-import { LeadScoutIcon } from '@/components/icons/LeadScoutIcon';
-import { HirePriceCardBits } from '@/components/billing/HirePriceCardBits';
-import { Badge } from '@/components/ui/Badge';
-import Link from '@/components/ui/AppLink';
-import { Button } from '@/components/ui/Button';
+import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
+import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
+import Link from "@/components/ui/AppLink";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { getEmployee } from "@/lib/employees-api";
 
-const iconMap = {
-  scrapper: ScrapperIcon,
-  vendor: VendorIcon,
-  researcher: ResearcherIcon,
-  jobseeker: JobSeekerIcon,
-  leadscout: LeadScoutIcon,
+export const loader = async ({ params }: LoaderFunctionArgs) => {
+  if (params.agent === undefined) {
+    throw redirect("/employees");
+  }
+  return { employee: await getEmployee(params.agent) };
 };
 
-const isAgentId = (value: string | undefined): value is AgentId =>
-  value === 'scrapper' ||
-  value === 'vendor' ||
-  value === 'researcher' ||
-  value === 'jobseeker' ||
-  value === 'leadscout';
-
-export default function HireAgentPage() {
-  const params = useParams();
-
-  if (!isAgentId(params.agent)) {
-    return <Navigate to="/" replace />;
-  }
-
-  const agentId = params.agent;
-  const agent = agents[agentId];
-  const Icon = iconMap[agentId];
+export function Component() {
+  const { employee } = useLoaderData<typeof loader>();
 
   return (
     <main className="min-h-screen bg-klawva-bg text-klawva-text font-mono pt-16">
       <Navbar />
-      
       <div className="max-w-7xl mx-auto px-6 py-16 md:py-32 grid grid-cols-1 lg:grid-cols-12 gap-16">
-        
-        {/* Left Column: Agent Info */}
-        <div className="lg:col-span-7 flex flex-col gap-12">
-          
-          {/* Header */}
+        <div className="lg:col-span-7 flex flex-col gap-10">
           <div>
-            <Icon size={64} className="text-klawva-accent mb-8" />
             <h1 className="font-syne font-extrabold text-5xl md:text-6xl text-klawva-text mb-4 tracking-tight">
-              {agent.name}
+              {employee.name}
             </h1>
-            <Badge variant="active" className="mb-6 px-3 py-1 text-sm">{agent.title}</Badge>
+            <Badge variant="active" className="mb-6 px-3 py-1 text-sm">
+              {employee.category}
+            </Badge>
             <p className="font-syne text-klawva-muted text-2xl md:text-3xl leading-tight">
-              {agent.tagline}
+              {employee.tagline}
             </p>
           </div>
-
           <div className="h-px w-full bg-klawva-border" />
-
-          {/* Description */}
-          <div>
-            <p className="font-mono text-klawva-muted text-lg leading-relaxed">
-              {agent.description}
-            </p>
-          </div>
-
-          {/* Capabilities */}
-          <div>
-            <h3 className="font-syne font-bold text-2xl text-klawva-text mb-6">Capabilities</h3>
-            <ul className="flex flex-col gap-4">
-              {agent.capabilities.map((cap, i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <span className="text-klawva-accent font-mono mt-0.5">→</span>
-                  <span className="font-mono text-klawva-muted text-lg leading-relaxed">{cap}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Example Session */}
-          <div className="bg-klawva-surface border border-klawva-border rounded-lg p-8 mt-4">
-            <span className="font-mono text-klawva-dim text-xs tracking-[0.2em] uppercase mb-4 block">
-              EXAMPLE SESSION
-            </span>
-            <p className="font-mono italic text-klawva-muted text-lg leading-relaxed">
-              &quot;{agent.examplePrompt}&quot;
-            </p>
-          </div>
-
+          <p className="font-mono text-klawva-muted text-lg leading-relaxed">
+            Hires run a 24-hour shift. You hand over a brief, then work with
+            {" "}
+            {employee.name.split(" ").pop()} entirely through Telegram from the
+            moment your payment clears.
+          </p>
         </div>
-
-        {/* Right Column: Sticky Hire Card */}
         <div className="lg:col-span-5 relative">
-          <div className="sticky top-32 bg-klawva-surface border border-klawva-accent rounded-xl p-8 shadow-[0_0_40px_rgba(232,255,71,0.05)]">
-            
-            <div className="flex items-center gap-4 mb-8">
-              <Icon size={32} className="text-klawva-accent" />
-              <h2 className="font-syne font-bold text-2xl text-klawva-text">{agent.name}</h2>
-            </div>
-
-            <HirePriceCardBits />
-
-            <div className="mb-8 p-4 bg-klawva-elevated border border-klawva-border rounded flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-klawva-accent animate-pulse" />
-              <span className="font-mono text-klawva-muted text-sm">
-                Available on: {agent.channels.join(' or ')}
+          <div className="sticky top-32 bg-klawva-surface border border-klawva-accent rounded-xl p-8">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="font-syne font-bold text-2xl text-klawva-text">
+                {employee.name}
+              </h2>
+              <span className="font-syne font-extrabold text-2xl text-klawva-accent">
+                ₦{(employee.priceMinor / 100).toLocaleString()}
               </span>
             </div>
-
-             <Link href={`/checkout?agent=${agentId}`} className="block w-full">
-                <Button variant="primary" size="lg" className="w-full mb-4">
-                  Hire {agent.name.split(' ').pop()} →
-                </Button>
-              </Link>
-
+            <Link href={`/checkout?agent=${employee.slug}`} className="block w-full">
+              <Button variant="primary" size="lg" className="w-full mb-4">
+                Hire {employee.name.split(" ").pop()} →
+              </Button>
+            </Link>
             <div className="text-center">
-              <Badge variant="pending" className="px-3 py-1 text-xs tracking-widest">[ 24HRS ]</Badge>
+              <Badge variant="pending" className="px-3 py-1 text-xs tracking-widest">
+                [ 24 HRS ]
+              </Badge>
             </div>
-
           </div>
         </div>
-
       </div>
-      
       <Footer />
     </main>
   );

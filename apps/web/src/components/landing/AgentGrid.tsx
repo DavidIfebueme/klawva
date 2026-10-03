@@ -72,7 +72,7 @@ export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAl
 
         {showSeeAllButton && (
           <div className="mt-16 text-center">
-            <Button variant="ghost" onClick={() => window.location.href = '/agents'}>
+            <Button variant="ghost" onClick={() => window.location.href = '/employees'}>
               See all employees →
             </Button>
           </div>
