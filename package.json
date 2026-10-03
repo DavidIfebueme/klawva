@@ -4,6 +4,7 @@
   "packageManager": "pnpm@12.8.1",
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "stage:worker-assets": "pnpm --dir apps/web build && rm -rf apps/worker/assets && mkdir -p apps/worker/assets && cp -r apps/web/dist/. apps/worker/assets/ && touch apps/worker/assets/.gitkeep"
   }
 }
