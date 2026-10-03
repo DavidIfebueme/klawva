@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -6,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
 import { getAccountSession } from "@/lib/account-api";
+import { sendFeedback } from "@/lib/employees-api";
 
 const humanize = (value: string): string =>
   value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -44,6 +46,23 @@ function statusVariant(state: string): "active" | "pending" | "warning" {
 export function Component() {
   const { detail } = useLoaderData<typeof loader>();
   const brief = parseBrief(detail.session.brief);
+  const [rating, setRating] = useState(5);
+  const [report, setReport] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+
+  const handleFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFeedbackBusy(true);
+    try {
+      await sendFeedback(detail.session.id, rating, report.trim() || undefined);
+      setFeedbackSent(true);
+    } catch {
+      setFeedbackSent(false);
+    } finally {
+      setFeedbackBusy(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -127,6 +146,45 @@ export function Component() {
                   </div>
                 ))}
               </div>
+            )}
+          </Card>
+
+          <Card>
+            <h2 className="font-syne font-bold text-lg uppercase text-white mb-4">
+              Rate this employee
+            </h2>
+            {feedbackSent ? (
+              <p className="font-mono text-klawva-accent text-sm">
+                Thanks. Your feedback is recorded.
+              </p>
+            ) : (
+              <form onSubmit={handleFeedback} className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
+                    Rating
+                  </label>
+                  <select
+                    value={rating}
+                    onChange={(e) => setRating(Number(e.target.value))}
+                    className="bg-klawva-bg border border-klawva-border rounded px-3 py-1 text-sm font-mono text-klawva-text focus:outline-none focus:border-klawva-accent"
+                  >
+                    {[5, 4, 3, 2, 1].map((value) => (
+                      <option key={value} value={value}>
+                        {value} / 5
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <textarea
+                  className="w-full min-h-[90px] bg-klawva-bg border border-klawva-border rounded p-3 text-sm text-klawva-text placeholder-klawva-dim focus:border-klawva-accent focus:outline-none font-mono"
+                  placeholder="Report a problem (optional)"
+                  value={report}
+                  onChange={(e) => setReport(e.target.value)}
+                />
+                <Button type="submit" variant="secondary" size="sm" loading={feedbackBusy}>
+                  Submit feedback
+                </Button>
+              </form>
             )}
           </Card>
         </div>
