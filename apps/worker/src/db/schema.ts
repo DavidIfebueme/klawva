@@ -20,7 +20,7 @@ export const ListingStatus = Schema.Literals([
 ]);
 export type ListingStatus = typeof ListingStatus.Type;
 
-export const Channel = Schema.Literals(["telegram"]);
+export const Channel = Schema.Literals(["telegram", "web", "email"]);
 export type Channel = typeof Channel.Type;
 
 export const MessageRole = Schema.Literals(["user", "assistant", "tool", "system"]);
