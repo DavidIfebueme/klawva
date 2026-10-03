@@ -112,10 +112,6 @@ export const handleBreetWebhook = (
       return Response.json({ ok: true });
     }
     const sessionId = String(mapping.sessionId);
-    const eventId = event.eventId ?? null;
-    if (eventId === null || eventId.length === 0) {
-      return Response.json({ ok: true });
-    }
     const amountMinor = Math.round((event.amountInUSD ?? 0) * 100);
     if (amountMinor > 0) {
       yield* Effect.tryPromise({
@@ -127,7 +123,7 @@ export const handleBreetWebhook = (
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 amountMinor,
-                reference: `breet_${eventId}`,
+                reference: `breet_${event.eventId ?? event.destinationAddress}`,
                 description: "Crypto funding",
               }),
             },
