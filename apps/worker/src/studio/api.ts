@@ -43,8 +43,8 @@ const Detail = Schema.Struct({
   category: Schema.String,
   status: Schema.String,
   priceMinor: Schema.Number,
-  soul: Schema.optionalKey(Schema.String),
-  briefFields: Schema.optionalKey(Schema.String),
+  soul: Schema.String,
+  briefFields: Schema.String,
 });
 
 const EvalResponse = Schema.Struct({
@@ -120,11 +120,6 @@ const fee = HttpApiEndpoint.post("authorFee", "/api/author/fee", {
   error: allErrors,
 });
 
-const earnings = HttpApiEndpoint.get("authorEarnings", "/api/author/earnings", {
-  success: Schema.Struct({ creditMinor: Schema.Number }),
-  error: allErrors,
-});
-
 class StudioGroup extends HttpApiGroup.make("Studio")
   .add(me)
   .add(listListings)
@@ -132,8 +127,7 @@ class StudioGroup extends HttpApiGroup.make("Studio")
   .add(getListing)
   .add(runSandbox)
   .add(submitListing)
-  .add(fee)
-  .add(earnings) {}
+  .add(fee) {}
 
 export class StudioApi extends HttpApi.make("StudioApi").add(StudioGroup) {}
 
@@ -212,12 +206,6 @@ export const studioGroup = HttpApiBuilder.group(
           const identity = yield* requireIdentity();
           const result = yield* initializeFee(db, env, identity.userId, identity.email);
           return result;
-        }),
-      )
-      .handle("authorEarnings", () =>
-        Effect.gen(function* () {
-          yield* requireIdentity();
-          return { creditMinor: 0 };
         }),
       );
   }),
