@@ -3,19 +3,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
   "account_id": "dc22b5614ced449009cac59911622f11",
   "observability": { "enabled": true },
-  "vars": { "ENV": "development", "TELEGRAM_BOT_USERNAME": "klawva_employee_1_bot" },
-  "triggers": { "crons": ["* * * * *", "0 * * * *"] },
-  "routes": [
-    { "pattern": "klawva.xyz", "custom_domain": true },
-    { "pattern": "www.klawva.xyz", "custom_domain": true }
-  ],
-  "ratelimits": [
-    { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
-    { "name": "PUBLIC_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
-  ],
+  "vars": { "ENV": "development" },
   "d1_databases": [
     {
       "binding": "DB",
@@ -24,15 +14,8 @@
     }
   ],
   "durable_objects": {
-    "bindings": [
-      { "name": "SESSION", "class_name": "SessionAgent" },
-      { "name": "WALLET", "class_name": "WalletAgent" }
-    ]
+    "bindings": [{ "name": "SESSION", "class_name": "SessionCounter" }]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["SessionAgent"] },
-    { "tag": "v2", "new_sqlite_classes": ["WalletAgent"] }
-  ],
-  "ai": { "binding": "AI" },
-  "assets": { "directory": "./assets", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": true },
-  }
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionCounter"] }],
+  "ai": { "binding": "AI" }
+}
