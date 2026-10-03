@@ -673,7 +673,8 @@ const rootGroup = HttpApiBuilder.group(
               now,
               now,
             ],
-          );
+          )
+          .pipe(Effect.orDie);
           yield* Effect.tryPromise({
             try: () =>
               env.SESSION.get(env.SESSION.idFromName(id)).fetch(
@@ -706,7 +707,7 @@ const rootGroup = HttpApiBuilder.group(
             )
             .pipe(Effect.orDie);
           return { id, sessionToken };
-        }).pipe(Effect.orDie),
+        }),
       );
   }),
 );

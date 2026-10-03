@@ -65,7 +65,7 @@ export default {
       );
       if (stateExit._tag !== "Success") {
         return Response.redirect(
-          `${env.FRONTEND_BASE_URL}/employees/launch?session=${session}&slack=failed`,
+          `${env.FRONTEND_BASE_URL}/employees?slack=failed`,
           302,
         );
       }
@@ -88,33 +88,42 @@ export default {
         stateExit.value.sessionId.length === 0
       ) {
         return Response.redirect(
-          `${env.FRONTEND_BASE_URL}/employees/launch?slack=failed`,
+          `${env.FRONTEND_BASE_URL}/employees?slack=failed`,
           302,
         );
       }
       const session = stateExit.value.sessionId;
+      const db = makeDatabase(env.DB);
+      const sessionRow = await Effect.runPromise(
+        db
+          .first(
+            "SELECT user_id AS userId, session_token AS sessionToken FROM sessions WHERE id = ?",
+            [session],
+          )
+          .pipe(Effect.orDie),
+      );
+      const sessionToken =
+        sessionRow === null ? "" : String(sessionRow.sessionToken ?? "");
+      const launchPath =
+        sessionToken.length > 0
+          ? `/employees/launch/${session}/${sessionToken}`
+          : "/employees";
       const install = await Effect.runPromise(
         exchangeCode(env.SLACK_CLIENT_ID, env.SLACK_CLIENT_SECRET, code, redirectUri),
       );
       if (install === null) {
         return Response.redirect(
-          `${env.FRONTEND_BASE_URL}/employees/launch?session=${session}&slack=failed`,
+          `${env.FRONTEND_BASE_URL}${launchPath}?slack=failed`,
           302,
         );
       }
-      const db = makeDatabase(env.DB);
-      const sessionRow = await Effect.runPromise(
-        db
-          .first("SELECT user_id AS userId FROM sessions WHERE id = ?", [session])
-          .pipe(Effect.orDie),
-      );
       if (sessionRow !== null && sessionRow.userId !== null) {
         await Effect.runPromise(
           saveConnection(db, String(sessionRow.userId), install),
         );
       }
       return Response.redirect(
-        `${env.FRONTEND_BASE_URL}/employees/launch?session=${session}&slack=connected`,
+        `${env.FRONTEND_BASE_URL}${launchPath}?slack=connected`,
         302,
       );
     }

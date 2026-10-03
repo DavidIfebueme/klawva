@@ -128,6 +128,18 @@ export const handlePaystackWebhook = (
       .pipe(Effect.orDie);
     yield* Effect.tryPromise({
       try: () =>
+        env.SESSION.get(env.SESSION.idFromName(decoded.session_id)).fetch(
+          "https://session/activate",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ windowEnd: endIso }),
+          },
+        ),
+      catch: (cause) => new PaystackError({ reason: String(cause) }),
+    }).pipe(Effect.catch(() => Effect.void));
+    yield* Effect.tryPromise({
+      try: () =>
         env.WALLET.get(env.WALLET.idFromName(decoded.session_id)).fetch(
           "https://wallet/credit",
           {
