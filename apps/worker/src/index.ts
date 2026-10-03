@@ -3,6 +3,7 @@ import { toResponse } from "./adapter.ts";
 import { make as makeDatabase } from "./db/database.ts";
 import type { Env } from "./env.ts";
 import { sweep } from "./lifecycle/lifecycle.ts";
+import { handleInbound } from "./channels/email.ts";
 import { handlePaystackWebhook } from "./payments/paystack.ts";
 import { handleBreetWebhook } from "./payments/breet.ts";
 
@@ -45,6 +46,17 @@ export default {
       Effect.runPromise(sweep(env))
         .then(() => undefined)
         .catch(() => undefined),
+    );
+  },
+  async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
+    await Effect.runPromise(
+      handleInbound(env, {
+        from: message.from,
+        to: message.to,
+        rawSize: message.rawSize,
+        raw: message.raw,
+        setReject: (reason: string) => message.setReject(reason),
+      }),
     );
   },
 };
