@@ -12,12 +12,9 @@ import { Database } from "../db/database.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { WorkerEnv } from "../env.ts";
 import {
-  FeeRequired,
   SandboxCapReached,
   createAuthorDraft,
   ensureProfile,
-  feePaid,
-  initializeFee,
   listingDetail,
   listingsFor,
   sandbox,
@@ -76,12 +73,11 @@ const allErrors = [
   AuthError,
   ListingNotFound,
   ListingConflict,
-  FeeRequired,
   SandboxCapReached,
 ];
 
 const me = HttpApiEndpoint.get("authorMe", "/api/author/me", {
-  success: Schema.Struct({ email: Schema.String, feePaid: Schema.Boolean }),
+  success: Schema.Struct({ email: Schema.String }),
   error: allErrors,
 });
 
@@ -139,11 +135,6 @@ const submitListing = HttpApiEndpoint.post(
   { params: IdParam, success: SubmitResponse, error: allErrors },
 );
 
-const fee = HttpApiEndpoint.post("authorFee", "/api/author/fee", {
-  success: Schema.Struct({ reference: Schema.String, checkoutUrl: Schema.String }),
-  error: allErrors,
-});
-
 class StudioGroup extends HttpApiGroup.make("Studio")
   .add(me)
   .add(listListings)
@@ -151,8 +142,7 @@ class StudioGroup extends HttpApiGroup.make("Studio")
   .add(getListing)
   .add(updateListing)
   .add(runSandbox)
-  .add(submitListing)
-  .add(fee) {}
+  .add(submitListing) {}
 
 export class StudioApi extends HttpApi.make("StudioApi").add(StudioGroup) {}
 
@@ -180,8 +170,7 @@ export const studioGroup = HttpApiBuilder.group(
       .handle("authorMe", () =>
         Effect.gen(function* () {
           const identity = yield* requireIdentity();
-          const paid = yield* feePaid(db, identity.userId);
-          return { email: identity.email, feePaid: paid };
+          return { email: identity.email };
         }),
       )
       .handle("authorListings", () =>
@@ -231,13 +220,6 @@ export const studioGroup = HttpApiBuilder.group(
             band: outcome.band,
             status: outcome.status,
           };
-        }),
-      )
-      .handle("authorFee", () =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          const result = yield* initializeFee(db, env, identity.userId, identity.email);
-          return result;
         }),
       );
   }),
