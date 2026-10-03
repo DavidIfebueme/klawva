@@ -61,7 +61,7 @@ export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAl
                     ))}
                   </ul>
 
-                  <Button variant="ghost" className="w-full justify-start px-0 group-hover:text-klawva-accent transition-colors duration-300" onClick={() => window.location.href = `/hire/${agent.id}`}>
+                  <Button variant="ghost" className="w-full justify-start px-0 group-hover:text-klawva-accent transition-colors duration-300" onClick={() => window.location.href = `/employees/${agent.id}`}>
                     Hire {agent.name.split(' ').pop()} →
                   </Button>
                 </Card>
