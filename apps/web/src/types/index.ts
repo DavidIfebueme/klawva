@@ -41,7 +41,7 @@ export interface ActivateSessionResponse {
   waMeLink?: string;
 }
 
-export type PaymentProvider = 'nomba' | 'stripe';
+export type PaymentProvider = 'nomba' | 'stripe' | 'paystack';
 
 export interface UserProfileResponse {
   id: string;
