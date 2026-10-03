@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { ApiError } from "./api-error.ts";
+import { ApiError, failureMessage } from "./api-error.ts";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -33,26 +33,14 @@ export type EmployeeDetail = typeof employeeDetail.Type;
 
 const config = Schema.Struct({ telegramBotUsername: Schema.String });
 
-const sessionCreated = Schema.Struct({ id: Schema.String });
+const sessionCreated = Schema.Struct({
+  id: Schema.String,
+  sessionToken: Schema.String,
+});
 const checkout = Schema.Struct({
   reference: Schema.String,
   checkoutUrl: Schema.String,
 });
-
-async function failureMessage(res: Response): Promise<string> {
-  try {
-    const payload: unknown = await res.json();
-    if (payload !== null && typeof payload === "object") {
-      const record = payload as Record<string, unknown>;
-      if (typeof record.reason === "string") return record.reason;
-      if (typeof record._tag === "string") return record._tag;
-      if (typeof record.detail === "string") return record.detail;
-    }
-  } catch {
-    return `Request failed (${res.status})`;
-  }
-  return `Request failed (${res.status})`;
-}
 
 async function send(path: string, init?: RequestInit): Promise<unknown> {
   const res = await fetch(`${BASE}${path}`, init);
@@ -85,9 +73,12 @@ const sessionLaunch = Schema.Struct({
 
 export async function getSessionLaunch(
   sessionId: string,
+  token: string,
 ): Promise<{ telegramBotUsername: string; code: string }> {
   return Schema.decodeUnknownSync(sessionLaunch)(
-    await send(`/api/sessions/${encodeURIComponent(sessionId)}/launch`),
+    await send(
+      `/api/sessions/${encodeURIComponent(sessionId)}/launch?token=${encodeURIComponent(token)}`,
+    ),
   );
 }
 
@@ -100,36 +91,29 @@ export type ChatMessage = typeof chatMessage.Type;
 
 export async function getChatMessages(
   sessionId: string,
+  token: string,
 ): Promise<ReadonlyArray<ChatMessage>> {
   return Schema.decodeUnknownSync(Schema.Array(chatMessage))(
-    await send(`/api/sessions/${encodeURIComponent(sessionId)}/messages`),
+    await send(
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages?token=${encodeURIComponent(token)}`,
+    ),
   );
 }
 
 export async function sendChatMessage(
   sessionId: string,
   message: string,
+  token: string,
 ): Promise<{ reply: string }> {
   return Schema.decodeUnknownSync(Schema.Struct({ reply: Schema.String }))(
-    await send(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
-    }),
-  );
-}
-
-export async function sendFeedback(
-  sessionId: string,
-  rating: number,
-  report?: string,
-): Promise<{ ok: boolean }> {
-  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
-    await send(`/api/sessions/${encodeURIComponent(sessionId)}/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating, report }),
-    }),
+    await send(
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages?token=${encodeURIComponent(token)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      },
+    ),
   );
 }
 
@@ -143,7 +127,7 @@ export interface HireSessionInput {
 
 export async function createHireSession(
   input: HireSessionInput,
-): Promise<{ id: string }> {
+): Promise<{ id: string; sessionToken: string }> {
   return Schema.decodeUnknownSync(sessionCreated)(
     await send("/api/sessions", {
       method: "POST",
