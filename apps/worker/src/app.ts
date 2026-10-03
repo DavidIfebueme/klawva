@@ -37,6 +37,7 @@ import {
   verifyMagicLink,
 } from "./auth/auth.ts";
 import { AuthError } from "./auth/tokens.ts";
+import { StudioApi, studioGroup } from "./studio/api.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -470,9 +471,13 @@ export const makeAppLayer = (env: Env) => {
     Layer.succeed(WorkerEnv)(env),
     agentLayer(env.AI, defaultModel),
   );
-  const handlers = rootGroup.pipe(Layer.provide(services));
-  return HttpApiBuilder.layer(KlawvaApi).pipe(
-    Layer.provide(handlers),
+  const mainRoutes = HttpApiBuilder.layer(KlawvaApi).pipe(
+    Layer.provide(rootGroup.pipe(Layer.provide(services))),
+  );
+  const studioRoutes = HttpApiBuilder.layer(StudioApi).pipe(
+    Layer.provide(studioGroup.pipe(Layer.provide(services))),
+  );
+  return Layer.mergeAll(mainRoutes, studioRoutes).pipe(
     Layer.provide(HttpServer.layerServices),
   );
 };
