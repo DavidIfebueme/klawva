@@ -13,6 +13,7 @@ import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { SessionState } from "../db/schema.ts";
 import {
   AgentRuntime,
+  defaultModel,
   layer as agentLayer,
   runTurn,
 } from "../agent/runtime.ts";
@@ -251,8 +252,6 @@ const sessionGroup = HttpApiBuilder.group(
   }),
 );
 
-const model = "@cf/zai-org/glm-4.7-flash";
-
 const makeLayer = (store: SessionStoreImpl, env: Env) =>
   HttpApiBuilder.layer(SessionApi).pipe(
     Layer.provide(
@@ -260,7 +259,7 @@ const makeLayer = (store: SessionStoreImpl, env: Env) =>
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(SessionStore)(store),
-            agentLayer(env.AI, model),
+            agentLayer(env.AI, defaultModel),
           ),
         ),
       ),
