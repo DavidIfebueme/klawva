@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { renderTemplate } from "./templates.ts";
 
 export class EmailError extends Schema.TaggedError<EmailError>()("EmailError", {
   reason: Schema.String,
@@ -13,14 +12,13 @@ export const sendEmail = (params: {
   readonly toEmail: string;
   readonly subject: string;
   readonly html: string;
-  readonly replyToEmail?: string;
 }): Effect.Effect<void, EmailError> => {
   if (params.apiKey.length === 0 || params.senderEmail.length === 0) {
     return Effect.void;
   }
   return Effect.tryPromise({
     try: async () => {
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
           "api-key": params.apiKey,
@@ -31,23 +29,12 @@ export const sendEmail = (params: {
           to: [{ email: params.toEmail }],
           subject: params.subject,
           htmlContent: params.html,
-          ...(params.replyToEmail !== undefined && params.replyToEmail.length > 0
-            ? { replyTo: { email: params.replyToEmail } }
-            : {}),
         }),
       });
-      if (!response.ok) {
-        throw new Error(`brevo_${response.status}`);
-      }
     },
     catch: (cause) => new EmailError({ reason: String(cause) }),
   });
 };
 
 export const reportEmailHtml = (reportUrl: string): string =>
-  renderTemplate({
-    title: "Your Klawva worker shift has ended",
-    body: "Your employee has finished its 24-hour shift. Your mission report is ready with everything it did, found, and delivered.",
-    ctaLabel: "View your mission report",
-    ctaHref: reportUrl,
-  });
+  `<div style="font-family:Inter,system-ui,sans-serif"><h2>Your Klawva worker shift has ended</h2><p><a href="${reportUrl}">View your mission report</a></p></div>`;
