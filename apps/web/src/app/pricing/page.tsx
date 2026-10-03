@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/Button";
 import Link from "@/components/ui/AppLink";
 
 const tiers = [
-  { name: "Starter", price: 1000, budget: 600, blurb: "A short task, a few exchanges." },
-  { name: "Standard", price: 3000, budget: 3000, blurb: "The default 24-hour shift." },
-  { name: "Pro", price: 7500, budget: 10000, blurb: "Research heavy, many turns." },
+  { name: "Starter", price: 100000, budget: 600, blurb: "A short task, a few exchanges." },
+  { name: "Standard", price: 300000, budget: 3000, blurb: "The default 24-hour shift." },
+  { name: "Pro", price: 750000, budget: 10000, blurb: "Research heavy, many turns." },
 ];
 
 export default function PricingPage() {
