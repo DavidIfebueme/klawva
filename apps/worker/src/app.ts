@@ -21,6 +21,11 @@ import {
   layer as agentLayer,
 } from "./agent/runtime.ts";
 import { seedListings } from "./listings/listings.ts";
+import {
+  createDraft,
+  reviewListing,
+  submitListing,
+} from "./listings/publish.ts";
 import { runEval } from "./eval/eval.ts";
 import { initializePayment } from "./payments/paystack.ts";
 
@@ -129,6 +134,49 @@ const sharedReportEndpoint = HttpApiEndpoint.get(
   },
 );
 
+const CreateListing = Schema.Struct({
+  slug: Schema.String,
+  name: Schema.String,
+  tagline: Schema.String,
+  category: Schema.String,
+  agentId: Schema.String,
+  priceMinor: Schema.Number,
+  briefFields: Schema.Array(Schema.String),
+});
+
+const createListingEndpoint = HttpApiEndpoint.post(
+  "createListing",
+  "/api/listings",
+  { payload: CreateListing, success: Schema.Struct({ id: Schema.String }) },
+);
+
+const submitListingEndpoint = HttpApiEndpoint.post(
+  "submitListing",
+  "/api/listings/:id/submit",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    success: Schema.Struct({
+      score: Schema.Number,
+      band: Schema.String,
+      status: Schema.String,
+    }),
+  },
+);
+
+const reviewListingEndpoint = HttpApiEndpoint.post(
+  "reviewListing",
+  "/api/listings/:id/review",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    payload: Schema.Struct({ approve: Schema.Boolean }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+  },
+);
+
+const listReviewsEndpoint = HttpApiEndpoint.get("listReviews", "/api/reviews", {
+  success: Schema.Array(ListingRow),
+});
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
   .add(createSession)
@@ -137,7 +185,11 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(listListingsEndpoint)
   .add(runEvalEndpoint)
   .add(initializePaymentEndpoint)
-  .add(sharedReportEndpoint) {}
+  .add(sharedReportEndpoint)
+  .add(createListingEndpoint)
+  .add(submitListingEndpoint)
+  .add(reviewListingEndpoint)
+  .add(listReviewsEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -152,6 +204,46 @@ const rootGroup = HttpApiBuilder.group(
     const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("createListing", ({ payload }) =>
+        Effect.gen(function* () {
+          const id = yield* createDraft(db, {
+            ownerId: "system",
+            slug: payload.slug,
+            name: payload.name,
+            tagline: payload.tagline,
+            category: payload.category,
+            agentId: payload.agentId,
+            priceMinor: payload.priceMinor,
+            briefFields: payload.briefFields,
+          });
+          return { id };
+        }),
+      )
+      .handle("submitListing", ({ params }) =>
+        Effect.gen(function* () {
+          const result = yield* submitListing(db, runtime, params.id);
+          if (result === null) {
+            return { score: 0, band: "reject", status: "draft" };
+          }
+          return result;
+        }),
+      )
+      .handle("reviewListing", ({ params, payload }) =>
+        Effect.gen(function* () {
+          yield* reviewListing(db, params.id, payload.approve);
+          return { ok: true };
+        }),
+      )
+      .handle("listReviews", () =>
+        Effect.gen(function* () {
+          const rows = yield* db
+            .all(
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, l.current_version AS version, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'in_review' ORDER BY l.updated_at DESC",
+            )
+            .pipe(Effect.orDie);
+          return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
+        }),
+      )
       .handle("sharedReport", ({ params, query }) =>
         Effect.gen(function* () {
           const row = yield* db
