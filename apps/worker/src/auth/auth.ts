@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
+import { magicLinkEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { AuthError, signToken, verifyToken } from "./tokens.ts";
 
@@ -65,7 +66,7 @@ export const requestMagicLink = (
       senderName: "Klawva",
       toEmail: normalized,
       subject: "Your Klawva studio login link",
-      html: `<div style="font-family:Inter,system-ui,sans-serif"><p><a href="${link}">Open Klawva studio</a></p><p>This link expires in 15 minutes.</p></div>`,
+      html: magicLinkEmail(link),
     }).pipe(Effect.orDie);
   });
 
