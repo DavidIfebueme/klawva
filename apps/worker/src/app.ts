@@ -17,6 +17,8 @@ import {
 } from "./channels/telegram.ts";
 import { defaultModel, layer as agentLayer } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
+import { sendEmail } from "./email/brevo.ts";
+import { escapeHtml, renderTemplate } from "./email/templates.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import {
   identityFromToken,
@@ -122,6 +124,16 @@ const configEndpoint = HttpApiEndpoint.get("config", "/api/config", {
   success: Schema.Struct({ telegramBotUsername: Schema.String }),
 });
 
+const contactEndpoint = HttpApiEndpoint.post("contact", "/api/emails/contact", {
+  payload: Schema.Struct({
+    name: Schema.String,
+    email: Schema.String,
+    employeeType: Schema.optionalKey(Schema.String),
+    description: Schema.String,
+  }),
+  success: Schema.Struct({ ok: Schema.Boolean }),
+});
+
 const initializePaymentEndpoint = HttpApiEndpoint.post(
   "initializePayment",
   "/api/payments/initialize",
@@ -183,6 +195,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(listListingsEndpoint)
   .add(listingDetailBySlugEndpoint)
   .add(configEndpoint)
+  .add(contactEndpoint)
   .add(initializePaymentEndpoint)
   .add(sharedReportEndpoint) {}
 
@@ -306,6 +319,34 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("config", () =>
         Effect.succeed({ telegramBotUsername: env.TELEGRAM_BOT_USERNAME }),
+      )
+      .handle("contact", ({ payload }) =>
+        Effect.gen(function* () {
+          const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email);
+          const nameOk =
+            payload.name.trim().length >= 1 && payload.name.length <= 120;
+          const descriptionOk =
+            payload.description.trim().length >= 10 &&
+            payload.description.length <= 4000;
+          if (!emailOk || !nameOk || !descriptionOk) {
+            return { ok: false };
+          }
+          const to = env.ADMIN_EMAILS.split(",")[0]?.trim() ?? "";
+          if (to.length > 0) {
+            yield* sendEmail({
+              apiKey: env.BREVO_API_KEY,
+              senderEmail: env.BREVO_SENDER_EMAIL,
+              senderName: "Klawva",
+              toEmail: to,
+              subject: "Custom employee request",
+              html: renderTemplate({
+                title: "Custom employee request",
+                body: `From: <strong>${escapeHtml(payload.name)}</strong> (${escapeHtml(payload.email)})<br/>Type: ${escapeHtml(payload.employeeType ?? "unspecified")}<br/><br/>${escapeHtml(payload.description)}`,
+              }),
+            }).pipe(Effect.orDie);
+          }
+          return { ok: true };
+        }),
       )
       .handle("telegramWebhook", ({ payload }) =>
         Effect.gen(function* () {
