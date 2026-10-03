@@ -9,6 +9,7 @@ import { manifestHash } from "../listings/listings.ts";
 import { statusForBand } from "../listings/publish.ts";
 import type { ListingDefinition } from "../listings/definitions.ts";
 import { initializePayment } from "../payments/paystack.ts";
+import { screenSoul } from "../moderation/moderation.ts";
 import type { Identity } from "../auth/auth.ts";
 
 export const publishFeeMinor = 2000;
@@ -372,6 +373,10 @@ export const submit = (
     const version = yield* loadVersion(db, listingId);
     if (version === null) {
       return yield* Effect.die("version_not_found");
+    }
+    const flagged = screenSoul(version.soul);
+    if (flagged !== null) {
+      return yield* Effect.fail(new ListingConflict({ reason: flagged }));
     }
     const outcome = yield* runListingEval(
       db,
