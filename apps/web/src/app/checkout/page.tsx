@@ -3,6 +3,7 @@ import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-d
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
+import { ApiError } from "@/lib/api-error";
 import {
   createHireSession,
   getEmployee,
@@ -30,7 +31,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (slug === null) {
     throw redirect("/employees");
   }
-  return { employee: await getEmployee(slug) };
+  const employee = await getEmployee(slug).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) {
+      throw redirect("/employees");
+    }
+    throw error;
+  });
+  return { employee };
 };
 
 export function Component() {

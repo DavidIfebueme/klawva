@@ -12,6 +12,7 @@ export const TokenPayload = Schema.Struct({
   email: Schema.String,
   exp: Schema.Number,
   scope: Schema.String,
+  sessionId: Schema.optionalKey(Schema.String),
 });
 export type TokenPayload = typeof TokenPayload.Type;
 

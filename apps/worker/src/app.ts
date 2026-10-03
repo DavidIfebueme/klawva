@@ -18,7 +18,7 @@ import {
 import { defaultModel, layer as agentLayer } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
-import { escapeHtml, renderTemplate, welcomeEmail } from "./email/templates.ts";
+import { escapeHtml, renderTemplate } from "./email/templates.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import {
   identityFromToken,
@@ -31,6 +31,7 @@ import { AuthError } from "./auth/tokens.ts";
 import { StudioApi, studioGroup } from "./studio/api.ts";
 import { AdminApi, adminGroup } from "./admin/api.ts";
 import { AccountApi, accountGroup } from "./account/api.ts";
+import { ownsSession, sessionTokenMatches } from "./account/account.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -76,7 +77,7 @@ const PublicListingDetail = Schema.Struct({
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 import { ListingConflict, ListingNotFound } from "./errors.ts";
-import { rateLimited, verifyTurnstile } from "./lib/guard.ts";
+import { rateLimited } from "./lib/guard.ts";
 import { screenBrief } from "./moderation/moderation.ts";
 import { connectors } from "./mcp/connectors.ts";
 
@@ -85,7 +86,10 @@ const HealthResponse = Schema.Struct({
   service: Schema.String,
 });
 
-const SessionCreated = Schema.Struct({ id: Schema.String });
+const SessionCreated = Schema.Struct({
+  id: Schema.String,
+  sessionToken: Schema.String,
+});
 
 const CreateSession = Schema.Struct({
   listingId: Schema.String,
@@ -149,10 +153,12 @@ const sessionLaunchEndpoint = HttpApiEndpoint.get(
   "/api/sessions/:id/launch",
   {
     params: Schema.Struct({ id: Schema.String }),
+    query: Schema.Struct({ token: Schema.optionalKey(Schema.String) }),
     success: Schema.Struct({
       telegramBotUsername: Schema.String,
       code: Schema.String,
     }),
+    error: ListingNotFound,
   },
 );
 
@@ -167,7 +173,9 @@ const chatMessagesEndpoint = HttpApiEndpoint.get(
   "/api/sessions/:id/messages",
   {
     params: Schema.Struct({ id: Schema.String }),
+    query: Schema.Struct({ token: Schema.optionalKey(Schema.String) }),
     success: Schema.Array(ChatMessage),
+    error: ListingNotFound,
   },
 );
 
@@ -176,8 +184,10 @@ const chatSendEndpoint = HttpApiEndpoint.post(
   "/api/sessions/:id/messages",
   {
     params: Schema.Struct({ id: Schema.String }),
+    query: Schema.Struct({ token: Schema.optionalKey(Schema.String) }),
     payload: Schema.Struct({ message: Schema.String }),
     success: Schema.Struct({ reply: Schema.String }),
+    error: ListingNotFound,
   },
 );
 
@@ -186,6 +196,7 @@ const feedbackEndpoint = HttpApiEndpoint.post(
   "/api/sessions/:id/feedback",
   {
     params: Schema.Struct({ id: Schema.String }),
+    query: Schema.Struct({ token: Schema.optionalKey(Schema.String) }),
     payload: Schema.Struct({
       rating: Schema.Number,
       report: Schema.optionalKey(Schema.String),
@@ -235,7 +246,10 @@ const requestLinkEndpoint = HttpApiEndpoint.post(
   "requestLink",
   "/api/auth/request-link",
   {
-    payload: Schema.Struct({ email: Schema.String }),
+    payload: Schema.Struct({
+      email: Schema.String,
+      next: Schema.optionalKey(Schema.String),
+    }),
     success: Schema.Struct({ ok: Schema.Boolean }),
   },
 );
@@ -284,16 +298,39 @@ const rootGroup = HttpApiBuilder.group(
   Effect.fn(function* (handlers) {
     const db = yield* Database;
     const env = yield* WorkerEnv;
+    const authorizeSession = (
+      sessionId: string,
+      token: string | undefined,
+    ): Effect.Effect<boolean, never, HttpServerRequest.HttpServerRequest> =>
+      Effect.gen(function* () {
+        if (token !== undefined && token.length > 0) {
+          const matches = yield* sessionTokenMatches(db, sessionId, token);
+          if (matches) {
+            return true;
+          }
+        }
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const auth = tokenFromHeaders(request.headers);
+        if (auth === null) {
+          return false;
+        }
+        const identity = yield* identityFromToken(env, db, auth).pipe(
+          Effect.catch(() => Effect.succeed(null)),
+        );
+        if (identity === null) {
+          return false;
+        }
+        return yield* ownsSession(db, identity.userId, identity.email, sessionId);
+      });
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
       .handle("requestLink", ({ payload }) =>
         Effect.gen(function* () {
           const allowed = yield* rateLimited(env.AUTH_LIMITER, payload.email.toLowerCase());
-          const human = yield* verifyTurnstile(env.TURNSTILE_SECRET, undefined);
-          if (!allowed || !human) {
+          if (!allowed) {
             return { ok: true };
           }
-          yield* requestMagicLink(env, db, payload.email).pipe(Effect.orDie);
+          yield* requestMagicLink(env, db, payload.email, payload.next ?? "/studio").pipe(Effect.orDie);
           return { ok: true };
         }),
       )
@@ -342,7 +379,7 @@ const rootGroup = HttpApiBuilder.group(
           }
           const session = yield* db
             .first(
-              "SELECT l.price_minor AS priceMinor FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
+              "SELECT l.price_minor AS priceMinor, s.session_token AS sessionToken FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
               [payload.sessionId],
             )
             .pipe(Effect.orDie);
@@ -350,11 +387,12 @@ const rootGroup = HttpApiBuilder.group(
             return yield* Effect.die("session_not_found");
           }
           const amountMinor = Number(session.priceMinor);
+          const sessionToken = String(session.sessionToken ?? "");
           const result = yield* initializePayment({
             secret: env.PAYSTACK_SECRET_KEY,
             sessionId: payload.sessionId,
             amountMinor,
-            callbackUrl: `${env.FRONTEND_BASE_URL}/employees/launch?session=${payload.sessionId}`,
+            callbackUrl: `${env.FRONTEND_BASE_URL}/employees/launch/${payload.sessionId}/${sessionToken}`,
             email: payload.email,
           }).pipe(Effect.orDie);
           const now = new Date().toISOString();
@@ -381,7 +419,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const rows = yield* db
             .all(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, l.owner_id AS ownerId, (SELECT AVG(rating) FROM session_feedback f WHERE f.listing_id = l.id) AS avgRating, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY avgRating DESC NULLS LAST, l.slug",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, COALESCE(v.budget_minor, 0) AS budgetMinor, l.current_version AS version, l.owner_id AS ownerId, (SELECT AVG(rating) FROM session_feedback f WHERE f.listing_id = l.id) AS avgRating, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY avgRating DESC NULLS LAST, l.slug",
             )
             .pipe(Effect.orDie);
           return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
@@ -405,8 +443,12 @@ const rootGroup = HttpApiBuilder.group(
         Effect.succeed({ telegramBotUsername: env.TELEGRAM_BOT_USERNAME }),
       )
       .handle("connectors", () => Effect.succeed([...connectors]))
-      .handle("sessionLaunch", ({ params }) =>
+      .handle("sessionLaunch", ({ params, query }) =>
         Effect.gen(function* () {
+          const allowed = yield* authorizeSession(params.id, query.token);
+          if (!allowed) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
           const row = yield* db
             .first(
               "SELECT token AS code FROM claim_tokens WHERE session_id = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",
@@ -433,8 +475,12 @@ const rootGroup = HttpApiBuilder.group(
           return { telegramBotUsername: env.TELEGRAM_BOT_USERNAME, code };
         }),
       )
-      .handle("chatMessages", ({ params }) =>
+      .handle("chatMessages", ({ params, query }) =>
         Effect.gen(function* () {
+          const allowed = yield* authorizeSession(params.id, query.token);
+          if (!allowed) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
           const rows = yield* db
             .all(
               "SELECT role AS role, content AS content, created_at AS createdAt FROM messages WHERE session_id = ? ORDER BY created_at LIMIT 200",
@@ -444,10 +490,14 @@ const rootGroup = HttpApiBuilder.group(
           return rows.map((row) => Schema.decodeUnknownSync(ChatMessage)(row));
         }),
       )
-      .handle("chatSend", ({ params, payload }) =>
+      .handle("chatSend", ({ params, query, payload }) =>
         Effect.gen(function* () {
-          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, params.id);
+          const allowed = yield* authorizeSession(params.id, query.token);
           if (!allowed) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          const allowedRate = yield* rateLimited(env.PUBLIC_LIMITER, params.id);
+          if (!allowedRate) {
             return { reply: "Too many messages right now. Please wait a moment." };
           }
           const session = yield* db
@@ -480,11 +530,12 @@ const rootGroup = HttpApiBuilder.group(
           return { reply };
         }),
       )
-      .handle("sessionFeedback", ({ params, payload }) =>
+      .handle("sessionFeedback", ({ params, query, payload }) =>
         Effect.gen(function* () {
-          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, params.id);
+          const authorized = yield* authorizeSession(params.id, query.token);
+          const allowedRate = yield* rateLimited(env.PUBLIC_LIMITER, params.id);
           const rating = Math.round(payload.rating);
-          if (!allowed || rating < 1 || rating > 5) {
+          if (!authorized || !allowedRate || rating < 1 || rating > 5) {
             return { ok: false };
           }
           const session = yield* db
@@ -586,10 +637,12 @@ const rootGroup = HttpApiBuilder.group(
             return yield* Effect.fail(new ListingConflict({ reason: flagged }));
           }
           const id = crypto.randomUUID();
+          const sessionToken = crypto.randomUUID().replace(/-/g, "");
           const now = new Date().toISOString();
+          const customerEmail = payload.customerEmail?.trim().toLowerCase();
           const userId =
-            payload.customerEmail !== undefined && payload.customerEmail.length > 0
-              ? yield* upsertUser(db, payload.customerEmail)
+            customerEmail !== undefined && customerEmail.length > 0
+              ? yield* upsertUser(db, customerEmail)
               : null;
           const listing = yield* db
             .first(
@@ -601,17 +654,18 @@ const rootGroup = HttpApiBuilder.group(
           const budgetMinor =
             listing === null ? defaultBudgetMinor : Number(listing.budgetMinor);
           yield* db.run(
-            "INSERT INTO sessions (id, user_id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               id,
               userId,
+              sessionToken,
               payload.listingId,
               listingVersion,
               payload.agentId,
               payload.channel,
               JSON.stringify(payload.brief),
               "pending",
-              payload.customerEmail ?? null,
+              customerEmail ?? null,
               null,
               null,
               budgetMinor,
@@ -632,7 +686,7 @@ const rootGroup = HttpApiBuilder.group(
                     budgetMinor,
                     soul: soulFor(payload.agentId),
                     brief: payload.brief,
-                    email: payload.customerEmail ?? "",
+                    email: customerEmail ?? "",
                   }),
                 },
               ),
@@ -645,37 +699,13 @@ const rootGroup = HttpApiBuilder.group(
                 crypto.randomUUID(),
                 crypto.randomUUID().replace(/-/g, ""),
                 id,
-                payload.customerEmail ?? "",
+                customerEmail ?? "",
                 new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                 now,
               ],
             )
             .pipe(Effect.orDie);
-          if (
-            userId !== null &&
-            payload.customerEmail !== undefined &&
-            payload.customerEmail.length > 0
-          ) {
-            const prior = yield* db
-              .first(
-                "SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND id != ?",
-                [userId, id],
-              )
-              .pipe(Effect.orDie);
-            if (prior !== null && Number(prior.n) === 0) {
-              const employeeName =
-                listing === null ? "Your Klawva employee" : String(listing.name);
-              yield* sendEmail({
-                apiKey: env.BREVO_API_KEY,
-                senderEmail: env.BREVO_SENDER_EMAIL,
-                senderName: "Klawva",
-                toEmail: payload.customerEmail,
-                subject: "Welcome to Klawva",
-                html: welcomeEmail(employeeName),
-              }).pipe(Effect.catch(() => Effect.void));
-            }
-          }
-          return { id };
+          return { id, sessionToken };
         }).pipe(Effect.orDie),
       );
   }),

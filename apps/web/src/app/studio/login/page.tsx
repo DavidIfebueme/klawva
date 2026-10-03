@@ -29,7 +29,7 @@ export function Component() {
     setError("");
     try {
       sessionStorage.setItem("klawva_login_next", next);
-      await requestStudioLink(email);
+      await requestStudioLink(email, next);
       setSent(true);
     } catch (err) {
       console.error(err);

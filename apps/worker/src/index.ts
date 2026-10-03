@@ -17,6 +17,7 @@ import {
 } from "./channels/slack.ts";
 import { handlePaystackWebhook } from "./payments/paystack.ts";
 import { handleBreetWebhook } from "./payments/breet.ts";
+import { signToken, verifyToken } from "./auth/tokens.ts";
 
 export { SessionAgent } from "./session/agent.ts";
 export { WalletAgent } from "./wallet/wallet.ts";
@@ -54,8 +55,22 @@ export default {
     if (url.pathname === "/api/slack/install") {
       const session = url.searchParams.get("session") ?? "";
       const redirectUri = `${env.FRONTEND_BASE_URL}/api/slack/oauth`;
+      const stateExit = await Effect.runPromiseExit(
+        signToken(env.AUTH_SECRET, {
+          email: "",
+          exp: Math.floor(Date.now() / 1000) + 600,
+          scope: "slack_oauth",
+          sessionId: session,
+        }),
+      );
+      if (stateExit._tag !== "Success") {
+        return Response.redirect(
+          `${env.FRONTEND_BASE_URL}/employees/launch?session=${session}&slack=failed`,
+          302,
+        );
+      }
       return Response.redirect(
-        authorizeUrl(env.SLACK_CLIENT_ID, redirectUri, session),
+        authorizeUrl(env.SLACK_CLIENT_ID, redirectUri, stateExit.value),
         302,
       );
     }
@@ -63,19 +78,34 @@ export default {
       const code = url.searchParams.get("code") ?? "";
       const state = url.searchParams.get("state") ?? "";
       const redirectUri = `${env.FRONTEND_BASE_URL}/api/slack/oauth`;
+      const stateExit = await Effect.runPromiseExit(
+        verifyToken(env.AUTH_SECRET, state),
+      );
+      if (
+        stateExit._tag !== "Success" ||
+        stateExit.value.scope !== "slack_oauth" ||
+        stateExit.value.sessionId === undefined ||
+        stateExit.value.sessionId.length === 0
+      ) {
+        return Response.redirect(
+          `${env.FRONTEND_BASE_URL}/employees/launch?slack=failed`,
+          302,
+        );
+      }
+      const session = stateExit.value.sessionId;
       const install = await Effect.runPromise(
         exchangeCode(env.SLACK_CLIENT_ID, env.SLACK_CLIENT_SECRET, code, redirectUri),
       );
       if (install === null) {
         return Response.redirect(
-          `${env.FRONTEND_BASE_URL}/employees/launch?session=${state}&slack=failed`,
+          `${env.FRONTEND_BASE_URL}/employees/launch?session=${session}&slack=failed`,
           302,
         );
       }
       const db = makeDatabase(env.DB);
       const sessionRow = await Effect.runPromise(
         db
-          .first("SELECT user_id AS userId FROM sessions WHERE id = ?", [state])
+          .first("SELECT user_id AS userId FROM sessions WHERE id = ?", [session])
           .pipe(Effect.orDie),
       );
       if (sessionRow !== null && sessionRow.userId !== null) {
@@ -84,7 +114,7 @@ export default {
         );
       }
       return Response.redirect(
-        `${env.FRONTEND_BASE_URL}/employees/launch?session=${state}&slack=connected`,
+        `${env.FRONTEND_BASE_URL}/employees/launch?session=${session}&slack=connected`,
         302,
       );
     }
