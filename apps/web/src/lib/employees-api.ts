@@ -22,6 +22,7 @@ const employeeDetail = Schema.Struct({
   tagline: Schema.String,
   category: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
 });
