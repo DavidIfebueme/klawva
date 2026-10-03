@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
+import { toTelegramHtml } from "../lib/markdown.ts";
 
 export class TelegramError extends Schema.TaggedError<TelegramError>()(
   "TelegramError",
@@ -38,20 +39,45 @@ export const startPayload = (text: string): string | null => {
   return payload.length > 0 ? payload : null;
 };
 
+const postMessage = (
+  token: string,
+  body: Record<string, unknown>,
+): Effect.Effect<boolean, TelegramError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(
+        `https://api.telegram.org/bot${token}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      return response.ok;
+    },
+    catch: (cause) => new TelegramError({ reason: String(cause) }),
+  });
+
 export const sendMessage = (
   token: string,
   chatId: number,
   text: string,
 ): Effect.Effect<void, TelegramError> =>
-  Effect.tryPromise({
-    try: async () => {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096) }),
-      });
-    },
-    catch: (cause) => new TelegramError({ reason: String(cause) }),
+  Effect.gen(function* () {
+    const html = toTelegramHtml(text);
+    const sent = yield* postMessage(token, {
+      chat_id: chatId,
+      text: html.slice(0, 4096),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }).pipe(Effect.catch(() => Effect.succeed(false)));
+    if (sent) {
+      return;
+    }
+    yield* postMessage(token, {
+      chat_id: chatId,
+      text: text.slice(0, 4096),
+    }).pipe(Effect.ignore);
   });
 
 const SessionReply = Schema.Struct({ reply: Schema.optionalKey(Schema.String) });
