@@ -1,5 +1,3 @@
-import type { DesktopManifest, LaunchMarket, PhoneManifest, VoiceManifest } from "../db/schema.ts";
-
 export interface ListingDefinition {
   readonly slug: string;
   readonly name: string;
@@ -8,11 +6,6 @@ export interface ListingDefinition {
   readonly agentId: string;
   readonly briefFields: ReadonlyArray<string>;
   readonly priceMinor: number;
-  readonly budgetMinor: number;
-  readonly voice?: VoiceManifest;
-  readonly phone?: PhoneManifest;
-  readonly desktop?: DesktopManifest;
-  readonly launchMarkets?: ReadonlyArray<LaunchMarket>;
 }
 
 export const definitions: ReadonlyArray<ListingDefinition> = [
@@ -23,8 +16,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "data",
     agentId: "scrapper",
     briefFields: ["task", "urls", "output"],
-    priceMinor: 300000,
-    budgetMinor: 3000,
+    priceMinor: 1500,
   },
   {
     slug: "researcher",
@@ -33,8 +25,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "research",
     agentId: "researcher",
     briefFields: ["topic", "depth", "context"],
-    priceMinor: 750000,
-    budgetMinor: 10000,
+    priceMinor: 2500,
   },
   {
     slug: "jobseeker",
@@ -43,8 +34,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "careers",
     agentId: "jobseeker",
     briefFields: ["role_preference", "location", "salary_range", "extra_criteria"],
-    priceMinor: 100000,
-    budgetMinor: 600,
+    priceMinor: 1500,
   },
   {
     slug: "leadscout",
@@ -53,130 +43,6 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "sales",
     agentId: "leadscout",
     briefFields: ["ideal_customer", "industry", "contact_preference", "extra_criteria"],
-    priceMinor: 300000,
-    budgetMinor: 3000,
-  },
-  {
-    slug: "receptionist",
-    name: "Klawva Receptionist",
-    tagline: "Answers your business line.",
-    category: "phone",
-    agentId: "receptionist",
-    briefFields: ["business_facts", "calendar_rules", "escalation_contact"],
-    priceMinor: 1500000,
-    budgetMinor: 450000,
-    phone: {
-      outbound: false,
-      inbound: true,
-      script:
-        "You answer the business line. Announce yourself as an AI, say the call is transcribed, then help from the business facts only.",
-    },
-    launchMarkets: ["us", "in"],
-  },
-  {
-    slug: "appointmentsetter",
-    name: "Klawva Appointment Setter",
-    tagline: "Calls your customers to book and confirm.",
-    category: "phone",
-    agentId: "appointmentsetter",
-    briefFields: ["calendar_rules", "customer_list", "call_window"],
-    priceMinor: 1200000,
-    budgetMinor: 650000,
-    phone: {
-      outbound: true,
-      inbound: false,
-      script:
-        "You call the business's own customers to book, confirm, or reschedule. Announce yourself as an AI, say the call is transcribed, then offer real slots from the calendar rules.",
-    },
-    launchMarkets: ["us", "in", "ng"],
-  },
-  {
-    slug: "followupcaller",
-    name: "Klawva Follow Up Caller",
-    tagline: "Chases invoices and shares updates, politely.",
-    category: "phone",
-    agentId: "followupcaller",
-    briefFields: ["invoice_list", "owner_tone_notes", "approved_consequences"],
-    priceMinor: 1200000,
-    budgetMinor: 650000,
-    phone: {
-      outbound: true,
-      inbound: false,
-      script:
-        "You call about unpaid invoices or delivery updates in the owner's tone. Announce yourself as an AI, say the call is transcribed, state the exact amount or update from the brief, and make one clear ask.",
-    },
-    launchMarkets: ["us", "in", "ng"],
-  },
-  {
-    slug: "checkincaller",
-    name: "Klawva Check In Caller",
-    tagline: "Scheduled care calls for your customers.",
-    category: "phone",
-    agentId: "checkincaller",
-    briefFields: ["customer_list", "service_summary", "rebooking_rules"],
-    priceMinor: 1200000,
-    budgetMinor: 650000,
-    phone: {
-      outbound: true,
-      inbound: false,
-      script:
-        "You make scheduled care calls. Announce yourself as an AI, say the call is transcribed, ask how the service went, and offer a rebooking only when the rules allow.",
-    },
-    launchMarkets: ["us", "in", "ng"],
-  },
-  {
-    slug: "inbox",
-    name: "Klawva Inbox",
-    tagline: "Sorts your inbox and drafts the replies.",
-    category: "desktop",
-    desktop: { ownDevice: true },
-    agentId: "inbox",
-    briefFields: ["focus", "tone_notes", "approval_mode"],
-    priceMinor: 150000,
-    budgetMinor: 5000,
-  },
-  {
-    slug: "moneyadmin",
-    name: "Klawva Money Admin",
-    tagline: "Finds every recurring charge you pay.",
-    category: "desktop",
-    desktop: { ownDevice: true },
-    agentId: "moneyadmin",
-    briefFields: ["statements_folder", "receipts_in_mail", "focus_merchants"],
-    priceMinor: 100000,
-    budgetMinor: 3000,
-  },
-  {
-    slug: "paperwork",
-    name: "Klawva Paperwork Employee",
-    tagline: "Turns forms and letters into checklists and drafts.",
-    category: "desktop",
-    desktop: { ownDevice: true },
-    agentId: "paperwork",
-    briefFields: ["process_folder", "personal_facts", "deadline_zone"],
-    priceMinor: 150000,
-    budgetMinor: 3000,
-  },
-  {
-    slug: "study",
-    name: "Klawva Study Employee",
-    tagline: "Explains and drills your own material.",
-    category: "desktop",
-    desktop: { ownDevice: true },
-    agentId: "study",
-    briefFields: ["subject", "material_folder", "level"],
-    priceMinor: 50000,
-    budgetMinor: 3000,
-  },
-  {
-    slug: "cvtailor",
-    name: "Klawva Cv Tailor",
-    tagline: "Ranks openings and tailors your cv per posting.",
-    category: "desktop",
-    desktop: { ownDevice: true },
-    agentId: "cvtailor",
-    briefFields: ["cv_file", "role_preference", "location", "postings"],
-    priceMinor: 200000,
-    budgetMinor: 3000,
+    priceMinor: 2500,
   },
 ];
