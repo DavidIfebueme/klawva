@@ -57,6 +57,7 @@ const ListingRow = Schema.Struct({
   priceMinor: Schema.Number,
   budgetMinor: Schema.Number,
   version: Schema.Number,
+  ownerId: Schema.String,
   score: Schema.NullOr(Schema.Number),
 });
 
@@ -341,7 +342,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const rows = yield* db
             .all(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY l.slug",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, l.owner_id AS ownerId, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY l.slug",
             )
             .pipe(Effect.orDie);
           return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
