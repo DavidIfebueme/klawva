@@ -18,7 +18,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       email: result.email,
       admin: result.admin,
     });
-    return redirect("/studio");
+    const raw = sessionStorage.getItem("klawva_login_next");
+    sessionStorage.removeItem("klawva_login_next");
+    const next = raw !== null && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/studio";
+    return redirect(next);
   } catch (err) {
     return {
       error:
