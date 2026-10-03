@@ -1,5 +1,7 @@
 import * as Effect from "effect/Effect";
 import { make as makeDatabase } from "../db/database.ts";
+import { sendEmail } from "../email/brevo.ts";
+import { shiftEndingEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -58,6 +60,33 @@ export const sweep = (env: Env): Effect.Effect<SweepResult> =>
     yield* db
       .run("DELETE FROM mission_reports WHERE created_at < ?", [reportCutoff])
       .pipe(Effect.orDie);
+
+    const soon = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const nearing = yield* db
+      .all(
+        "SELECT s.id AS id, s.customer_email AS email, s.window_end AS windowEnd, l.name AS name FROM sessions s LEFT JOIN agent_listings l ON l.id = s.listing_id WHERE s.state IN ('active', 'ready') AND s.window_end IS NOT NULL AND s.window_end < ? AND s.window_end > ? AND s.nearing_notified_at IS NULL",
+        [soon, now],
+      )
+      .pipe(Effect.orDie);
+    for (const row of nearing) {
+      const id = String(row.id);
+      yield* db
+        .run("UPDATE sessions SET nearing_notified_at = ? WHERE id = ?", [now, id])
+        .pipe(Effect.orDie);
+      if (row.email !== null) {
+        yield* sendEmail({
+          apiKey: env.BREVO_API_KEY,
+          senderEmail: env.BREVO_SENDER_EMAIL,
+          senderName: "Klawva",
+          toEmail: String(row.email),
+          subject: "Your shift is almost over",
+          html: shiftEndingEmail(
+            row.name === null ? "Your employee" : String(row.name),
+            String(row.windowEnd),
+          ),
+        }).pipe(Effect.catch(() => Effect.void));
+      }
+    }
 
     return { ended: due.length };
   });
