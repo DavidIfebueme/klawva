@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { constantTimeEqual } from "../lib/secure.ts";
 
 export class AuthError extends Schema.TaggedError<AuthError>()(
   "AuthError",
@@ -12,7 +11,6 @@ export const TokenPayload = Schema.Struct({
   email: Schema.String,
   exp: Schema.Number,
   scope: Schema.String,
-  sessionId: Schema.optionalKey(Schema.String),
 });
 export type TokenPayload = typeof TokenPayload.Type;
 
@@ -28,11 +26,8 @@ const decodeBase64Url = (value: string): string =>
 const hmacHex = (
   secret: string,
   message: string,
-): Effect.Effect<string, AuthError> => {
-  if (secret.length === 0) {
-    return Effect.fail(new AuthError({ reason: "auth_secret_missing" }));
-  }
-  return Effect.tryPromise({
+): Effect.Effect<string, AuthError> =>
+  Effect.tryPromise({
     try: async () => {
       const key = await crypto.subtle.importKey(
         "raw",
@@ -52,6 +47,16 @@ const hmacHex = (
     },
     catch: (cause) => new AuthError({ reason: String(cause) }),
   });
+
+export const constantTimeEqual = (left: string, right: string): boolean => {
+  if (left.length !== right.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let index = 0; index < left.length; index++) {
+    diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return diff === 0;
 };
 
 export const signToken = (
