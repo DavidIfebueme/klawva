@@ -32,21 +32,27 @@ export const sweep = (env: Env): Effect.Effect<SweepResult> =>
       )
       .pipe(Effect.orDie);
 
-    for (const row of due) {
-      const id = String(row.id);
-      yield* Effect.tryPromise({
-        try: () =>
-          env.SESSION.get(env.SESSION.idFromName(id)).fetch(
-            "https://session/report",
-            { method: "POST" },
-          ),
-        catch: (cause) => new Error(String(cause)),
-      }).pipe(Effect.catch(() => Effect.void));
+    if (due.length > 0) {
+      yield* Effect.forEach(
+        due,
+        (row) =>
+          Effect.tryPromise({
+            try: () =>
+              env.SESSION.get(env.SESSION.idFromName(String(row.id))).fetch(
+                "https://session/report",
+                { method: "POST" },
+              ),
+            catch: (cause) => new Error(String(cause)),
+          }).pipe(Effect.catch(() => Effect.void)),
+        { concurrency: "unbounded" },
+      );
+      const ids = due.map((row) => String(row.id));
+      const placeholders = ids.map(() => "?").join(", ");
       yield* db
-        .run("UPDATE sessions SET state = 'completed', updated_at = ? WHERE id = ?", [
-          now,
-          id,
-        ])
+        .run(
+          `UPDATE sessions SET state = 'completed', updated_at = ? WHERE id IN (${placeholders})`,
+          [now, ...ids],
+        )
         .pipe(Effect.orDie);
     }
 
@@ -68,24 +74,36 @@ export const sweep = (env: Env): Effect.Effect<SweepResult> =>
         [soon, now],
       )
       .pipe(Effect.orDie);
-    for (const row of nearing) {
-      const id = String(row.id);
+
+    if (nearing.length > 0) {
+      const ids = nearing.map((row) => String(row.id));
+      const placeholders = ids.map(() => "?").join(", ");
       yield* db
-        .run("UPDATE sessions SET nearing_notified_at = ? WHERE id = ?", [now, id])
+        .run(
+          `UPDATE sessions SET nearing_notified_at = ? WHERE id IN (${placeholders})`,
+          [now, ...ids],
+        )
         .pipe(Effect.orDie);
-      if (row.email !== null) {
-        yield* sendEmail({
-          apiKey: env.BREVO_API_KEY,
-          senderEmail: env.BREVO_SENDER_EMAIL,
-          senderName: "Klawva",
-          toEmail: String(row.email),
-          subject: "Your shift is almost over",
-          html: shiftEndingEmail(
-            row.name === null ? "Your employee" : String(row.name),
-            String(row.windowEnd),
-          ),
-        }).pipe(Effect.catch(() => Effect.void));
-      }
+      yield* Effect.forEach(
+        nearing,
+        (row) => {
+          if (row.email === null) {
+            return Effect.void;
+          }
+          return sendEmail({
+            apiKey: env.BREVO_API_KEY,
+            senderEmail: env.BREVO_SENDER_EMAIL,
+            senderName: "Klawva",
+            toEmail: String(row.email),
+            subject: "Your shift is almost over",
+            html: shiftEndingEmail(
+              row.name === null ? "Your employee" : String(row.name),
+              String(row.windowEnd),
+            ),
+          }).pipe(Effect.catch(() => Effect.void));
+        },
+        { concurrency: 5 },
+      );
     }
 
     return { ended: due.length };
