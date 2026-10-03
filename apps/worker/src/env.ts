@@ -9,6 +9,8 @@ export interface Env {
   readonly TELEGRAM_BOT_TOKEN: string;
   readonly TELEGRAM_WEBHOOK_SECRET: string;
   readonly PAYSTACK_SECRET_KEY: string;
+  readonly BREVO_API_KEY: string;
+  readonly BREVO_SENDER_EMAIL: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(

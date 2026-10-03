@@ -24,6 +24,22 @@ import { seedListings } from "./listings/listings.ts";
 import { runEval } from "./eval/eval.ts";
 import { initializePayment } from "./payments/paystack.ts";
 
+const ReportStats = Schema.Array(
+  Schema.Struct({ label: Schema.String, value: Schema.String }),
+);
+
+const SharedReport = Schema.Struct({
+  summary: Schema.String,
+  stats: ReportStats,
+  shareToken: Schema.String,
+});
+
+const ReportRow = Schema.Struct({
+  summary: Schema.String,
+  stats: Schema.fromJsonString(ReportStats),
+  shareToken: Schema.String,
+});
+
 const ListingRow = Schema.Struct({
   id: Schema.String,
   slug: Schema.String,
@@ -103,6 +119,16 @@ const initializePaymentEndpoint = HttpApiEndpoint.post(
   },
 );
 
+const sharedReportEndpoint = HttpApiEndpoint.get(
+  "sharedReport",
+  "/api/reports/shared/:sessionId",
+  {
+    params: Schema.Struct({ sessionId: Schema.String }),
+    query: Schema.Struct({ shareToken: Schema.String }),
+    success: SharedReport,
+  },
+);
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
   .add(createSession)
@@ -110,7 +136,8 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(seedListingsEndpoint)
   .add(listListingsEndpoint)
   .add(runEvalEndpoint)
-  .add(initializePaymentEndpoint) {}
+  .add(initializePaymentEndpoint)
+  .add(sharedReportEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -125,6 +152,20 @@ const rootGroup = HttpApiBuilder.group(
     const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("sharedReport", ({ params, query }) =>
+        Effect.gen(function* () {
+          const row = yield* db
+            .first(
+              "SELECT summary AS summary, stats AS stats, share_token AS shareToken FROM mission_reports WHERE session_id = ? AND share_token = ?",
+              [params.sessionId, query.shareToken],
+            )
+            .pipe(Effect.orDie);
+          if (row === null) {
+            return { summary: "", stats: [], shareToken: "" };
+          }
+          return Schema.decodeUnknownSync(ReportRow)(row);
+        }),
+      )
       .handle("initializePayment", ({ payload }) =>
         Effect.gen(function* () {
           const result = yield* initializePayment({
@@ -232,6 +273,7 @@ const rootGroup = HttpApiBuilder.group(
                     budgetMinor: defaultBudgetMinor,
                     soul: soulFor(payload.agentId),
                     brief: payload.brief,
+                    email: payload.customerEmail ?? "",
                   }),
                 },
               ),
