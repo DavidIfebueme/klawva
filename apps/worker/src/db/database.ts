@@ -6,11 +6,6 @@ import * as Schema from "effect/Schema";
 export type Param = string | number | null;
 export type Row = Readonly<Record<string, unknown>>;
 
-export interface Statement {
-  readonly sql: string;
-  readonly params?: ReadonlyArray<Param>;
-}
-
 export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
   "DatabaseError",
   {
@@ -32,13 +27,6 @@ export interface DatabaseImpl {
     sql: string,
     params?: ReadonlyArray<Param>,
   ) => Effect.Effect<void, DatabaseError>;
-  readonly batch: (
-    statements: ReadonlyArray<Statement>,
-  ) => Effect.Effect<void, DatabaseError>;
-  readonly changed: (
-    sql: string,
-    params?: ReadonlyArray<Param>,
-  ) => Effect.Effect<number, DatabaseError>;
 }
 
 export class Database extends Context.Service<Database, DatabaseImpl>()(
@@ -73,26 +61,6 @@ export const make = (d1: D1Database): DatabaseImpl => ({
         await bind(d1, sql, params).run();
       },
       catch: (cause) => new DatabaseError({ operation: sql, cause }),
-    }),
-  changed: (sql, params) =>
-    Effect.tryPromise({
-      try: async () => {
-        const result = await bind(d1, sql, params).run();
-        return result.meta.changes ?? 0;
-      },
-      catch: (cause) => new DatabaseError({ operation: sql, cause }),
-    }),
-  batch: (statements) =>
-    Effect.tryPromise({
-      try: async () => {
-        await d1.batch(
-          statements.map((statement) => bind(d1, statement.sql, statement.params)),
-        );
-      },
-      catch: (cause) => new DatabaseError({
-        operation: statements.map((statement) => statement.sql).join(" | "),
-        cause,
-      }),
     }),
 });
 
