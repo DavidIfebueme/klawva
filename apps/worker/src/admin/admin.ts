@@ -1,11 +1,8 @@
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
-import { listingApprovedEmail, listingRejectedEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
-import { listingPriceBlocked } from "../payments/economics.ts";
-import { seedListings } from "../listings/listings.ts";
 
 const scalar = (
   db: DatabaseImpl,
@@ -16,15 +13,12 @@ const scalar = (
     .first(sql, params)
     .pipe(
       Effect.orDie,
-      Effect.flatMap((row) => {
+      Effect.map((row) => {
         if (row === null) {
-          return Effect.die("count_row_missing");
+          return 0;
         }
         const [first] = Object.values(row);
-        if (first === undefined) {
-          return Effect.die("count_value_missing");
-        }
-        return Effect.succeed(Number(first));
+        return first === undefined ? 0 : Number(first);
       }),
     );
 
@@ -97,7 +91,7 @@ const recordAudit = (
     )
     .pipe(Effect.orDie);
 
-export const notifyOwner = (
+const notifyOwner = (
   db: DatabaseImpl,
   env: Env,
   ownerId: string,
@@ -118,32 +112,29 @@ export const notifyOwner = (
       toEmail: String(owner.email),
       subject,
       html: body,
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => console.error("owner_notification_failed", error)),
-      ),
-    );
+    }).pipe(Effect.catch(() => Effect.void));
   });
 
-const loadOwner = (
+const loadReviewable = (
   db: DatabaseImpl,
   listingId: string,
-): Effect.Effect<{ ownerId: string; name: string; priceMinor: number }, ListingNotFound> =>
+): Effect.Effect<{ ownerId: string; name: string }, ListingNotFound | ListingConflict> =>
   Effect.gen(function* () {
     const listing = yield* db
       .first(
-        "SELECT owner_id AS ownerId, name AS name, price_minor AS priceMinor FROM agent_listings WHERE id = ?",
+        "SELECT owner_id AS ownerId, name AS name, status AS status FROM agent_listings WHERE id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
     }
-    return {
-      ownerId: String(listing.ownerId),
-      name: String(listing.name),
-      priceMinor: Number(listing.priceMinor),
-    };
+    if (String(listing.status) !== "in_review") {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: `not_in_review:${String(listing.status)}` }),
+      );
+    }
+    return { ownerId: String(listing.ownerId), name: String(listing.name) };
   });
 
 export const approveListing = (
@@ -153,63 +144,18 @@ export const approveListing = (
   listingId: string,
 ): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
   Effect.gen(function* () {
-    const listing = yield* loadOwner(db, listingId);
+    const listing = yield* loadReviewable(db, listingId);
     const now = new Date().toISOString();
-    const pending = yield* db
-      .first(
-        "SELECT version AS version FROM listing_versions WHERE listing_id = ? AND status = 'in_review' ORDER BY version DESC LIMIT 1",
-        [listingId],
-      )
-      .pipe(Effect.orDie);
-    const updated = yield* db
-      .first(
-        "UPDATE agent_listings SET status = 'published', current_version = COALESCE(?, current_version), price_minor = COALESCE((SELECT price_minor FROM listing_versions WHERE listing_id = ? AND version = COALESCE(?, current_version)), price_minor), updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
-        [
-          pending === null ? null : Number(pending.version),
-          listingId,
-          pending === null ? null : Number(pending.version),
-          now,
-          listingId,
-        ],
-      )
-      .pipe(Effect.orDie);
-    if (updated === null) {
-      return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
-    }
-    const corridor = yield* db
-      .first(
-        "SELECT psp AS psp FROM payout_accounts WHERE author_id = ? AND status = 'active' LIMIT 1",
-        [listing.ownerId],
-      )
-      .pipe(Effect.orDie);
-    const international = corridor !== null && String(corridor.psp) === "flutterwave";
-    if (international) {
-      const blocked = listingPriceBlocked({
-        priceMinor: listing.priceMinor,
-        international: true,
-      });
-      if (blocked.length > 0) {
-        return yield* Effect.fail(
-          new ListingConflict({ reason: `corridor_blocked:${blocked[0]}` }),
-        );
-      }
-    }
     yield* db
-      .run(
-        "UPDATE agent_listings SET author_display = CASE WHEN owner_id = 'system' THEN 'klawva' ELSE COALESCE(NULLIF((SELECT display_name FROM author_profiles WHERE user_id = agent_listings.owner_id), ''), 'author') END WHERE id = ?",
-        [listingId],
-      )
+      .run("UPDATE agent_listings SET status = 'published', updated_at = ? WHERE id = ?", [
+        now,
+        listingId,
+      ])
       .pipe(Effect.orDie);
     yield* db
       .run(
-        "UPDATE listing_versions SET status = 'superseded', superseded_at = ? WHERE listing_id = ? AND status = 'published'",
-        [now, listingId],
-      )
-      .pipe(Effect.orDie);
-    yield* db
-      .run(
-        "UPDATE listing_versions SET status = 'published', published_at = ?, reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
-        [now, actorEmail, now, listingId, listingId],
+        "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
+        [actorEmail, now, listingId, listingId],
       )
       .pipe(Effect.orDie);
     yield* recordAudit(db, actorEmail, "listing.approve", listingId, "{}");
@@ -217,8 +163,8 @@ export const approveListing = (
       db,
       env,
       listing.ownerId,
-      "Your Klawva employee is live",
-      listingApprovedEmail(listing.name),
+      "Your Klawva listing was approved",
+      `<p>Your listing <strong>${listing.name}</strong> is now live.</p>`,
     );
     return { status: "published" };
   });
@@ -231,21 +177,18 @@ export const rejectListing = (
   reason: string,
 ): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
   Effect.gen(function* () {
-    const listing = yield* loadOwner(db, listingId);
+    const listing = yield* loadReviewable(db, listingId);
     const now = new Date().toISOString();
-    const updated = yield* db
-      .first(
-        "UPDATE agent_listings SET status = 'rejected', updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
-        [now, listingId],
-      )
+    yield* db
+      .run("UPDATE agent_listings SET status = 'rejected', updated_at = ? WHERE id = ?", [
+        now,
+        listingId,
+      ])
       .pipe(Effect.orDie);
-    if (updated === null) {
-      return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
-    }
     yield* db
       .run(
-        "UPDATE listing_versions SET status = 'rejected', reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND status = 'in_review'",
-        [actorEmail, now, listingId],
+        "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
+        [actorEmail, now, listingId, listingId],
       )
       .pipe(Effect.orDie);
     yield* recordAudit(
@@ -259,77 +202,11 @@ export const rejectListing = (
       db,
       env,
       listing.ownerId,
-      "Your Klawva employee needs changes",
-      listingRejectedEmail(listing.name, reason),
+      "Your Klawva listing needs changes",
+      `<p>Your listing <strong>${listing.name}</strong> was not approved.</p><p>Reason: ${reason}</p>`,
     );
     return { status: "rejected" };
   });
-
-export const unpublishListing = (
-  db: DatabaseImpl,
-  actorEmail: string,
-  listingId: string,
-): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
-  Effect.gen(function* () {
-    yield* loadOwner(db, listingId);
-    const updated = yield* db
-      .first(
-        "UPDATE agent_listings SET status = 'unpublished', updated_at = ? WHERE id = ? AND status = 'published' RETURNING id AS id",
-        [new Date().toISOString(), listingId],
-      )
-      .pipe(Effect.orDie);
-    if (updated === null) {
-      return yield* Effect.fail(new ListingConflict({ reason: "not_published" }));
-    }
-    yield* recordAudit(db, actorEmail, "listing.unpublish", listingId, "{}");
-    return { status: "unpublished" };
-  });
-
-export const revokeListing = (
-  db: DatabaseImpl,
-  actorEmail: string,
-  listingId: string,
-  reason: string,
-): Effect.Effect<{ status: string; cancelled: number }, ListingNotFound | ListingConflict> =>
-  Effect.gen(function* () {
-    yield* loadOwner(db, listingId);
-    const now = new Date().toISOString();
-    const updated = yield* db
-      .first(
-        "UPDATE agent_listings SET status = 'unpublished', updated_at = ? WHERE id = ? AND status = 'published' RETURNING id AS id",
-        [now, listingId],
-      )
-      .pipe(Effect.orDie);
-    if (updated === null) {
-      return yield* Effect.fail(new ListingConflict({ reason: "not_published" }));
-    }
-    yield* db
-      .run(
-        "UPDATE session_tasks SET cancel_requested_at = ?, updated_at = ? WHERE listing_id = ? AND state IN ('dispatched','working') AND cancel_requested_at IS NULL",
-        [now, now, listingId],
-      )
-      .pipe(Effect.orDie);
-    const cancelled = yield* db
-      .first(
-        "SELECT COUNT(*) AS count FROM session_tasks WHERE listing_id = ? AND cancel_requested_at >= ?",
-        [listingId, now],
-      )
-      .pipe(Effect.orDie);
-    yield* recordAudit(
-      db,
-      actorEmail,
-      "listing.revoke",
-      listingId,
-      JSON.stringify({ reason }),
-    );
-    return {
-      status: "unpublished",
-      cancelled: cancelled === null ? 0 : Number(cancelled.count ?? 0),
-    };
-  });
-
-export const seed = (db: DatabaseImpl): Effect.Effect<number> =>
-  seedListings(db).pipe(Effect.orDie);
 
 export const auditLog = (
   db: DatabaseImpl,
