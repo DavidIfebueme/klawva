@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import Landing from "./app/page.tsx";
 import Agents from "./app/agents/page.tsx";
+import Store from "./app/store/page.tsx";
 import Checkout from "./app/checkout/page.tsx";
 import CustomRequest from "./app/custom-request/page.tsx";
 import Hire from "./app/hire/[agent]/page.tsx";
@@ -20,6 +21,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/agents" element={<Agents />} />
+      <Route path="/store" element={<Store />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/custom-request" element={<CustomRequest />} />
       <Route path="/hire/:agent" element={<Hire />} />
