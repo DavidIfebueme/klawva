@@ -63,11 +63,6 @@ const PaymentRow = Schema.Struct({
   status: Schema.String,
 });
 
-const AuthorFeeRow = Schema.Struct({
-  user_id: Schema.String,
-  status: Schema.String,
-});
-
 export const handlePaystackWebhook = (
   request: Request,
   env: Env,
@@ -108,32 +103,6 @@ export const handlePaystackWebhook = (
       )
       .pipe(Effect.orDie);
     if (payment === null) {
-      const feeRow = yield* db
-        .first(
-          "SELECT user_id AS user_id, status AS status FROM author_fees WHERE provider_reference = ?",
-          [reference],
-        )
-        .pipe(Effect.orDie);
-      if (feeRow === null) {
-        return Response.json({ ok: true });
-      }
-      const fee = Schema.decodeUnknownSync(AuthorFeeRow)(feeRow);
-      if (fee.status === "confirmed") {
-        return Response.json({ ok: true });
-      }
-      const confirmedAt = new Date().toISOString();
-      yield* db
-        .run(
-          "UPDATE author_fees SET status = 'confirmed', confirmed_at = ?, updated_at = ? WHERE provider_reference = ?",
-          [confirmedAt, confirmedAt, reference],
-        )
-        .pipe(Effect.orDie);
-      yield* db
-        .run(
-          "UPDATE author_profiles SET fee_paid_at = ?, updated_at = ? WHERE user_id = ?",
-          [confirmedAt, confirmedAt, fee.user_id],
-        )
-        .pipe(Effect.orDie);
       return Response.json({ ok: true });
     }
     const decoded = Schema.decodeUnknownSync(PaymentRow)(payment);
@@ -157,6 +126,18 @@ export const handlePaystackWebhook = (
         [now, endIso, now, decoded.session_id],
       )
       .pipe(Effect.orDie);
+    yield* Effect.tryPromise({
+      try: () =>
+        env.SESSION.get(env.SESSION.idFromName(decoded.session_id)).fetch(
+          "https://session/activate",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ windowEnd: endIso }),
+          },
+        ),
+      catch: (cause) => new PaystackError({ reason: String(cause) }),
+    }).pipe(Effect.catch(() => Effect.void));
     yield* Effect.tryPromise({
       try: () =>
         env.WALLET.get(env.WALLET.idFromName(decoded.session_id)).fetch(
@@ -213,9 +194,10 @@ export const initializePayment = (params: {
   Effect.gen(function* () {
     const reference = `klawva_${params.sessionId}_${Date.now()}`;
     if (params.secret.length === 0) {
+      const separator = params.callbackUrl.includes("?") ? "&" : "?";
       return {
         reference,
-        checkoutUrl: `${params.callbackUrl}?reference=${reference}&dev=1`,
+        checkoutUrl: `${params.callbackUrl}${separator}reference=${reference}&dev=1`,
       };
     }
     const response = yield* Effect.tryPromise({
