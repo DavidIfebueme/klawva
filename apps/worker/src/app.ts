@@ -138,6 +138,31 @@ const sessionLaunchEndpoint = HttpApiEndpoint.get(
   },
 );
 
+const ChatMessage = Schema.Struct({
+  role: Schema.String,
+  content: Schema.String,
+  createdAt: Schema.String,
+});
+
+const chatMessagesEndpoint = HttpApiEndpoint.get(
+  "chatMessages",
+  "/api/sessions/:id/messages",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    success: Schema.Array(ChatMessage),
+  },
+);
+
+const chatSendEndpoint = HttpApiEndpoint.post(
+  "chatSend",
+  "/api/sessions/:id/messages",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    payload: Schema.Struct({ message: Schema.String }),
+    success: Schema.Struct({ reply: Schema.String }),
+  },
+);
+
 const contactEndpoint = HttpApiEndpoint.post("contact", "/api/emails/contact", {
   payload: Schema.Struct({
     name: Schema.String,
@@ -210,6 +235,8 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(listingDetailBySlugEndpoint)
   .add(configEndpoint)
   .add(sessionLaunchEndpoint)
+  .add(chatMessagesEndpoint)
+  .add(chatSendEndpoint)
   .add(contactEndpoint)
   .add(initializePaymentEndpoint)
   .add(sharedReportEndpoint) {}
@@ -361,6 +388,49 @@ const rootGroup = HttpApiBuilder.group(
               .pipe(Effect.orDie);
           }
           return { telegramBotUsername: env.TELEGRAM_BOT_USERNAME, code };
+        }),
+      )
+      .handle("chatMessages", ({ params }) =>
+        Effect.gen(function* () {
+          const rows = yield* db
+            .all(
+              "SELECT role AS role, content AS content, created_at AS createdAt FROM messages WHERE session_id = ? ORDER BY created_at LIMIT 200",
+              [params.id],
+            )
+            .pipe(Effect.orDie);
+          return rows.map((row) => Schema.decodeUnknownSync(ChatMessage)(row));
+        }),
+      )
+      .handle("chatSend", ({ params, payload }) =>
+        Effect.gen(function* () {
+          const session = yield* db
+            .first("SELECT state AS state FROM sessions WHERE id = ?", [params.id])
+            .pipe(Effect.orDie);
+          if (session === null) {
+            return { reply: "This session does not exist." };
+          }
+          const reply = yield* Effect.tryPromise({
+            try: async () => {
+              const response = await env.SESSION.get(
+                env.SESSION.idFromName(params.id),
+              ).fetch("https://session/messages", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role: "user", content: payload.message }),
+              });
+              const body: unknown = await response.json();
+              const decoded = Schema.decodeUnknownOption(
+                Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
+              )(body);
+              return decoded._tag === "Some" ? decoded.value.reply ?? "" : "";
+            },
+            catch: (cause) => new Error(String(cause)),
+          }).pipe(
+            Effect.catch(() =>
+              Effect.succeed("The employee is unavailable right now. Please try again shortly."),
+            ),
+          );
+          return { reply };
         }),
       )
       .handle("contact", ({ payload }) =>
