@@ -1,28 +1,32 @@
 import React, { useState } from "react";
-import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
+import {
+  redirect,
+  useLoaderData,
+  useRevalidator,
+  type LoaderFunctionArgs,
+} from "react-router-dom";
+import * as Schema from "effect/Schema";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
-import { addMember, getAccountSession, listMembers } from "@/lib/account-api";import { sendFeedback } from "@/lib/employees-api";
+import { addMember, getAccountSession, listMembers, submitFeedback } from "@/lib/account-api";
 
 const humanize = (value: string): string =>
   value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+const briefSchema = Schema.Record(Schema.String, Schema.Unknown);
+
 const parseBrief = (raw: string): ReadonlyArray<readonly [string, string]> => {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === "object") {
-      return Object.entries(parsed as Record<string, unknown>)
-        .filter(([, value]) => typeof value === "string")
-        .map(([key, value]) => [key, String(value)] as const);
-    }
-  } catch {
+  const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(briefSchema))(raw);
+  if (parsed._tag === "None") {
     return [];
   }
-  return [];
+  return Object.entries(parsed.value)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    .map(([key, value]): readonly [string, string] => [key, value]);
 };
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
@@ -38,29 +42,36 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 };
 
 function statusVariant(state: string): "active" | "pending" | "warning" {
-  if (state === "running" || state === "ready") return "active";
-  if (state === "ended" || state === "reported") return "pending";
+  if (state === "active" || state === "ready") return "active";
+  if (state === "completed") return "pending";
   return "warning";
 }
 
 export function Component() {
   const { session, detail, members } = useLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
   const brief = parseBrief(detail.session.brief);
   const [rating, setRating] = useState(5);
   const [report, setReport] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [memberBusy, setMemberBusy] = useState(false);
+  const [memberError, setMemberError] = useState("");
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = memberEmail.trim();
     if (email.length === 0) return;
     setMemberBusy(true);
+    setMemberError("");
     try {
       await addMember(session.token, detail.session.id, email);
       setMemberEmail("");
+      revalidator.revalidate();
+    } catch (err) {
+      setMemberError(err instanceof Error ? err.message : "Could not add teammate.");
     } finally {
       setMemberBusy(false);
     }
@@ -69,11 +80,17 @@ export function Component() {
   const handleFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedbackBusy(true);
+    setFeedbackError("");
     try {
-      await sendFeedback(detail.session.id, rating, report.trim() || undefined);
+      await submitFeedback(
+        session.token,
+        detail.session.id,
+        rating,
+        report.trim() || undefined,
+      );
       setFeedbackSent(true);
-    } catch {
-      setFeedbackSent(false);
+    } catch (err) {
+      setFeedbackError(err instanceof Error ? err.message : "Could not save feedback.");
     } finally {
       setFeedbackBusy(false);
     }
@@ -196,6 +213,9 @@ export function Component() {
                   value={report}
                   onChange={(e) => setReport(e.target.value)}
                 />
+                {feedbackError && (
+                  <p className="text-xs text-klawva-orange font-mono">{feedbackError}</p>
+                )}
                 <Button type="submit" variant="secondary" size="sm" loading={feedbackBusy}>
                   Submit feedback
                 </Button>
@@ -231,6 +251,9 @@ export function Component() {
                 Add
               </Button>
             </form>
+            {memberError && (
+              <p className="text-xs text-klawva-orange font-mono mt-3">{memberError}</p>
+            )}
           </Card>
         </div>
       </main>
