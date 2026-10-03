@@ -5,7 +5,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "account_id": "dc22b5614ced449009cac59911622f11",
   "observability": { "enabled": true },
-  "vars": { "ENV": "development" },
+  "vars": { "ENV": "development", "TELEGRAM_BOT_USERNAME": "klawva_employee_1_bot" },
   "d1_databases": [
     {
       "binding": "DB",
