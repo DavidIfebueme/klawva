@@ -3,6 +3,7 @@ import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-d
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
+import { Markdown } from "@/components/ui/Markdown";
 import { getChatMessages, sendChatMessage } from "@/lib/employees-api";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
@@ -72,14 +73,20 @@ export function Component() {
               entries.map((entry, index) => (
                 <div
                   key={index}
-                  className={entry.role === "user" ? "text-right" : "text-left"}
+                  className={`flex ${entry.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-1">
-                    {entry.role}
+                  <div
+                    className={`max-w-[85%] rounded-lg border px-4 py-3 ${
+                      entry.role === "user"
+                        ? "border-klawva-border bg-klawva-elevated"
+                        : "border-klawva-border bg-klawva-surface"
+                    }`}
+                  >
+                    <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-klawva-dim">
+                      {entry.role}
+                    </div>
+                    <Markdown content={entry.content} />
                   </div>
-                  <p className="font-mono text-klawva-text text-sm whitespace-pre-wrap inline-block text-left max-w-[85%]">
-                    {entry.content}
-                  </p>
                 </div>
               ))
             )}
