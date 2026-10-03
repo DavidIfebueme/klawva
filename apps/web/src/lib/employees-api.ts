@@ -13,6 +13,7 @@ const employeeSummary = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   ownerId: Schema.String,
+  avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
 });
 export type EmployeeSummary = typeof employeeSummary.Type;
@@ -114,6 +115,20 @@ export async function sendChatMessage(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
+    }),
+  );
+}
+
+export async function sendFeedback(
+  sessionId: string,
+  rating: number,
+  report?: string,
+): Promise<{ ok: boolean }> {
+  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
+    await send(`/api/sessions/${encodeURIComponent(sessionId)}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating, report }),
     }),
   );
 }
