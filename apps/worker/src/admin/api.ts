@@ -10,7 +10,7 @@ import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { Forbidden, ListingConflict, ListingNotFound } from "../errors.ts";
-import { approveListing, auditLog, overview, rejectListing, reviewQueue, seed } from "./admin.ts";
+import { approveListing, auditLog, overview, rejectListing, reviewQueue, seed, unpublishListing } from "./admin.ts";
 
 const IdParam = Schema.Struct({ id: Schema.String });
 
@@ -87,13 +87,24 @@ const adminSeed = HttpApiEndpoint.post("adminSeed", "/api/admin/seed", {
   error: allErrors,
 });
 
+const adminUnpublish = HttpApiEndpoint.post(
+  "adminUnpublish",
+  "/api/admin/listings/:id/unpublish",
+  {
+    params: IdParam,
+    success: Schema.Struct({ status: Schema.String }),
+    error: allErrors,
+  },
+);
+
 class AdminGroup extends HttpApiGroup.make("Admin")
   .add(adminOverview)
   .add(adminReviews)
   .add(adminApprove)
   .add(adminReject)
   .add(adminAudit)
-  .add(adminSeed) {}
+  .add(adminSeed)
+  .add(adminUnpublish) {}
 
 export class AdminApi extends HttpApi.make("AdminApi").add(AdminGroup) {}
 
@@ -156,6 +167,12 @@ export const adminGroup = HttpApiBuilder.group(
           yield* requireAdmin();
           const seeded = yield* seed(db);
           return { seeded };
+        }),
+      )
+      .handle("adminUnpublish", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireAdmin();
+          return yield* unpublishListing(db, identity.email, params.id);
         }),
       );
   }),
