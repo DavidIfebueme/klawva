@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
+import { constantTimeEqual } from "../lib/secure.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
   "PaystackError",
@@ -35,24 +36,13 @@ export const signBody = (
     catch: (cause) => new PaystackError({ reason: String(cause) }),
   });
 
-export const timingSafeEqual = (left: string, right: string): boolean => {
-  if (left.length !== right.length) {
-    return false;
-  }
-  let diff = 0;
-  for (let index = 0; index < left.length; index++) {
-    diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-  return diff === 0;
-};
-
 export const verifySignature = (
   rawBody: string,
   secret: string,
   provided: string,
 ): Effect.Effect<boolean, PaystackError> =>
   signBody(rawBody, secret).pipe(
-    Effect.map((expected) => timingSafeEqual(expected, provided)),
+    Effect.map((expected) => constantTimeEqual(expected, provided)),
   );
 
 const PaystackEvent = Schema.Struct({
