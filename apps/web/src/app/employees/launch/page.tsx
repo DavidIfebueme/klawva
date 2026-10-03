@@ -16,7 +16,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export function Component() {
-  const { botUsername, code } = useLoaderData<typeof loader>();
+  const { session, botUsername, code } = useLoaderData<typeof loader>();
   const link = `https://t.me/${botUsername}?start=${code}`;
 
   return (
@@ -42,6 +42,12 @@ export function Component() {
               Open Telegram
             </Button>
           </div>
+          <p className="font-mono text-klawva-dim text-xs mt-6">
+            Prefer the browser?{" "}
+            <a href={`/chat/${session}`} className="text-klawva-accent underline">
+              Chat on the web
+            </a>
+          </p>
           <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
         </div>
       </main>
