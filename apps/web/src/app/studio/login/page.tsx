@@ -13,7 +13,7 @@ export const loader = () => {
   return null;
 };
 
-export default function StudioLoginPage() {
+export function Component() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);

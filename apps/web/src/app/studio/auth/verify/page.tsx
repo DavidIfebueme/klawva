@@ -28,7 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 };
 
-export default function StudioVerifyPage() {
+export function Component() {
   const data = useLoaderData<typeof loader>();
   const error = "error" in data ? data.error : null;
 
