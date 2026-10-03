@@ -26,12 +26,16 @@ export default function CustomRequestPage() {
     setSent(false);
 
     try {
-      await sendContact({
+      const result = await sendContact({
         name: name.trim(),
         email: email.trim(),
         employeeType: employeeType.trim() || undefined,
         description: description.trim(),
       });
+      if (!result.ok) {
+        setError('Please check your details and try again.');
+        return;
+      }
       setSent(true);
       setName('');
       setEmail('');
