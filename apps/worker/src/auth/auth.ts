@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { backfillSessionsForUser } from "../account/account.ts";
 import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { magicLinkEmail } from "../email/templates.ts";
@@ -113,6 +114,7 @@ export const identityFromToken = (
       return yield* Effect.fail(new AuthError({ reason: "wrong_scope" }));
     }
     const userId = yield* upsertUser(db, payload.email);
+    yield* backfillSessionsForUser(db, userId, payload.email);
     return {
       email: payload.email,
       userId,
