@@ -11,6 +11,12 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { SessionState } from "../db/schema.ts";
+import {
+  AgentRuntime,
+  layer as agentLayer,
+  runTurn,
+} from "../agent/runtime.ts";
+import type { Env } from "../env.ts";
 
 export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
   "IllegalTransition",
@@ -126,8 +132,15 @@ const StateResponse = Schema.Struct({ state: Schema.String });
 
 const getState = HttpApiEndpoint.get("state", "/state", { success: StateResponse });
 
+const Brief = Schema.Record(Schema.String, Schema.String);
+
 const init = HttpApiEndpoint.post("init", "/init", {
-  payload: Schema.Struct({ state: Schema.String, budgetMinor: Schema.Number }),
+  payload: Schema.Struct({
+    state: Schema.String,
+    budgetMinor: Schema.Number,
+    soul: Schema.String,
+    brief: Brief,
+  }),
   success: StateResponse,
 });
 
@@ -148,7 +161,10 @@ const history = HttpApiEndpoint.get("history", "/history", {
 
 const appendMessage = HttpApiEndpoint.post("appendMessage", "/messages", {
   payload: Schema.Struct({ role: Schema.String, content: Schema.String }),
-  success: Schema.Struct({ ok: Schema.Boolean }),
+  success: Schema.Struct({
+    ok: Schema.Boolean,
+    reply: Schema.optionalKey(Schema.String),
+  }),
 });
 
 class SessionGroup extends HttpApiGroup.make("Session")
@@ -172,6 +188,7 @@ const sessionGroup = HttpApiBuilder.group(
   "Session",
   Effect.fn(function* (handlers) {
     const store = yield* SessionStore;
+    const runtime = yield* AgentRuntime;
     return handlers
       .handle("state", () =>
         Effect.gen(function* () {
@@ -184,6 +201,8 @@ const sessionGroup = HttpApiBuilder.group(
           yield* store.set("state", payload.state);
           yield* store.set("budget_minor", String(payload.budgetMinor));
           yield* store.set("spent_minor", "0");
+          yield* store.set("soul", payload.soul);
+          yield* store.set("brief", JSON.stringify(payload.brief));
           return { state: payload.state };
         }),
       )
@@ -215,25 +234,47 @@ const sessionGroup = HttpApiBuilder.group(
       .handle("appendMessage", ({ payload }) =>
         Effect.gen(function* () {
           yield* store.append(payload.role, payload.content);
-          return { ok: true };
-        }),
+          if (payload.role !== "user") {
+            return { ok: true };
+          }
+          yield* store.spend(50);
+          const soul = (yield* store.get("soul")) ?? "";
+          const brief = Schema.decodeUnknownSync(Brief)(
+            JSON.parse((yield* store.get("brief")) ?? "{}"),
+          );
+          const history = yield* store.history();
+          const reply = yield* runTurn({ runtime, soul, brief, history });
+          yield* store.append("assistant", reply);
+          return { ok: true, reply };
+        }).pipe(Effect.orDie),
       );
   }),
 );
 
-const makeLayer = (store: SessionStoreImpl) =>
+const model = "@cf/zai-org/glm-4.7-flash";
+
+const makeLayer = (store: SessionStoreImpl, env: Env) =>
   HttpApiBuilder.layer(SessionApi).pipe(
     Layer.provide(
-      sessionGroup.pipe(Layer.provide(Layer.succeed(SessionStore)(store))),
+      sessionGroup.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(SessionStore)(store),
+            agentLayer(env.AI, model),
+          ),
+        ),
+      ),
     ),
     Layer.provide(HttpServer.layerServices),
   );
 
 export class SessionAgent {
   private readonly ctx: DurableObjectState;
+  private readonly env: Env;
 
-  constructor(ctx: DurableObjectState, _env: unknown) {
+  constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
+    this.env = env;
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS session_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     );
@@ -243,7 +284,7 @@ export class SessionAgent {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const layer = makeLayer(makeStore(this.ctx.storage.sql));
+    const layer = makeLayer(makeStore(this.ctx.storage.sql), this.env);
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const handler = yield* HttpRouter.toHttpEffect(layer);
