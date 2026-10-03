@@ -19,7 +19,10 @@ describe("auth tokens", () => {
     const token = await Effect.runPromise(
       signToken(secret, { email: "a@b.com", exp: future, scope: "session" }),
     );
-    const tampered = `${token.slice(0, -1)}0`;
+    const tampered =
+      token.slice(0, Math.floor(token.length / 2)) +
+      (token[Math.floor(token.length / 2)] === "a" ? "b" : "a") +
+      token.slice(Math.floor(token.length / 2) + 1);
     const result = await Effect.runPromise(
       Effect.result(verifyToken(secret, tampered)),
     );

@@ -4,17 +4,44 @@ import { Footer } from "@/components/layout/Footer";
 import Link from "@/components/ui/AppLink";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { ApiError } from "@/lib/api-error";
 import { getEmployee } from "@/lib/employees-api";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   if (params.agent === undefined) {
     throw redirect("/employees");
   }
-  return { employee: await getEmployee(params.agent) };
+  const employee = await getEmployee(params.agent).catch((err) => {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  });
+  return { employee };
 };
 
 export function Component() {
   const { employee } = useLoaderData<typeof loader>();
+
+  if (employee === null) {
+    return (
+      <main className="min-h-screen bg-klawva-bg text-klawva-text font-mono">
+        <Navbar />
+        <div className="max-w-3xl mx-auto px-6 py-40 text-center">
+          <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
+            Employee not found
+          </h1>
+          <p className="font-mono text-klawva-muted mb-8">
+            This employee is not available right now.
+          </p>
+          <Link href="/employees">
+            <Button variant="primary">Browse employees</Button>
+          </Link>
+        </div>
+        <Footer />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-klawva-bg text-klawva-text font-mono pt-16">

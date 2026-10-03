@@ -142,12 +142,15 @@ export const handlePaystackWebhook = (
     }
     const now = new Date().toISOString();
     const endIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    yield* db
-      .run(
-        "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ?",
+    const confirmed = yield* db
+      .first(
+        "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending' RETURNING id AS id",
         [now, reference],
       )
       .pipe(Effect.orDie);
+    if (confirmed === null) {
+      return Response.json({ ok: true });
+    }
     yield* db
       .run(
         "UPDATE sessions SET state = 'ready', window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",

@@ -245,14 +245,14 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const session = yield* db
             .first(
-              "SELECT budget_minor AS budgetMinor FROM sessions WHERE id = ?",
+              "SELECT l.price_minor AS priceMinor FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
               [payload.sessionId],
             )
             .pipe(Effect.orDie);
           if (session === null) {
             return yield* Effect.die("session_not_found");
           }
-          const amountMinor = Number(session.budgetMinor);
+          const amountMinor = Number(session.priceMinor);
           const result = yield* initializePayment({
             secret: env.PAYSTACK_SECRET_KEY,
             sessionId: payload.sessionId,

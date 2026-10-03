@@ -5,6 +5,14 @@ export interface TemplateInput {
   readonly ctaHref?: string;
 }
 
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 export const renderTemplate = ({
   title,
   body,
@@ -38,7 +46,7 @@ export const magicLinkEmail = (link: string): string =>
 export const listingApprovedEmail = (name: string): string =>
   renderTemplate({
     title: "Your employee is live",
-    body: `Your listing <strong>${name}</strong> passed review and is now visible in the catalog. You can edit pricing and copy from the studio at any time.`,
+    body: `Your listing <strong>${escapeHtml(name)}</strong> passed review and is now visible in the catalog. You can edit pricing and copy from the studio at any time.`,
     ctaLabel: "Open Studio",
     ctaHref: "https://www.klawva.xyz/studio",
   });
@@ -46,7 +54,7 @@ export const listingApprovedEmail = (name: string): string =>
 export const listingRejectedEmail = (name: string, reason: string): string =>
   renderTemplate({
     title: "Your listing needs changes",
-    body: `Your listing <strong>${name}</strong> was not approved.<br/>Reason: <strong>${reason}</strong><br/>Update it in the studio and resubmit.`,
+    body: `Your listing <strong>${escapeHtml(name)}</strong> was not approved.<br/>Reason: <strong>${escapeHtml(reason)}</strong><br/>Update it in the studio and resubmit.`,
     ctaLabel: "Open Studio",
     ctaHref: "https://www.klawva.xyz/studio",
   });
@@ -60,7 +68,7 @@ export const shiftStartedEmail = (
   const end = new Date(endIso).toUTCString();
   return renderTemplate({
     title: "Your employee is now active",
-    body: `<strong>${employeeName}</strong> is on shift.<br/>Start: <strong>${start}</strong><br/>End: <strong>${end}</strong><br/>Message the bot on Telegram to give instructions.`,
+    body: `<strong>${escapeHtml(employeeName)}</strong> is on shift.<br/>Start: <strong>${start}</strong><br/>End: <strong>${end}</strong><br/>Message the bot on Telegram to give instructions.`,
     ctaLabel: "Open Klawva",
     ctaHref: "https://www.klawva.xyz/employees",
   });
