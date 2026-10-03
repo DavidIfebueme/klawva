@@ -5,18 +5,19 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { getSessionLaunch } from "@/lib/employees-api";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  const session = url.searchParams.get("session");
-  if (session === null) {
+  const session = params.session ?? url.searchParams.get("session");
+  const token = params.token ?? url.searchParams.get("token");
+  if (session == null || token == null) {
     throw redirect("/employees");
   }
-  const launch = await getSessionLaunch(session);
-  return { session, botUsername: launch.telegramBotUsername, code: launch.code };
+  const launch = await getSessionLaunch(session, token);
+  return { session, token, botUsername: launch.telegramBotUsername, code: launch.code };
 };
 
 export function Component() {
-  const { session, botUsername, code } = useLoaderData<typeof loader>();
+  const { session, token, botUsername, code } = useLoaderData<typeof loader>();
   const link = `https://t.me/${botUsername}?start=${code}`;
 
   return (
@@ -44,7 +45,7 @@ export function Component() {
           </div>
           <p className="font-mono text-klawva-dim text-xs mt-6">
             Prefer the browser?{" "}
-            <a href={`/chat/${session}`} className="text-klawva-accent underline">
+            <a href={`/chat/${session}?token=${token}`} className="text-klawva-accent underline">
               Chat on the web
             </a>
           </p>
