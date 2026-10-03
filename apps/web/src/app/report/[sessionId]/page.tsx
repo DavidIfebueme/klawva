@@ -206,7 +206,7 @@ export function Component() {
             </div>
             <div className="h-px w-full bg-klawva-border my-2" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button variant="primary" href={`/hire/${agent.id}`}>
+              <Button variant="primary" href={`/employees/${agent.id}`}>
                 Hire again →
               </Button>
               <Button variant="ghost" href="/employees">
