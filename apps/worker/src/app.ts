@@ -38,6 +38,7 @@ import {
 } from "./auth/auth.ts";
 import { AuthError } from "./auth/tokens.ts";
 import { StudioApi, studioGroup } from "./studio/api.ts";
+import { AdminApi, adminGroup } from "./admin/api.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -477,7 +478,10 @@ export const makeAppLayer = (env: Env) => {
   const studioRoutes = HttpApiBuilder.layer(StudioApi).pipe(
     Layer.provide(studioGroup.pipe(Layer.provide(services))),
   );
-  return Layer.mergeAll(mainRoutes, studioRoutes).pipe(
+  const adminRoutes = HttpApiBuilder.layer(AdminApi).pipe(
+    Layer.provide(adminGroup.pipe(Layer.provide(services))),
+  );
+  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes).pipe(
     Layer.provide(HttpServer.layerServices),
   );
 };
