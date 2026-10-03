@@ -1,22 +1,19 @@
 import React, { useState } from "react";
-import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
+import { redirect } from "react-router-dom";
 import { requestStudioLink } from "@/lib/studio-api";
 import { getStudioSession } from "@/lib/studio-session";
 import { Button } from "@/components/ui/Button";
 import { Mail, CheckCircle } from "lucide-react";
 import { motion } from "motion/react";
 
-export const loader = ({ request }: LoaderFunctionArgs) => {
-  const raw = new URL(request.url).searchParams.get("next");
-  const next = raw !== null && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/studio";
+export const loader = () => {
   if (getStudioSession() !== null) {
-    throw redirect(next);
+    throw redirect("/studio");
   }
-  return { next };
+  return null;
 };
 
-export function Component() {
-  const { next } = useLoaderData<typeof loader>();
+export default function StudioLoginPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -28,8 +25,7 @@ export function Component() {
     setLoading(true);
     setError("");
     try {
-      sessionStorage.setItem("klawva_login_next", next);
-      await requestStudioLink(email, next);
+      await requestStudioLink(email);
       setSent(true);
     } catch (err) {
       console.error(err);
@@ -49,13 +45,13 @@ export function Component() {
       >
         <div className="mb-8 text-center">
           <span className="font-syne font-extrabold text-klawva-accent tracking-widest text-xs block mb-2">
-            KLAWVA
+            KLAWVA STUDIO
           </span>
           <h1 className="font-syne font-bold text-2xl text-white uppercase">
-            Sign In
+            Author Login
           </h1>
           <p className="text-xs text-klawva-muted mt-2">
-            Sign in with a secure magic link to reach your account and the studio.
+            Sign in with a secure magic link to publish and manage your agents.
           </p>
         </div>
 
