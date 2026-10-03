@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { ApiError } from "./api-error.ts";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -91,7 +92,7 @@ async function failureMessage(res: Response): Promise<string> {
 async function send(path: string, init: RequestInit): Promise<unknown> {
   const res = await fetch(`${BASE}${path}`, init);
   if (!res.ok) {
-    throw new Error(await failureMessage(res));
+    throw new ApiError(await failureMessage(res), res.status);
   }
   return res.json();
 }

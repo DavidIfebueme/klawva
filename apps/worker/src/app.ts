@@ -15,18 +15,7 @@ import {
   secretHeader,
   TelegramUpdate,
 } from "./channels/telegram.ts";
-import {
-  AgentRuntime,
-  defaultModel,
-  layer as agentLayer,
-} from "./agent/runtime.ts";
-import { seedListings } from "./listings/listings.ts";
-import {
-  createDraft,
-  reviewListing,
-  submitListing,
-} from "./listings/publish.ts";
-import { runEval } from "./eval/eval.ts";
+import { defaultModel, layer as agentLayer } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import { generateAddress } from "./payments/breet.ts";
@@ -102,22 +91,11 @@ const telegramWebhook = HttpApiEndpoint.post(
   },
 );
 
-const seedListingsEndpoint = HttpApiEndpoint.post(
-  "seedListings",
-  "/api/listings/seed",
-  { success: Schema.Struct({ seeded: Schema.Number }) },
-);
-
 const listListingsEndpoint = HttpApiEndpoint.get(
   "listListings",
   "/api/listings",
   { success: Schema.Array(ListingRow) },
 );
-
-const runEvalEndpoint = HttpApiEndpoint.post("runEval", "/api/eval/run", {
-  payload: Schema.Struct({ agentId: Schema.String, task: Schema.String }),
-  success: Schema.Struct({ score: Schema.Number, band: Schema.String }),
-});
 
 const initializePaymentEndpoint = HttpApiEndpoint.post(
   "initializePayment",
@@ -145,49 +123,6 @@ const sharedReportEndpoint = HttpApiEndpoint.get(
     error: ReportNotFound,
   },
 );
-
-const CreateListing = Schema.Struct({
-  slug: Schema.String,
-  name: Schema.String,
-  tagline: Schema.String,
-  category: Schema.String,
-  agentId: Schema.String,
-  priceMinor: Schema.Number,
-  briefFields: Schema.Array(Schema.String),
-});
-
-const createListingEndpoint = HttpApiEndpoint.post(
-  "createListing",
-  "/api/listings",
-  { payload: CreateListing, success: Schema.Struct({ id: Schema.String }) },
-);
-
-const submitListingEndpoint = HttpApiEndpoint.post(
-  "submitListing",
-  "/api/listings/:id/submit",
-  {
-    params: Schema.Struct({ id: Schema.String }),
-    success: Schema.Struct({
-      score: Schema.Number,
-      band: Schema.String,
-      status: Schema.String,
-    }),
-  },
-);
-
-const reviewListingEndpoint = HttpApiEndpoint.post(
-  "reviewListing",
-  "/api/listings/:id/review",
-  {
-    params: Schema.Struct({ id: Schema.String }),
-    payload: Schema.Struct({ approve: Schema.Boolean }),
-    success: Schema.Struct({ ok: Schema.Boolean }),
-  },
-);
-
-const listReviewsEndpoint = HttpApiEndpoint.get("listReviews", "/api/reviews", {
-  success: Schema.Array(ListingRow),
-});
 
 const breetAddressEndpoint = HttpApiEndpoint.post(
   "breetAddress",
@@ -229,15 +164,9 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(meEndpoint)
   .add(createSession)
   .add(telegramWebhook)
-  .add(seedListingsEndpoint)
   .add(listListingsEndpoint)
-  .add(runEvalEndpoint)
   .add(initializePaymentEndpoint)
   .add(sharedReportEndpoint)
-  .add(createListingEndpoint)
-  .add(submitListingEndpoint)
-  .add(reviewListingEndpoint)
-  .add(listReviewsEndpoint)
   .add(breetAddressEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
@@ -250,7 +179,6 @@ const rootGroup = HttpApiBuilder.group(
   Effect.fn(function* (handlers) {
     const db = yield* Database;
     const env = yield* WorkerEnv;
-    const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
       .handle("requestLink", ({ payload }) =>
@@ -289,46 +217,6 @@ const rootGroup = HttpApiBuilder.group(
             payload.asset,
           ).pipe(Effect.orDie);
           return { address };
-        }),
-      )
-      .handle("createListing", ({ payload }) =>
-        Effect.gen(function* () {
-          const id = yield* createDraft(db, {
-            ownerId: "system",
-            slug: payload.slug,
-            name: payload.name,
-            tagline: payload.tagline,
-            category: payload.category,
-            agentId: payload.agentId,
-            priceMinor: payload.priceMinor,
-            briefFields: payload.briefFields,
-          });
-          return { id };
-        }),
-      )
-      .handle("submitListing", ({ params }) =>
-        Effect.gen(function* () {
-          const result = yield* submitListing(db, runtime, params.id);
-          if (result === null) {
-            return { score: 0, band: "reject", status: "draft" };
-          }
-          return result;
-        }),
-      )
-      .handle("reviewListing", ({ params, payload }) =>
-        Effect.gen(function* () {
-          yield* reviewListing(db, params.id, payload.approve);
-          return { ok: true };
-        }),
-      )
-      .handle("listReviews", () =>
-        Effect.gen(function* () {
-          const rows = yield* db
-            .all(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, l.current_version AS version, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'in_review' ORDER BY l.updated_at DESC",
-            )
-            .pipe(Effect.orDie);
-          return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
         }),
       )
       .handle("sharedReport", ({ params, query }) =>
@@ -376,12 +264,6 @@ const rootGroup = HttpApiBuilder.group(
           };
         }),
       )
-      .handle("seedListings", () =>
-        Effect.gen(function* () {
-          const seeded = yield* seedListings(db).pipe(Effect.orDie);
-          return { seeded };
-        }),
-      )
       .handle("listListings", () =>
         Effect.gen(function* () {
           const rows = yield* db
@@ -390,17 +272,6 @@ const rootGroup = HttpApiBuilder.group(
             )
             .pipe(Effect.orDie);
           return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
-        }),
-      )
-      .handle("runEval", ({ payload }) =>
-        Effect.gen(function* () {
-          const result = yield* runEval({
-            runtime,
-            soul: soulFor(payload.agentId),
-            brief: { task: payload.task },
-            cases: [payload.task],
-          }).pipe(Effect.orDie);
-          return { score: result.score, band: result.band };
         }),
       )
       .handle("telegramWebhook", ({ payload }) =>

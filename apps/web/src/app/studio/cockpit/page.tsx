@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { redirect, useLoaderData, useRevalidator } from "react-router-dom";
-import { getStudioSession } from "@/lib/studio-session";
+import { useLoaderData, useRevalidator } from "react-router-dom";
+import { requireSession, rethrowAuth } from "@/lib/studio-loader";
 import {
   approveListing,
   getAdminAudit,
@@ -13,10 +13,7 @@ import { Card } from "@/components/ui/Card";
 import { Check, X, ShieldAlert } from "lucide-react";
 
 export const loader = async () => {
-  const session = getStudioSession();
-  if (session === null) {
-    throw redirect("/studio/login");
-  }
+  const session = requireSession();
   if (!session.admin) {
     return { session, admin: false as const, overview: null, reviews: [], audit: [] };
   }
@@ -24,7 +21,7 @@ export const loader = async () => {
     getAdminOverview(session.token),
     getAdminReviews(session.token),
     getAdminAudit(session.token),
-  ]);
+  ]).catch(rethrowAuth);
   return { session, admin: true as const, overview, reviews, audit };
 };
 

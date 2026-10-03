@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { redirect, useLoaderData, useNavigate } from "react-router-dom";
-import { getStudioSession } from "@/lib/studio-session";
+import { useLoaderData, useNavigate } from "react-router-dom";
+import { requireSession, rethrowAuth } from "@/lib/studio-loader";
 import {
   createStudioListing,
   getStudioListings,
@@ -18,14 +18,11 @@ const minPriceMinor = 1000;
 const maxPriceMinor = 25000;
 
 export const loader = async () => {
-  const session = getStudioSession();
-  if (session === null) {
-    throw redirect("/studio/login");
-  }
+  const session = requireSession();
   const [me, listings] = await Promise.all([
     getStudioMe(session.token),
     getStudioListings(session.token),
-  ]);
+  ]).catch(rethrowAuth);
   return { session, me, listings };
 };
 

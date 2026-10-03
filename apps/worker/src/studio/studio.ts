@@ -343,8 +343,10 @@ export const submit = (
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
     }
-    if (String(listing.status) === "published") {
-      return yield* Effect.fail(new ListingConflict({ reason: "already_published" }));
+    if (String(listing.status) !== "draft" && String(listing.status) !== "rejected") {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: `not_submittable:${String(listing.status)}` }),
+      );
     }
     const paid = yield* feePaid(db, userId);
     if (!paid) {
