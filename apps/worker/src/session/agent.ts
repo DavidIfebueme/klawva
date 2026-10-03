@@ -29,6 +29,7 @@ export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
     from: Schema.String,
     to: Schema.String,
   },
+  { httpApiStatus: 409 },
 ) {}
 
 export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()(
@@ -146,7 +147,9 @@ export const completeShift = (
   Effect.gen(function* () {
     const history = yield* store.history();
     const runtime = makeRuntime(env.AI, defaultModel);
-    const report = yield* generateReport({ runtime, history }).pipe(
+    const briefRaw = (yield* store.get("brief")) ?? "{}";
+    const brief = Schema.decodeUnknownSync(Brief)(JSON.parse(briefRaw));
+    const report = yield* generateReport({ runtime, history, brief }).pipe(
       Effect.catch(() => Effect.succeed(fallbackReport(history))),
     );
     const db = makeDatabase(env.DB);
