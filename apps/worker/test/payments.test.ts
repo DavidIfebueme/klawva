@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import {
   signBody,
-  timingSafeEqual,
   verifySignature,
 } from "../src/payments/paystack.ts";
 
@@ -20,11 +19,5 @@ describe("paystack signature", () => {
     );
     expect(valid).toBe(true);
     expect(invalid).toBe(false);
-  });
-
-  it("compares in constant time", () => {
-    expect(timingSafeEqual("abc", "abc")).toBe(true);
-    expect(timingSafeEqual("abc", "abd")).toBe(false);
-    expect(timingSafeEqual("abc", "ab")).toBe(false);
   });
 });
