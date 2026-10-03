@@ -3,7 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
-import { getConfig } from "@/lib/employees-api";
+import { getSessionLaunch } from "@/lib/employees-api";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -11,13 +11,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (session === null) {
     throw redirect("/employees");
   }
-  const cfg = await getConfig();
-  return { session, botUsername: cfg.telegramBotUsername };
+  const launch = await getSessionLaunch(session);
+  return { session, botUsername: launch.telegramBotUsername, code: launch.code };
 };
 
 export function Component() {
-  const { session, botUsername } = useLoaderData<typeof loader>();
-  const link = `https://t.me/${botUsername}?start=${session}`;
+  const { botUsername, code } = useLoaderData<typeof loader>();
+  const link = `https://t.me/${botUsername}?start=${code}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">

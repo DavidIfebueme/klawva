@@ -126,6 +126,18 @@ const configEndpoint = HttpApiEndpoint.get("config", "/api/config", {
   success: Schema.Struct({ telegramBotUsername: Schema.String }),
 });
 
+const sessionLaunchEndpoint = HttpApiEndpoint.get(
+  "sessionLaunch",
+  "/api/sessions/:id/launch",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    success: Schema.Struct({
+      telegramBotUsername: Schema.String,
+      code: Schema.String,
+    }),
+  },
+);
+
 const contactEndpoint = HttpApiEndpoint.post("contact", "/api/emails/contact", {
   payload: Schema.Struct({
     name: Schema.String,
@@ -197,6 +209,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(listListingsEndpoint)
   .add(listingDetailBySlugEndpoint)
   .add(configEndpoint)
+  .add(sessionLaunchEndpoint)
   .add(contactEndpoint)
   .add(initializePaymentEndpoint)
   .add(sharedReportEndpoint) {}
@@ -322,6 +335,34 @@ const rootGroup = HttpApiBuilder.group(
       .handle("config", () =>
         Effect.succeed({ telegramBotUsername: env.TELEGRAM_BOT_USERNAME }),
       )
+      .handle("sessionLaunch", ({ params }) =>
+        Effect.gen(function* () {
+          const row = yield* db
+            .first(
+              "SELECT token AS code FROM claim_tokens WHERE session_id = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",
+              [params.id],
+            )
+            .pipe(Effect.orDie);
+          let code = row === null ? null : String(row.code);
+          if (code === null) {
+            code = crypto.randomUUID().replace(/-/g, "");
+            const now = new Date().toISOString();
+            yield* db
+              .run(
+                "INSERT INTO claim_tokens (id, token, session_id, email, used_at, expires_at, created_at) VALUES (?, ?, ?, '', NULL, ?, ?)",
+                [
+                  crypto.randomUUID(),
+                  code,
+                  params.id,
+                  new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                  now,
+                ],
+              )
+              .pipe(Effect.orDie);
+          }
+          return { telegramBotUsername: env.TELEGRAM_BOT_USERNAME, code };
+        }),
+      )
       .handle("contact", ({ payload }) =>
         Effect.gen(function* () {
           const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email);
@@ -412,6 +453,19 @@ const rootGroup = HttpApiBuilder.group(
               ),
             catch: (cause) => new Error(String(cause)),
           }).pipe(Effect.orDie);
+          yield* db
+            .run(
+              "INSERT INTO claim_tokens (id, token, session_id, email, used_at, expires_at, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
+              [
+                crypto.randomUUID(),
+                crypto.randomUUID().replace(/-/g, ""),
+                id,
+                payload.customerEmail ?? "",
+                new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                now,
+              ],
+            )
+            .pipe(Effect.orDie);
           return { id };
         }).pipe(Effect.orDie),
       );
