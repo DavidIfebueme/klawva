@@ -1,39 +1,64 @@
-import { useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
-import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
+import React, { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { useStudioAuth } from "@/components/studio-auth-provider";
 import {
   approveListing,
   getAdminAudit,
   getAdminOverview,
   getAdminReviews,
   rejectListing,
+  type AdminOverview,
+  type AuditItem,
+  type ReviewItem,
 } from "@/lib/cockpit-api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Check, X, ShieldAlert } from "lucide-react";
+import { Loader2, Check, X, ShieldAlert } from "lucide-react";
 
-export const loader = async () => {
-  const session = requireSession();
-  if (!session.admin) {
-    return { session, admin: false as const, overview: null, reviews: [], audit: [] };
-  }
-  const [overview, reviews, audit] = await Promise.all([
-    getAdminOverview(session.token),
-    getAdminReviews(session.token),
-    getAdminAudit(session.token),
-  ]).catch(rethrowAuth);
-  return { session, admin: true as const, overview, reviews, audit };
-};
-
-export function Component() {
-  const data = useLoaderData<typeof loader>();
-  const revalidator = useRevalidator();
+export default function CockpitPage() {
+  const { session } = useStudioAuth();
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [audit, setAudit] = useState<AuditItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
-  if (!data.admin) {
+  const token = session?.token;
+
+  const refresh = async (authToken: string) => {
+    const [o, r, a] = await Promise.all([
+      getAdminOverview(authToken),
+      getAdminReviews(authToken),
+      getAdminAudit(authToken),
+    ]);
+    setOverview(o);
+    setReviews(r);
+    setAudit(a);
+  };
+
+  useEffect(() => {
+    if (token === undefined) return;
+    const authToken = token;
+    async function load() {
+      try {
+        await refresh(authToken);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load cockpit");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [token]);
+
+  if (session === null) {
+    return <Navigate to="/studio/login" replace />;
+  }
+
+  if (!session.admin) {
     return (
       <Card className="text-center py-16">
         <ShieldAlert className="text-klawva-orange w-10 h-10 mx-auto mb-4" />
@@ -47,25 +72,29 @@ export function Component() {
     );
   }
 
-  const { session, overview, reviews, audit } = data;
-
   const run = async (id: string, action: () => Promise<unknown>) => {
     setBusyId(id);
     setError("");
     try {
       await action();
-      revalidator.revalidate();
+      await refresh(session.token);
       setReasonFor(null);
       setReason("");
     } catch (err) {
-      if (handleActionAuthError(err)) {
-        return;
-      }
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
       setBusyId(null);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 py-24 text-xs text-klawva-muted">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading cockpit...
+      </div>
+    );
+  }
 
   const stat = (label: string, value: number) => (
     <Card key={label}>
@@ -161,10 +190,9 @@ export function Component() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => {
-                        setReasonFor(reasonFor === item.id ? null : item.id);
-                        setReason("");
-                      }}
+                      onClick={() =>
+                        setReasonFor(reasonFor === item.id ? null : item.id)
+                      }
                     >
                       <X size={14} />
                       Reject
@@ -183,7 +211,6 @@ export function Component() {
                       variant="primary"
                       size="sm"
                       loading={busyId === item.id}
-                      disabled={reason.trim().length === 0}
                       onClick={() =>
                         run(item.id, () => rejectListing(session.token, item.id, reason))
                       }
