@@ -18,14 +18,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       email: result.email,
       admin: result.admin,
     });
-    const rawNext =
-      url.searchParams.get("next") ?? sessionStorage.getItem("klawva_login_next");
-    sessionStorage.removeItem("klawva_login_next");
-    const next =
-      rawNext !== null && rawNext.startsWith("/") && !rawNext.startsWith("//")
-        ? rawNext
-        : "/studio";
-    return redirect(next);
+    return redirect("/studio");
   } catch (err) {
     return {
       error:
@@ -35,7 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 };
 
-export function Component() {
+export default function StudioVerifyPage() {
   const data = useLoaderData<typeof loader>();
   const error = "error" in data ? data.error : null;
 
