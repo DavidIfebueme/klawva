@@ -50,7 +50,7 @@ export function Component() {
             </a>
           </p>
           <p className="font-mono text-klawva-dim text-xs mt-2">
-            Or email employee-{session}@mail.klawva.xyz
+            Or email employees@klawva.xyz from the address you paid with
           </p>
           <p className="font-mono text-klawva-dim text-xs mt-2">
             For teams:{" "}
