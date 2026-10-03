@@ -24,11 +24,13 @@ import {
   identityFromToken,
   requestMagicLink,
   tokenFromHeaders,
+  upsertUser,
   verifyMagicLink,
 } from "./auth/auth.ts";
 import { AuthError } from "./auth/tokens.ts";
 import { StudioApi, studioGroup } from "./studio/api.ts";
 import { AdminApi, adminGroup } from "./admin/api.ts";
+import { AccountApi, accountGroup } from "./account/api.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -368,10 +370,15 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const id = crypto.randomUUID();
           const now = new Date().toISOString();
+          const userId =
+            payload.customerEmail !== undefined && payload.customerEmail.length > 0
+              ? yield* upsertUser(db, payload.customerEmail)
+              : null;
           yield* db.run(
-            "INSERT INTO sessions (id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sessions (id, user_id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               id,
+              userId,
               payload.listingId,
               1,
               payload.agentId,
@@ -426,7 +433,10 @@ export const makeAppLayer = (env: Env) => {
   const adminRoutes = HttpApiBuilder.layer(AdminApi).pipe(
     Layer.provide(adminGroup.pipe(Layer.provide(services))),
   );
-  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes).pipe(
+  const accountRoutes = HttpApiBuilder.layer(AccountApi).pipe(
+    Layer.provide(accountGroup.pipe(Layer.provide(services))),
+  );
+  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes).pipe(
     Layer.provide(HttpServer.layerServices),
   );
 };
