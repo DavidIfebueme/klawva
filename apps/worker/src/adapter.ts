@@ -3,21 +3,24 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerError from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
-import { appLayer } from "./app.ts";
+import { makeAppLayer } from "./app.ts";
+import type { Env } from "./env.ts";
 
-const program = (request: Request) =>
-  Effect.gen(function* () {
-    const handler = yield* HttpRouter.toHttpEffect(appLayer);
-    return yield* handler.pipe(
-      Effect.provideService(
-        HttpServerRequest.HttpServerRequest,
-        HttpServerRequest.fromWeb(request),
-      ),
-    );
-  }).pipe(Effect.scoped);
-
-export const toResponse = async (request: Request): Promise<Response> => {
-  const exit = await Effect.runPromiseExit(program(request));
+export const toResponse = async (
+  request: Request,
+  env: Env,
+): Promise<Response> => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const handler = yield* HttpRouter.toHttpEffect(makeAppLayer(env));
+      return yield* handler.pipe(
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          HttpServerRequest.fromWeb(request),
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
   if (exit._tag === "Success") {
     return HttpServerResponse.toWeb(exit.value);
   }
