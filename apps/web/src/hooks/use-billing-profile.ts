@@ -2,9 +2,9 @@ import type { BillingProfile } from "@/types";
 
 const PROFILE: BillingProfile = {
   provider: "paystack",
-  amountMinor: 100000,
+  amountMinor: 1500,
   currency: "NGN",
-  amountDisplay: "₦1,000",
+  amountDisplay: "₦15",
   region: "nigeria",
   countryCode: "NG",
 };
