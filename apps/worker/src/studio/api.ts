@@ -22,6 +22,7 @@ import {
   listingsFor,
   sandbox,
   submit,
+  updateAuthorDraft,
 } from "./studio.ts";
 
 const IdParam = Schema.Struct({ id: Schema.String });
@@ -63,7 +64,6 @@ const DraftInput = Schema.Struct({
   name: Schema.String,
   tagline: Schema.String,
   category: Schema.String,
-  agentId: Schema.String,
   priceMinor: Schema.Number,
   briefFields: Schema.Array(Schema.String),
   soul: Schema.String,
@@ -103,6 +103,26 @@ const getListing = HttpApiEndpoint.get(
   { params: IdParam, success: Detail, error: allErrors },
 );
 
+const UpdateInput = Schema.Struct({
+  name: Schema.String,
+  tagline: Schema.String,
+  category: Schema.String,
+  priceMinor: Schema.Number,
+  briefFields: Schema.Array(Schema.String),
+  soul: Schema.String,
+});
+
+const updateListing = HttpApiEndpoint.patch(
+  "authorUpdateListing",
+  "/api/author/listings/:id",
+  {
+    params: IdParam,
+    payload: UpdateInput,
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: allErrors,
+  },
+);
+
 const runSandbox = HttpApiEndpoint.post(
   "authorSandbox",
   "/api/author/listings/:id/sandbox",
@@ -130,6 +150,7 @@ class StudioGroup extends HttpApiGroup.make("Studio")
   .add(listListings)
   .add(createListing)
   .add(getListing)
+  .add(updateListing)
   .add(runSandbox)
   .add(submitListing)
   .add(fee)
@@ -187,6 +208,13 @@ export const studioGroup = HttpApiBuilder.group(
             return yield* Effect.fail(new ListingNotFound({}));
           }
           return Schema.decodeUnknownSync(Detail)(detail);
+        }),
+      )
+      .handle("authorUpdateListing", ({ params, payload }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          yield* updateAuthorDraft(db, identity.userId, params.id, payload);
+          return { ok: true };
         }),
       )
       .handle("authorSandbox", ({ params }) =>

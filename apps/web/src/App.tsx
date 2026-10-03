@@ -15,6 +15,11 @@ import DashboardLogin from "./app/dashboard/login/page.tsx";
 import DashboardVerify from "./app/dashboard/auth/verify/page.tsx";
 import DashboardSession from "./app/dashboard/sessions/[id]/page.tsx";
 import DashboardWallet from "./app/dashboard/wallet/page.tsx";
+import StudioLayout from "./app/studio/layout.tsx";
+import StudioHome from "./app/studio/page.tsx";
+import StudioLogin from "./app/studio/login/page.tsx";
+import StudioVerify from "./app/studio/auth/verify/page.tsx";
+import StudioListing from "./app/studio/listings/[id]/page.tsx";
 
 export default function App() {
   return (
@@ -35,6 +40,12 @@ export default function App() {
         <Route path="auth/verify" element={<DashboardVerify />} />
         <Route path="wallet" element={<DashboardWallet />} />
         <Route path="sessions/:id" element={<DashboardSession />} />
+      </Route>
+      <Route path="/studio" element={<StudioLayout />}>
+        <Route index element={<StudioHome />} />
+        <Route path="login" element={<StudioLogin />} />
+        <Route path="auth/verify" element={<StudioVerify />} />
+        <Route path="listings/:id" element={<StudioListing />} />
       </Route>
     </Routes>
   );
