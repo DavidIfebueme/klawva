@@ -55,6 +55,7 @@ const ListingRow = Schema.Struct({
   tagline: Schema.String,
   category: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   version: Schema.Number,
   score: Schema.NullOr(Schema.Number),
 });
@@ -66,6 +67,7 @@ const PublicListingDetail = Schema.Struct({
   tagline: Schema.String,
   category: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
 });
@@ -339,7 +341,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const rows = yield* db
             .all(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, l.current_version AS version, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY l.slug",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY l.slug",
             )
             .pipe(Effect.orDie);
           return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
@@ -349,7 +351,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const row = yield* db
             .first(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, l.current_version AS version, v.brief_fields AS briefFields FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.brief_fields AS briefFields FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
               [params.slug],
             )
             .pipe(Effect.orDie);
@@ -485,13 +487,22 @@ const rootGroup = HttpApiBuilder.group(
             payload.customerEmail !== undefined && payload.customerEmail.length > 0
               ? yield* upsertUser(db, payload.customerEmail)
               : null;
+          const listing = yield* db
+            .first(
+              "SELECT l.current_version AS version, v.budget_minor AS budgetMinor FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
+              [payload.listingId],
+            )
+            .pipe(Effect.orDie);
+          const listingVersion = listing === null ? 1 : Number(listing.version);
+          const budgetMinor =
+            listing === null ? defaultBudgetMinor : Number(listing.budgetMinor);
           yield* db.run(
             "INSERT INTO sessions (id, user_id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               id,
               userId,
               payload.listingId,
-              1,
+              listingVersion,
               payload.agentId,
               payload.channel,
               JSON.stringify(payload.brief),
@@ -499,7 +510,7 @@ const rootGroup = HttpApiBuilder.group(
               payload.customerEmail ?? null,
               null,
               null,
-              defaultBudgetMinor,
+              budgetMinor,
               0,
               now,
               now,
@@ -514,7 +525,7 @@ const rootGroup = HttpApiBuilder.group(
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     state: "pending",
-                    budgetMinor: defaultBudgetMinor,
+                    budgetMinor,
                     soul: soulFor(payload.agentId),
                     brief: payload.brief,
                     email: payload.customerEmail ?? "",
