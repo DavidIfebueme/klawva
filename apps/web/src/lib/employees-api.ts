@@ -74,6 +74,19 @@ export async function getConfig(): Promise<{ telegramBotUsername: string }> {
   return Schema.decodeUnknownSync(config)(await send("/api/config"));
 }
 
+const sessionLaunch = Schema.Struct({
+  telegramBotUsername: Schema.String,
+  code: Schema.String,
+});
+
+export async function getSessionLaunch(
+  sessionId: string,
+): Promise<{ telegramBotUsername: string; code: string }> {
+  return Schema.decodeUnknownSync(sessionLaunch)(
+    await send(`/api/sessions/${encodeURIComponent(sessionId)}/launch`),
+  );
+}
+
 export interface HireSessionInput {
   listingId: string;
   agentId: string;
