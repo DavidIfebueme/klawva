@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/api/(.*)", "destination": "https://klawva.klawva.workers.dev/api/$1" }]
+}
