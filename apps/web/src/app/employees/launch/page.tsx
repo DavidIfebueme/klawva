@@ -48,6 +48,9 @@ export function Component() {
               Chat on the web
             </a>
           </p>
+          <p className="font-mono text-klawva-dim text-xs mt-2">
+            Or email employee-{session}@mail.klawva.xyz
+          </p>
           <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
         </div>
       </main>
