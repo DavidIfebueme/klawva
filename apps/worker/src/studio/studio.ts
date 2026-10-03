@@ -175,7 +175,7 @@ export const listingDetail = (
       )
       .pipe(Effect.orDie);
     if (version === null) {
-      return listing;
+      return yield* Effect.die("listing_version_missing");
     }
     return { ...listing, soul: version.soul, briefFields: version.briefFields };
   });
@@ -244,7 +244,10 @@ export const runsToday = (
         [listingId, new Date(Date.now() - 86_400_000).toISOString()],
       )
       .pipe(Effect.orDie);
-    return row === null ? 0 : Number(row.count);
+    if (row === null) {
+      return yield* Effect.die("count_row_missing");
+    }
+    return Number(row.count);
   });
 
 export interface EvalOutcome {

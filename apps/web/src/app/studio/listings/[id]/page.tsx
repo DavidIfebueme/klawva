@@ -14,8 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Loader2, FlaskConical, Send, Save, ArrowLeft } from "lucide-react";
 
-function parseBriefFields(raw: string | undefined): string {
-  if (raw === undefined) return "";
+function parseBriefFields(raw: string): string {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -63,7 +62,7 @@ export default function StudioListingPage() {
         setCategory(detail.category);
         setPriceNaira(String(detail.priceMinor / 100));
         setBriefFields(parseBriefFields(detail.briefFields));
-        setSoul(detail.soul ?? "");
+        setSoul(detail.soul);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load listing");
       } finally {

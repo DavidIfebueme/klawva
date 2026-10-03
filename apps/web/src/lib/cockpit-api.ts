@@ -48,7 +48,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error(await failureMessage(res));
   }
-  return (await res.json()) as T;
+  return await res.json();
 }
 
 function authHeaders(token: string): HeadersInit {

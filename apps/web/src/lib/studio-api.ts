@@ -12,8 +12,8 @@ export interface StudioListingSummary {
 export interface StudioListingDetail extends StudioListingSummary {
   tagline: string;
   category: string;
-  soul?: string;
-  briefFields?: string;
+  soul: string;
+  briefFields: string;
 }
 
 export interface StudioIdentity {
@@ -74,7 +74,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error(await failureMessage(res));
   }
-  return (await res.json()) as T;
+  return await res.json();
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -159,8 +159,4 @@ export async function startAuthorFee(token: string): Promise<FeeCheckout> {
     method: "POST",
     headers: authHeaders(token),
   });
-}
-
-export async function getStudioEarnings(token: string): Promise<{ creditMinor: number }> {
-  return request("/api/author/earnings", { headers: authHeaders(token) });
 }
