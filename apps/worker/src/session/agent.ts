@@ -343,7 +343,11 @@ const sessionGroup = HttpApiBuilder.group(
             JSON.parse((yield* store.get("brief")) ?? "{}"),
           );
           const history = yield* store.history();
-          const reply = yield* runTurn({ runtime, soul, brief, history });
+          const reply = yield* runTurn({ runtime, soul, brief, history }).pipe(
+            Effect.catch(() =>
+              Effect.succeed("I could not reach my model just now. Please try again."),
+            ),
+          );
           yield* store.append("assistant", reply);
           yield* mirror("assistant", reply);
           return { ok: true, reply };
