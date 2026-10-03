@@ -6,7 +6,7 @@ import {
   useRevalidator,
   type LoaderFunctionArgs,
 } from "react-router-dom";
-import { getStudioSession } from "@/lib/studio-session";
+import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
   getStudioListing,
   runStudioSandbox,
@@ -20,14 +20,13 @@ import { Card } from "@/components/ui/Card";
 import { FlaskConical, Send, Save, ArrowLeft } from "lucide-react";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
-  const session = getStudioSession();
-  if (session === null) {
-    throw redirect("/studio/login");
-  }
+  const session = requireSession();
   if (params.id === undefined) {
     throw redirect("/studio");
   }
-  const detail = await getStudioListing(session.token, params.id);
+  const detail = await getStudioListing(session.token, params.id).catch(
+    rethrowAuth,
+  );
   return { session, detail };
 };
 
@@ -49,7 +48,7 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
-export default function StudioListingPage() {
+export function Component() {
   const { session, detail } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -71,12 +70,18 @@ export default function StudioListingPage() {
     setBusy(true);
     setError("");
     setNotice("");
+    const priceMinor = Math.round(Number(priceNaira) * 100);
+    if (!Number.isFinite(priceMinor) || priceMinor < 1000 || priceMinor > 25000) {
+      setError("Price must be between ₦10 and ₦250");
+      setBusy(false);
+      return;
+    }
     try {
       await updateStudioListing(session.token, detail.id, {
         name,
         tagline,
         category,
-        priceMinor: Math.round(Number(priceNaira) * 100),
+        priceMinor,
         briefFields: briefFields
           .split(",")
           .map((v) => v.trim())
@@ -86,6 +91,7 @@ export default function StudioListingPage() {
       setNotice("Draft saved.");
       revalidator.revalidate();
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setBusy(false);
@@ -100,6 +106,7 @@ export default function StudioListingPage() {
       const result = await runStudioSandbox(session.token, detail.id);
       setOutcome(result);
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Sandbox failed");
     } finally {
       setBusy(false);
@@ -116,6 +123,7 @@ export default function StudioListingPage() {
       setNotice(`Submitted. New status: ${result.status.replace("_", " ")}.`);
       revalidator.revalidate();
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       const message = err instanceof Error ? err.message : "Submit failed";
       setError(message);
       if (message === "FeeRequired") {
@@ -220,6 +228,8 @@ export default function StudioListingPage() {
               <input
                 className={inputClass}
                 type="number"
+                min="10"
+                max="250"
                 step="0.01"
                 value={priceNaira}
                 onChange={(e) => setPriceNaira(e.target.value)}
