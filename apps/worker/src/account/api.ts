@@ -8,20 +8,9 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { identityFromToken, tokenFromHeaders } from "../auth/auth.ts";
 import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
-import { LaunchMarket } from "../db/schema.ts";
 import { WorkerEnv } from "../env.ts";
 import { ListingNotFound } from "../errors.ts";
-import {
-  accountSessionDetail,
-  addMember,
-  listAccountSessions,
-  listChannelLinks,
-  listMembers,
-  ownsSession,
-  removeMember,
-  unlinkChannel,
-} from "./account.ts";
-import { LinkChannel } from "../db/schema.ts";
+import { accountSessionDetail, listAccountSessions } from "./account.ts";
 
 const SessionSummary = Schema.Struct({
   id: Schema.String,
@@ -82,95 +71,13 @@ const accountSession = HttpApiEndpoint.get(
   {
     params: IdParam,
     success: SessionDetailResponse,
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const MemberRow = Schema.Struct({
-  email: Schema.String,
-  role: Schema.String,
-});
-
-const accountMembers = HttpApiEndpoint.get(
-  "accountMembers",
-  "/api/account/sessions/:id/members",
-  {
-    params: IdParam,
-    success: Schema.Array(MemberRow),
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const accountAddMember = HttpApiEndpoint.post(
-  "accountAddMember",
-  "/api/account/sessions/:id/members",
-  {
-    params: IdParam,
-    payload: Schema.Struct({ email: Schema.String }),
-    success: Schema.Struct({ ok: Schema.Boolean }),
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const accountRemoveMember = HttpApiEndpoint.delete(
-  "accountRemoveMember",
-  "/api/account/sessions/:id/members/:email",
-  {
-    params: Schema.Struct({ id: Schema.String, email: Schema.String }),
-    success: Schema.Struct({ ok: Schema.Boolean }),
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const ChannelLinkRow = Schema.Struct({
-  channel: LinkChannel,
-  chatId: Schema.String,
-  createdAt: Schema.String,
-});
-
-const accountChannels = HttpApiEndpoint.get(
-  "accountChannels",
-  "/api/account/sessions/:id/channels",
-  {
-    params: IdParam,
-    success: Schema.Array(ChannelLinkRow),
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const accountUnlinkChannel = HttpApiEndpoint.delete(
-  "accountUnlinkChannel",
-  "/api/account/sessions/:id/channels/:channel/:chatId",
-  {
-    params: Schema.Struct({
-      id: Schema.String,
-      channel: LinkChannel,
-      chatId: Schema.String,
-    }),
-    success: Schema.Struct({ ok: Schema.Boolean }),
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const accountSetMarket = HttpApiEndpoint.post(
-  "accountSetMarket",
-  "/api/account/market",
-  {
-    payload: Schema.Struct({ market: LaunchMarket }),
-    success: Schema.Struct({ ok: Schema.Boolean }),
-    error: AuthError,
+    error: Schema.Union([AuthError, ListingNotFound]),
   },
 );
 
 class AccountGroup extends HttpApiGroup.make("Account")
   .add(accountSessions)
-  .add(accountSession)
-  .add(accountMembers)
-  .add(accountAddMember)
-  .add(accountRemoveMember)
-  .add(accountChannels)
-  .add(accountUnlinkChannel)
-  .add(accountSetMarket) {}
+  .add(accountSession) {}
 
 export class AccountApi extends HttpApi.make("AccountApi").add(AccountGroup) {}
 
@@ -221,104 +128,6 @@ export const accountGroup = HttpApiBuilder.group(
                 ? null
                 : Schema.decodeUnknownSync(ReportSummary)(detail.report),
           };
-        }),
-      )
-      .handle("accountMembers", ({ params }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          const owned = yield* ownsSession(
-            db,
-            identity.userId,
-            identity.email,
-            params.id,
-          );
-          if (!owned) {
-            return yield* Effect.fail(new ListingNotFound({}));
-          }
-          const rows = yield* listMembers(db, params.id);
-          return rows.map((row) => Schema.decodeUnknownSync(MemberRow)(row));
-        }),
-      )
-      .handle("accountAddMember", ({ params, payload }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          const owned = yield* ownsSession(
-            db,
-            identity.userId,
-            identity.email,
-            params.id,
-          );
-          if (!owned) {
-            return yield* Effect.fail(new ListingNotFound({}));
-          }
-          yield* addMember(db, params.id, payload.email);
-          return { ok: true };
-        }),
-      )
-      .handle("accountRemoveMember", ({ params }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          const owned = yield* ownsSession(
-            db,
-            identity.userId,
-            identity.email,
-            params.id,
-          );
-          if (!owned) {
-            return yield* Effect.fail(new ListingNotFound({}));
-          }
-          yield* removeMember(db, params.id, params.email);
-          return { ok: true };
-        }),
-      )
-      .handle("accountChannels", ({ params }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          const owned = yield* ownsSession(
-            db,
-            identity.userId,
-            identity.email,
-            params.id,
-          );
-          if (!owned) {
-            return yield* Effect.fail(new ListingNotFound({}));
-          }
-          const rows = yield* listChannelLinks(db, params.id);
-          return rows.map((row) => Schema.decodeUnknownSync(ChannelLinkRow)(row));
-        }),
-      )
-      .handle("accountUnlinkChannel", ({ params }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          const owned = yield* ownsSession(
-            db,
-            identity.userId,
-            identity.email,
-            params.id,
-          );
-          if (!owned) {
-            return yield* Effect.fail(new ListingNotFound({}));
-          }
-          yield* unlinkChannel(
-            db,
-            params.id,
-            params.channel,
-            params.chatId,
-          );
-          return { ok: true };
-        }),
-      )
-      .handle("accountSetMarket", ({ payload }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          yield* db
-            .run("UPDATE users SET market = ?, updated_at = ? WHERE id = ?", [
-              payload.market,
-              new Date().toISOString(),
-              identity.userId,
-            ])
-            .pipe(Effect.orDie);
-          return { ok: true };
         }),
       );
   }),
