@@ -6,7 +6,10 @@ Session rules:
 - If the next action is non-destructive and follows from the request, do it. Do not wait for turn-by-turn approval.
 - Keep moving through safe next steps until the work is done or you hit a real blocker.
 - No comments in code. None. No JSDoc, no narrating comments, no TODO markers, no commented-out code. Names, types, and structure carry the intent. A comment is allowed only for a non-obvious why that code cannot express, and that case is rare enough to argue for each time.
-- Never use `try/catch`. Use Effect's typed errors and the error channel. A recoverable failure is a value, not an exception. A defect is `Effect.die`.
+- Never use `any`. External data is `unknown`, decoded into a named domain type at the boundary with Effect Schema. `any` disables type checking everywhere it touches.
+- No `as` casts. Decode with Schema instead. A cast is a crash waiting.
+- Never use `try/catch`. Use Effect's typed errors and the error channel. A recoverable failure is a value, not an exception. A defect is `Effect.die`. Map failure causes to responses with `HttpServerError.exitResponse`, never a raw `runPromise` that rejects.
+- Every new or changed test passes the `test-audit` authoring gate before it lands. Answer the four questions, reject every junk pattern, and keep the test only when it independently enforces a real contract. Extend an existing table or fixture over adding a near-duplicate. No test written without that gate.
 - React `useEffect` is banned. Use router loaders, event handlers, subscriptions, or derived state. Poll with a query library, not an effect.
 - No overengineering. Pick the simplest approach that fits the codebase and the task.
 - Hold every line to production quality. Scope stays narrow, craft stays high.
