@@ -5,17 +5,15 @@ import {
   createStudioListing,
   getStudioListings,
   getStudioMe,
-  startAuthorFee,
 } from "@/lib/studio-api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import Link from "@/components/ui/AppLink";
-import { Plus, ArrowRight, ShieldCheck } from "lucide-react";
+import { Plus, ArrowRight } from "lucide-react";
 
-const feeMinor = 2000;
-const minPriceMinor = 1000;
-const maxPriceMinor = 25000;
+const minPriceMinor = 100000;
+const maxPriceMinor = 2500000;
 
 export const loader = async () => {
   const session = requireSession();
@@ -33,7 +31,7 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
 }
 
 export function Component() {
-  const { session, me, listings } = useLoaderData<typeof loader>();
+  const { session, listings } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
@@ -43,23 +41,10 @@ export function Component() {
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [category, setCategory] = useState("ops");
-  const [priceNaira, setPriceNaira] = useState("30");
+  const [priceNaira, setPriceNaira] = useState("1000");
   const [budgetMinor, setBudgetMinor] = useState("3000");
   const [briefFields, setBriefFields] = useState("task");
   const [soul, setSoul] = useState("");
-
-  const handlePayFee = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const checkout = await startAuthorFee(session.token);
-      window.location.href = checkout.checkoutUrl;
-    } catch (err) {
-      if (handleActionAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "Failed to start payment");
-      setBusy(false);
-    }
-  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,36 +101,6 @@ export function Component() {
         <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
           {error}
         </p>
-      )}
-
-      {!me.feePaid && (
-        <Card className="border-klawva-accent/40">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="text-klawva-accent w-6 h-6 shrink-0 mt-0.5" />
-              <div>
-                <h2 className="font-syne font-bold text-lg uppercase text-white">
-                  One-time author fee
-                </h2>
-                <p className="text-xs text-klawva-muted mt-1 max-w-xl">
-                  Pay a single ₦{(feeMinor / 100).toFixed(2)} fee to unlock
-                  submissions. No KYC. Your first listing can be submitted once
-                  the fee clears.
-                </p>
-              </div>
-            </div>
-            <Button variant="primary" size="md" onClick={handlePayFee} loading={busy}>
-              Pay Author Fee
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {me.feePaid && (
-        <div className="flex items-center gap-2 text-xs font-mono text-klawva-muted">
-          <ShieldCheck size={14} className="text-klawva-accent" />
-          Author fee paid. Submissions unlocked.
-        </div>
       )}
 
       {showForm && (
