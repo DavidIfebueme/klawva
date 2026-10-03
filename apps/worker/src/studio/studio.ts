@@ -2,26 +2,17 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { defaultModel, type AgentRuntimeImpl } from "../agent/runtime.ts";
 import { type DatabaseImpl } from "../db/database.ts";
-import type { Env } from "../env.ts";
 import { runEval, type Band } from "../eval/eval.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { manifestHash } from "../listings/listings.ts";
 import { statusForBand } from "../listings/publish.ts";
 import type { ListingDefinition } from "../listings/definitions.ts";
-import { initializePayment } from "../payments/paystack.ts";
 import { screenSoul } from "../moderation/moderation.ts";
 import type { Identity } from "../auth/auth.ts";
 
-export const publishFeeMinor = 2000;
 export const sandboxDailyCap = 20;
 
 export { ListingConflict, ListingNotFound };
-
-export class FeeRequired extends Schema.TaggedError<FeeRequired>()(
-  "FeeRequired",
-  { amountMinor: Schema.Number },
-  { httpApiStatus: 402 },
-) {}
 
 export class SandboxCapReached extends Schema.TaggedError<SandboxCapReached>()(
   "SandboxCapReached",
@@ -52,20 +43,6 @@ export const ensureProfile = (
         [crypto.randomUUID(), identity.userId, identity.email, now, now],
       )
       .pipe(Effect.orDie);
-  });
-
-export const feePaid = (
-  db: DatabaseImpl,
-  userId: string,
-): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const row = yield* db
-      .first(
-        "SELECT id AS id FROM author_fees WHERE user_id = ? AND status = 'confirmed' LIMIT 1",
-        [userId],
-      )
-      .pipe(Effect.orDie);
-    return row !== null;
   });
 
 export const listingsFor = (
@@ -355,7 +332,7 @@ export const submit = (
   runtime: AgentRuntimeImpl,
   userId: string,
   listingId: string,
-): Effect.Effect<EvalOutcome & { status: string }, ListingNotFound | ListingConflict | FeeRequired> =>
+): Effect.Effect<EvalOutcome & { status: string }, ListingNotFound | ListingConflict> =>
   Effect.gen(function* () {
     const listing = yield* ownedListing(db, userId, listingId);
     if (listing === null) {
@@ -365,10 +342,6 @@ export const submit = (
       return yield* Effect.fail(
         new ListingConflict({ reason: `not_submittable:${String(listing.status)}` }),
       );
-    }
-    const paid = yield* feePaid(db, userId);
-    if (!paid) {
-      return yield* Effect.fail(new FeeRequired({ amountMinor: publishFeeMinor }));
     }
     const version = yield* loadVersion(db, listingId);
     if (version === null) {
@@ -403,26 +376,3 @@ export const submit = (
     return { ...outcome, status };
   });
 
-export const initializeFee = (
-  db: DatabaseImpl,
-  env: Env,
-  userId: string,
-  email: string,
-): Effect.Effect<{ reference: string; checkoutUrl: string }> =>
-  Effect.gen(function* () {
-    const result = yield* initializePayment({
-      secret: env.PAYSTACK_SECRET_KEY,
-      sessionId: `fee_${userId}`,
-      amountMinor: publishFeeMinor,
-      callbackUrl: `${env.FRONTEND_BASE_URL}/studio`,
-      email,
-    }).pipe(Effect.orDie);
-    const now = new Date().toISOString();
-    yield* db
-      .run(
-        "INSERT INTO author_fees (id, user_id, provider, provider_reference, amount_minor, currency, status, confirmed_at, created_at, updated_at) VALUES (?, ?, 'paystack', ?, ?, 'NGN', 'pending', NULL, ?, ?)",
-        [crypto.randomUUID(), userId, result.reference, publishFeeMinor, now, now],
-      )
-      .pipe(Effect.orDie);
-    return result;
-  });

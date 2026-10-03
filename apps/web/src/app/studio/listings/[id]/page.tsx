@@ -10,7 +10,6 @@ import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio
 import {
   getStudioListing,
   runStudioSandbox,
-  startAuthorFee,
   submitStudioListing,
   updateStudioListing,
 } from "@/lib/studio-api";
@@ -72,8 +71,8 @@ export function Component() {
     setError("");
     setNotice("");
     const priceMinor = Math.round(Number(priceNaira) * 100);
-    if (!Number.isFinite(priceMinor) || priceMinor < 1000 || priceMinor > 25000) {
-      setError("Price must be between ₦10 and ₦250");
+    if (!Number.isFinite(priceMinor) || priceMinor < 100000 || priceMinor > 2500000) {
+      setError("Price must be between ₦1,000 and ₦25,000");
       setBusy(false);
       return;
     }
@@ -126,16 +125,7 @@ export function Component() {
       revalidator.revalidate();
     } catch (err) {
       if (handleActionAuthError(err)) return;
-      const message = err instanceof Error ? err.message : "Submit failed";
-      setError(message);
-      if (message === "FeeRequired") {
-        try {
-          const checkout = await startAuthorFee(session.token);
-          window.location.href = checkout.checkoutUrl;
-        } catch (payErr) {
-          setError(payErr instanceof Error ? payErr.message : "Fee payment failed");
-        }
-      }
+      setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
       setBusy(false);
     }
@@ -230,9 +220,9 @@ export function Component() {
               <input
                 className={inputClass}
                 type="number"
-                min="10"
-                max="250"
-                step="0.01"
+                min="1000"
+                max="25000"
+                step="1"
                 value={priceNaira}
                 onChange={(e) => setPriceNaira(e.target.value)}
                 disabled={!editable}
