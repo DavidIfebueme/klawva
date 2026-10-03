@@ -1,8 +1,17 @@
 import React, { useState } from "react";
+import { redirect } from "react-router-dom";
 import { requestStudioLink } from "@/lib/studio-api";
+import { getStudioSession } from "@/lib/studio-session";
 import { Button } from "@/components/ui/Button";
 import { Mail, CheckCircle } from "lucide-react";
 import { motion } from "motion/react";
+
+export const loader = () => {
+  if (getStudioSession() !== null) {
+    throw redirect("/studio");
+  }
+  return null;
+};
 
 export default function StudioLoginPage() {
   const [email, setEmail] = useState("");
