@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { Navbar } from '../../components/layout/Navbar';
 import { Footer } from '../../components/layout/Footer';
 import { Button } from '../../components/ui/Button';
-import { sendContactEmail } from '../../lib/api';
+import { sendContact } from '../../lib/public-api';
 
 export default function CustomRequestPage() {
   const [name, setName] = useState('');
@@ -26,12 +26,16 @@ export default function CustomRequestPage() {
     setSent(false);
 
     try {
-      await sendContactEmail({
+      const result = await sendContact({
         name: name.trim(),
         email: email.trim(),
         employeeType: employeeType.trim() || undefined,
         description: description.trim(),
       });
+      if (!result.ok) {
+        setError('Please check your details and try again.');
+        return;
+      }
       setSent(true);
       setName('');
       setEmail('');

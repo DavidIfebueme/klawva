@@ -1,82 +1,96 @@
+import React, { useRef, useState } from "react";
+import {
+  redirect,
+  useLoaderData,
+  type LoaderFunctionArgs,
+} from "react-router-dom";
+import { motion } from "motion/react";
+import { toPng } from "html-to-image";
+import { Navbar } from "../../../components/layout/Navbar";
+import { Footer } from "../../../components/layout/Footer";
+import { KlawvaMark } from "../../../components/icons/KlawvaMark";
+import { ScrapperIcon } from "../../../components/icons/ScrapperIcon";
+import { VendorIcon } from "../../../components/icons/VendorIcon";
+import { ResearcherIcon } from "../../../components/icons/ResearcherIcon";
+import { Button } from "../../../components/ui/Button";
+import { ApiError } from "../../../lib/api-error";
+import { getSharedReport } from "../../../lib/public-api";
+import { agents, type AgentId } from "../../../lib/agents";
 
-import React, { useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { toPng } from 'html-to-image';
-import { Navbar } from '../../../components/layout/Navbar';
-import { Footer } from '../../../components/layout/Footer';
-import { KlawvaMark } from '../../../components/icons/KlawvaMark';
-import { ScrapperIcon } from '../../../components/icons/ScrapperIcon';
-import { VendorIcon } from '../../../components/icons/VendorIcon';
-import { ResearcherIcon } from '../../../components/icons/ResearcherIcon';
-import { Button } from '../../../components/ui/Button';
-import { getSessionReport, getSharedSessionReport } from '../../../lib/api';
-import { agents, AgentId } from '../../../lib/agents';
+const isAgentId = (value: string): value is AgentId => value in agents;
 
-export default function MissionReportCardPage() {
-  const params = useParams();
-  const [searchParams] = useSearchParams();
-  const sessionId = params.sessionId as string;
-  const agentId = (searchParams.get('agent') as AgentId) || 'scrapper';
-  const shareTokenFromUrl = searchParams.get('shareToken');
-  const agent = agents[agentId] || agents.scrapper;
+const normalizeStats = (
+  stats: ReadonlyArray<{ label: string; value: string }> | string,
+): ReadonlyArray<{ label: string; value: string }> => {
+  if (typeof stats !== "string") {
+    return stats;
+  }
+  try {
+    const parsed: unknown = JSON.parse(stats);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (entry): entry is { label: string; value: string } =>
+          entry !== null &&
+          typeof entry === "object" &&
+          typeof (entry as Record<string, unknown>).label === "string" &&
+          typeof (entry as Record<string, unknown>).value === "string",
+      );
+    }
+  } catch {
+    return [];
+  }
+  return [];
+};
+
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
+  const sessionId = params.sessionId;
+  if (sessionId === undefined) {
+    throw redirect("/");
+  }
+  const url = new URL(request.url);
+  const shareToken = url.searchParams.get("shareToken");
+  const agentParam = url.searchParams.get("agent") ?? "scrapper";
+  if (shareToken === null) {
+    return { sessionId, agentParam, report: null, error: "This report needs its share link." };
+  }
+  const report = await getSharedReport(sessionId, shareToken).catch((err) => {
+    if (err instanceof ApiError) {
+      return null;
+    }
+    throw err;
+  });
+  return {
+    sessionId,
+    agentParam,
+    report,
+    error: report === null ? "Report is not available yet." : null,
+  };
+};
+
+export function Component() {
+  const { sessionId, agentParam, report, error } = useLoaderData<typeof loader>();
+  const agentId = isAgentId(agentParam) ? agentParam : "scrapper";
+  const agent = agents[agentId];
   const AgentIcon =
-    agent.id === 'vendor' ? VendorIcon : agent.id === 'researcher' ? ResearcherIcon : ScrapperIcon;
+    agent.id === "vendor"
+      ? VendorIcon
+      : agent.id === "researcher"
+        ? ResearcherIcon
+        : ScrapperIcon;
   const cardRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
-  const [report, setReport] = useState<{
-    dateRange: string;
-    stats: { label: string; value: string }[];
-    summary: string;
-    shareToken?: string;
-  } | null>(null);
-  const [sessionToken] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
-    return sessionStorage.getItem(`klawva_session_token:${sessionId}`) || '';
-  });
-  const canLoad = shareTokenFromUrl || sessionToken;
-  const [errorMessage, setErrorMessage] = useState<string | null>(
-    canLoad ? null : 'Session token missing. Please restart from checkout.',
-  );
   const [isDownloading, setIsDownloading] = useState(false);
-
-  React.useEffect(() => {
-    if (!canLoad) return;
-    let cancelled = false;
-
-    const loadReport = async () => {
-      try {
-        let payload: { dateRange: string; stats: { label: string; value: string }[]; summary: string; shareToken?: string };
-        if (shareTokenFromUrl) {
-          payload = await getSharedSessionReport(sessionId, shareTokenFromUrl);
-        } else {
-          payload = await getSessionReport(sessionId, sessionToken);
-        }
-        if (cancelled) return;
-        setReport(payload);
-        setErrorMessage(null);
-      } catch {
-        if (cancelled) return;
-        setErrorMessage('Report is not available yet.');
-      }
-    };
-
-    void loadReport();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, sessionToken, shareTokenFromUrl]);
+  const stats = report === null ? [] : normalizeStats(report.stats);
 
   const handleShare = () => {
-    const token = report?.shareToken || shareTokenFromUrl;
+    const token = report?.shareToken;
     let url = window.location.origin + window.location.pathname + `?agent=${agent.id}`;
-    if (token) {
+    if (token !== undefined && token.length > 0) {
       url += `&shareToken=${encodeURIComponent(token)}`;
     }
     navigator.clipboard.writeText(url);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    window.setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = async () => {
@@ -84,14 +98,14 @@ export default function MissionReportCardPage() {
     setIsDownloading(true);
     try {
       const dataUrl = await toPng(cardRef.current, { pixelRatio: 2 });
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.download = `klawva-report-${sessionId.substring(0, 8)}.png`;
       link.href = dataUrl;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (err) {
-      console.error('Failed to generate image', err);
+      console.error("Failed to generate image", err);
     } finally {
       setIsDownloading(false);
     }
@@ -100,70 +114,69 @@ export default function MissionReportCardPage() {
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
       <Navbar />
-      
       <main className="flex-grow pt-24 pb-32 px-6 flex flex-col items-center">
         <div className="w-full max-w-[640px]">
-          
-          {/* The Shareable Card */}
           <motion.div
             ref={cardRef}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
             className="bg-klawva-surface border border-klawva-border rounded-lg overflow-hidden mb-8 shadow-2xl shadow-klawva-accent/5"
           >
-            {/* Top Border Accent */}
             <div className="h-1 w-full bg-klawva-accent" />
-            
             <div className="p-8 md:p-12">
               <div className="flex items-center justify-between mb-12">
                 <div className="flex items-center gap-3">
                   <KlawvaMark size={32} />
-                  <span className="font-syne font-bold text-klawva-text tracking-widest">KLAWVA</span>
+                  <span className="font-syne font-bold text-klawva-text tracking-widest">
+                    KLAWVA
+                  </span>
                 </div>
                 <div className="font-mono text-klawva-accent text-xs uppercase tracking-wider border border-klawva-accent px-3 py-1 rounded-full">
                   MISSION COMPLETE
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-6 mb-8">
-                  <AgentIcon size={64} className="text-klawva-text" />
+                <AgentIcon size={64} className="text-klawva-text" />
                 <div>
                   <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-klawva-text mb-2">
                     {agent.name}
                   </h1>
                   <div className="font-mono text-klawva-muted text-sm">
-                    {report?.dateRange || 'Mission in progress'}
+                    {report !== null ? "Shift report" : "Mission in progress"}
                   </div>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-3 gap-4 mb-12">
-                {(report?.stats || []).map((stat, i) => (
-                  <div key={i} className="bg-[#0A0A0A] border border-klawva-border rounded p-4 text-center">
+                {stats.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="bg-[#0A0A0A] border border-klawva-border rounded p-4 text-center"
+                  >
                     <div className="font-syne font-bold text-2xl md:text-3xl text-klawva-accent mb-2">
-                      {stat.value}
+                      {entry.value}
                     </div>
                     <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider leading-tight">
-                      {stat.label}
+                      {entry.label}
                     </div>
                   </div>
                 ))}
               </div>
-              
+
               <div className="mb-12">
                 <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-4">
                   Final Summary
                 </div>
                 <p className="font-mono text-klawva-text text-base leading-relaxed">
-                  {report?.summary || 'Mission report is still compiling and will appear here after final delivery.'}
+                  {report?.summary ??
+                    "Mission report is still compiling and will appear here after final delivery."}
                 </p>
               </div>
-              
+
               <div className="flex items-center justify-between pt-8 border-t border-klawva-border">
-                <div className="font-mono text-klawva-dim text-xs">
-                  Powered by Klawva
-                </div>
+                <div className="font-mono text-klawva-dim text-xs">Powered by Klawva</div>
                 <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider">
                   ID: {sessionId.substring(0, 8)}
                 </div>
@@ -171,13 +184,12 @@ export default function MissionReportCardPage() {
             </div>
           </motion.div>
 
-          {errorMessage && (
+          {error && (
             <div className="mb-8 border border-klawva-orange rounded p-3 font-mono text-klawva-orange text-xs">
-              {errorMessage}
+              {error}
             </div>
           )}
-          
-          {/* Actions */}
+
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -186,28 +198,24 @@ export default function MissionReportCardPage() {
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button variant="secondary" onClick={handleShare}>
-                {copied ? 'Copied!' : 'Share this report'}
+                {copied ? "Copied!" : "Share this report"}
               </Button>
               <Button variant="secondary" onClick={handleDownload} disabled={isDownloading}>
-                {isDownloading ? 'Generating...' : 'Download as image'}
+                {isDownloading ? "Generating..." : "Download as image"}
               </Button>
             </div>
-            
             <div className="h-px w-full bg-klawva-border my-2" />
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button variant="primary" href={`/hire/${agent.id}`}>
                 Hire again →
               </Button>
-              <Button variant="ghost" href="/">
-                Try a different agent
+              <Button variant="ghost" href="/employees">
+                Try a different employee
               </Button>
             </div>
           </motion.div>
-          
         </div>
       </main>
-      
       <Footer />
     </div>
   );
