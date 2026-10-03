@@ -6,6 +6,9 @@ import {
 } from "react-router-dom";
 import Landing from "./app/page.tsx";
 import CustomRequest from "./app/custom-request/page.tsx";
+import Pricing from "./app/pricing/page.tsx";
+import Privacy from "./app/privacy/page.tsx";
+import Terms from "./app/terms/page.tsx";
 import NotFound from "./app/not-found.tsx";
 import StudioLayout from "./app/studio/layout.tsx";
 import { clearStudioSession } from "./lib/studio-session.ts";
@@ -56,6 +59,9 @@ export const router = createBrowserRouter([
   { path: "/store", loader: () => redirect("/employees") },
   { path: "/agents", loader: () => redirect("/employees") },
   { path: "/custom-request", element: <CustomRequest /> },
+  { path: "/pricing", element: <Pricing /> },
+  { path: "/privacy", element: <Privacy /> },
+  { path: "/terms", element: <Terms /> },
   {
     path: "/report/:sessionId",
     lazy: () => import("./app/report/[sessionId]/page.tsx"),
