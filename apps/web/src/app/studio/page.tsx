@@ -1,26 +1,31 @@
 import React, { useState } from "react";
-import { useLoaderData, useNavigate } from "react-router-dom";
-import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
+import { redirect, useLoaderData, useNavigate } from "react-router-dom";
+import { getStudioSession } from "@/lib/studio-session";
 import {
   createStudioListing,
   getStudioListings,
   getStudioMe,
+  startAuthorFee,
 } from "@/lib/studio-api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import Link from "@/components/ui/AppLink";
-import { Plus, ArrowRight } from "lucide-react";
+import { Plus, ArrowRight, ShieldCheck } from "lucide-react";
 
-const minPriceMinor = 100000;
-const maxPriceMinor = 2500000;
+const feeMinor = 2000;
+const minPriceMinor = 1000;
+const maxPriceMinor = 25000;
 
 export const loader = async () => {
-  const session = requireSession();
+  const session = getStudioSession();
+  if (session === null) {
+    throw redirect("/studio/login");
+  }
   const [me, listings] = await Promise.all([
     getStudioMe(session.token),
     getStudioListings(session.token),
-  ]).catch(rethrowAuth);
+  ]);
   return { session, me, listings };
 };
 
@@ -30,8 +35,8 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
-export function Component() {
-  const { session, listings } = useLoaderData<typeof loader>();
+export default function StudioHomePage() {
+  const { session, me, listings } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
@@ -41,10 +46,21 @@ export function Component() {
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [category, setCategory] = useState("ops");
-  const [priceNaira, setPriceNaira] = useState("1000");
-  const [budgetMinor, setBudgetMinor] = useState("3000");
+  const [priceNaira, setPriceNaira] = useState("25");
   const [briefFields, setBriefFields] = useState("task");
   const [soul, setSoul] = useState("");
+
+  const handlePayFee = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const checkout = await startAuthorFee(session.token);
+      window.location.href = checkout.checkoutUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start payment");
+      setBusy(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +78,6 @@ export function Component() {
         tagline,
         category,
         priceMinor,
-        budgetMinor: Number(budgetMinor) || 3000,
         briefFields: briefFields
           .split(",")
           .map((value) => value.trim())
@@ -71,7 +86,6 @@ export function Component() {
       });
       navigate(`/studio/listings/${created.id}`);
     } catch (err) {
-      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to create listing");
       setBusy(false);
     }
@@ -101,6 +115,36 @@ export function Component() {
         <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
           {error}
         </p>
+      )}
+
+      {!me.feePaid && (
+        <Card className="border-klawva-accent/40">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="text-klawva-accent w-6 h-6 shrink-0 mt-0.5" />
+              <div>
+                <h2 className="font-syne font-bold text-lg uppercase text-white">
+                  One-time author fee
+                </h2>
+                <p className="text-xs text-klawva-muted mt-1 max-w-xl">
+                  Pay a single ₦{(feeMinor / 100).toFixed(2)} fee to unlock
+                  submissions. No KYC. Your first listing can be submitted once
+                  the fee clears.
+                </p>
+              </div>
+            </div>
+            <Button variant="primary" size="md" onClick={handlePayFee} loading={busy}>
+              Pay Author Fee
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {me.feePaid && (
+        <div className="flex items-center gap-2 text-xs font-mono text-klawva-muted">
+          <ShieldCheck size={14} className="text-klawva-accent" />
+          Author fee paid. Submissions unlocked.
+        </div>
       )}
 
       {showForm && (
@@ -159,23 +203,6 @@ export function Component() {
                   value={priceNaira}
                   onChange={(e) => setPriceNaira(e.target.value)}
                 />
-              </div>
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
-                  AI budget cap
-                </label>
-                <input
-                  className={inputClass}
-                  required
-                  type="number"
-                  min={100}
-                  step="50"
-                  value={budgetMinor}
-                  onChange={(e) => setBudgetMinor(e.target.value)}
-                />
-                <p className="font-mono text-klawva-dim text-xs mt-1">
-                  Internal cap. 50 per message.
-                </p>
               </div>
             </div>
             <div>
