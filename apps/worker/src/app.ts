@@ -58,6 +58,7 @@ const ListingRow = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   ownerId: Schema.String,
+  avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
 });
 
@@ -167,6 +168,19 @@ const chatSendEndpoint = HttpApiEndpoint.post(
   },
 );
 
+const feedbackEndpoint = HttpApiEndpoint.post(
+  "sessionFeedback",
+  "/api/sessions/:id/feedback",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    payload: Schema.Struct({
+      rating: Schema.Number,
+      report: Schema.optionalKey(Schema.String),
+    }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+  },
+);
+
 const contactEndpoint = HttpApiEndpoint.post("contact", "/api/emails/contact", {
   payload: Schema.Struct({
     name: Schema.String,
@@ -241,6 +255,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(sessionLaunchEndpoint)
   .add(chatMessagesEndpoint)
   .add(chatSendEndpoint)
+  .add(feedbackEndpoint)
   .add(contactEndpoint)
   .add(initializePaymentEndpoint)
   .add(sharedReportEndpoint) {}
@@ -352,7 +367,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const rows = yield* db
             .all(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, l.owner_id AS ownerId, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY l.slug",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, l.owner_id AS ownerId, (SELECT AVG(rating) FROM session_feedback f WHERE f.listing_id = l.id) AS avgRating, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY avgRating DESC NULLS LAST, l.slug",
             )
             .pipe(Effect.orDie);
           return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
@@ -448,6 +463,57 @@ const rootGroup = HttpApiBuilder.group(
             ),
           );
           return { reply };
+        }),
+      )
+      .handle("sessionFeedback", ({ params, payload }) =>
+        Effect.gen(function* () {
+          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, params.id);
+          const rating = Math.round(payload.rating);
+          if (!allowed || rating < 1 || rating > 5) {
+            return { ok: false };
+          }
+          const session = yield* db
+            .first("SELECT listing_id AS listingId FROM sessions WHERE id = ?", [
+              params.id,
+            ])
+            .pipe(Effect.orDie);
+          if (session === null) {
+            return { ok: false };
+          }
+          const now = new Date().toISOString();
+          yield* db
+            .run(
+              "INSERT INTO session_feedback (id, session_id, listing_id, rating, report, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET rating = excluded.rating, report = excluded.report",
+              [
+                crypto.randomUUID(),
+                params.id,
+                String(session.listingId),
+                rating,
+                payload.report ?? null,
+                now,
+              ],
+            )
+            .pipe(Effect.orDie);
+          if (
+            payload.report !== undefined &&
+            payload.report.trim().length > 0
+          ) {
+            const to = env.ADMIN_EMAILS.split(",")[0]?.trim() ?? "";
+            if (to.length > 0) {
+              yield* sendEmail({
+                apiKey: env.BREVO_API_KEY,
+                senderEmail: env.BREVO_SENDER_EMAIL,
+                senderName: "Klawva",
+                toEmail: to,
+                subject: "Employee report",
+                html: renderTemplate({
+                  title: "Employee report",
+                  body: `Session: ${params.id}<br/>Rating: ${rating}<br/><br/>${escapeHtml(payload.report)}`,
+                }),
+              }).pipe(Effect.catch(() => Effect.void));
+            }
+          }
+          return { ok: true };
         }),
       )
       .handle("contact", ({ payload }) =>

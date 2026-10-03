@@ -119,6 +119,11 @@ export function Component() {
                   <div className="font-mono text-klawva-accent text-sm">
                     ₦{(employee.priceMinor / 100).toLocaleString()} per 24h
                   </div>
+                  {employee.avgRating !== null && (
+                    <div className="font-mono text-klawva-dim text-xs mt-1">
+                      Rating: {employee.avgRating.toFixed(1)} / 5
+                    </div>
+                  )}
                 </Link>
               ))}
             </div>
