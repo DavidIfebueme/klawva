@@ -13,7 +13,7 @@ export function Pricing() {
       <div className="max-w-3xl mx-auto text-center">
         <div className="mb-16">
           <span className="font-mono text-klawva-dim text-sm tracking-[0.2em] uppercase">
-            ONE PRICE. ONE SHIFT.
+            PRICING
           </span>
         </div>
 
@@ -26,7 +26,7 @@ export function Pricing() {
           >
             <Card className="h-full flex flex-col items-center justify-center p-12 hover:border-klawva-accent transition-colors duration-300">
               <h3 className="font-syne font-extrabold text-6xl text-klawva-accent mb-4">{profile.amountDisplay}</h3>
-              <p className="font-mono text-klawva-muted text-sm mb-8">per 24-hour session</p>
+              <p className="font-mono text-klawva-muted text-sm mb-8">from, per 24-hour session</p>
             </Card>
           </motion.div>
         </div>
@@ -48,7 +48,7 @@ export function Pricing() {
             [ Destruction by Default ]
           </span>
           <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider px-3 py-1 border border-klawva-border rounded-full">
-            [ WhatsApp or Telegram ]
+            [ Telegram, email, or web ]
           </span>
         </motion.div>
 
