@@ -18,7 +18,7 @@ export function Footer() {
         <div className="flex flex-col gap-3">
           <h4 className="font-syne font-bold text-klawva-text mb-2">Links</h4>
           <Link href="/#about" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">About</Link>
-          <Link href="/#agents" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Agents</Link>
+          <Link href="/employees" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Employees</Link>
           <Link href="/#pricing" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Pricing</Link>
         </div>
         <div className="flex flex-col gap-3">

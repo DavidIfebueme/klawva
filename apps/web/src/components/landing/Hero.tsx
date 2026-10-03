@@ -55,7 +55,7 @@ export function Hero() {
           transition={{ duration: 0.5, delay: 1.0, ease: 'easeOut' }}
           className="flex flex-col sm:flex-row items-center gap-4 mb-16"
         >
-          <Button variant="primary" size="lg" href="#agents">Meet the Agents</Button>
+          <Button variant="primary" size="lg" href="/employees">Meet the Employees</Button>
           <Button variant="secondary" size="lg" href="#how-it-works">How It Works</Button>
         </motion.div>
 

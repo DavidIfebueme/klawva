@@ -21,7 +21,7 @@ const iconMap = {
 export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAll?: boolean; showSeeAllButton?: boolean }) {
   const displayedAgents = showAll
     ? Object.values(agents)
-    : [agents.scrapper, agents.vendor, agents.researcher];
+    : [agents.scrapper, agents.jobseeker, agents.researcher];
 
   return (
     <section id="agents" className="py-32 px-6 bg-klawva-bg">
@@ -72,7 +72,7 @@ export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAl
 
         {showSeeAllButton && (
           <div className="mt-16 text-center">
-            <Button variant="ghost" onClick={() => window.location.href = '/agents'}>
+            <Button variant="ghost" onClick={() => window.location.href = '/employees'}>
               See all employees →
             </Button>
           </div>

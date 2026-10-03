@@ -36,7 +36,7 @@ export function FinalCTA() {
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.4, ease: 'easeOut' }}
         >
-          <Button variant="primary" size="lg" href="#agents" className="text-xl px-12 py-6">
+          <Button variant="primary" size="lg" href="/employees" className="text-xl px-12 py-6">
             Hire Now →
           </Button>
         </motion.div>

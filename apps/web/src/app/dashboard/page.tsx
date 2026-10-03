@@ -80,7 +80,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="mt-6 flex flex-wrap gap-4">
-            <Button variant="primary" size="sm" href="/#agents">
+            <Button variant="primary" size="sm" href="/employees">
               Hire Another Worker
             </Button>
           </div>
@@ -131,7 +131,7 @@ export default function DashboardPage() {
             <p className="text-xs text-klawva-muted max-w-sm mx-auto">
               Hire your first fully autonomous agent to get started. It will handle the shift and deliver results.
             </p>
-            <Button variant="primary" size="sm" href="/#agents" className="mt-2">
+            <Button variant="primary" size="sm" href="/employees" className="mt-2">
               Explore AI Workers
             </Button>
           </div>
