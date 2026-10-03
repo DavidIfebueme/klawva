@@ -18,7 +18,7 @@ export const sendEmail = (params: {
   }
   return Effect.tryPromise({
     try: async () => {
-      await fetch("https://api.brevo.com/v3/smtp/email", {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
           "api-key": params.apiKey,
@@ -31,6 +31,9 @@ export const sendEmail = (params: {
           htmlContent: params.html,
         }),
       });
+      if (!response.ok) {
+        throw new Error(`brevo_${response.status}`);
+      }
     },
     catch: (cause) => new EmailError({ reason: String(cause) }),
   });
