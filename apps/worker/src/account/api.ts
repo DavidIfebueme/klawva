@@ -10,7 +10,14 @@ import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { ListingNotFound } from "../errors.ts";
-import { accountSessionDetail, listAccountSessions } from "./account.ts";
+import {
+  accountSessionDetail,
+  addMember,
+  listAccountSessions,
+  listMembers,
+  ownsSession,
+  removeMember,
+} from "./account.ts";
 
 const SessionSummary = Schema.Struct({
   id: Schema.String,
@@ -75,9 +82,48 @@ const accountSession = HttpApiEndpoint.get(
   },
 );
 
+const MemberRow = Schema.Struct({
+  email: Schema.String,
+  role: Schema.String,
+});
+
+const accountMembers = HttpApiEndpoint.get(
+  "accountMembers",
+  "/api/account/sessions/:id/members",
+  {
+    params: IdParam,
+    success: Schema.Array(MemberRow),
+    error: Schema.Union([AuthError, ListingNotFound]),
+  },
+);
+
+const accountAddMember = HttpApiEndpoint.post(
+  "accountAddMember",
+  "/api/account/sessions/:id/members",
+  {
+    params: IdParam,
+    payload: Schema.Struct({ email: Schema.String }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: Schema.Union([AuthError, ListingNotFound]),
+  },
+);
+
+const accountRemoveMember = HttpApiEndpoint.delete(
+  "accountRemoveMember",
+  "/api/account/sessions/:id/members/:email",
+  {
+    params: Schema.Struct({ id: Schema.String, email: Schema.String }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: Schema.Union([AuthError, ListingNotFound]),
+  },
+);
+
 class AccountGroup extends HttpApiGroup.make("Account")
   .add(accountSessions)
-  .add(accountSession) {}
+  .add(accountSession)
+  .add(accountMembers)
+  .add(accountAddMember)
+  .add(accountRemoveMember) {}
 
 export class AccountApi extends HttpApi.make("AccountApi").add(AccountGroup) {}
 
@@ -128,6 +174,54 @@ export const accountGroup = HttpApiBuilder.group(
                 ? null
                 : Schema.decodeUnknownSync(ReportSummary)(detail.report),
           };
+        }),
+      )
+      .handle("accountMembers", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          const owned = yield* ownsSession(
+            db,
+            identity.userId,
+            identity.email,
+            params.id,
+          );
+          if (!owned) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          const rows = yield* listMembers(db, params.id);
+          return rows.map((row) => Schema.decodeUnknownSync(MemberRow)(row));
+        }),
+      )
+      .handle("accountAddMember", ({ params, payload }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          const owned = yield* ownsSession(
+            db,
+            identity.userId,
+            identity.email,
+            params.id,
+          );
+          if (!owned) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          yield* addMember(db, params.id, payload.email);
+          return { ok: true };
+        }),
+      )
+      .handle("accountRemoveMember", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          const owned = yield* ownsSession(
+            db,
+            identity.userId,
+            identity.email,
+            params.id,
+          );
+          if (!owned) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          yield* removeMember(db, params.id, params.email);
+          return { ok: true };
         }),
       );
   }),
