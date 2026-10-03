@@ -1,18 +1,35 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { defaultModel, defaultToolAllowlist, type AgentRuntimeImpl } from "../agent/runtime.ts";
+import { defaultModel, type AgentRuntimeImpl } from "../agent/runtime.ts";
 import { type DatabaseImpl } from "../db/database.ts";
+import type { Env } from "../env.ts";
 import { runEval, type Band } from "../eval/eval.ts";
-import { ListingConflict, ListingNotFound } from "../errors.ts";
-import { encodeManifest, manifestFor, manifestHash } from "../listings/listings.ts";
+import { manifestHash } from "../listings/listings.ts";
 import { statusForBand } from "../listings/publish.ts";
 import type { ListingDefinition } from "../listings/definitions.ts";
-import { screenSoul } from "../moderation/moderation.ts";
+import { initializePayment } from "../payments/paystack.ts";
 import type { Identity } from "../auth/auth.ts";
 
+export const publishFeeMinor = 2000;
 export const sandboxDailyCap = 20;
 
-export { ListingConflict, ListingNotFound };
+export class ListingNotFound extends Schema.TaggedError<ListingNotFound>()(
+  "ListingNotFound",
+  {},
+  { httpApiStatus: 404 },
+) {}
+
+export class ListingConflict extends Schema.TaggedError<ListingConflict>()(
+  "ListingConflict",
+  { reason: Schema.String },
+  { httpApiStatus: 409 },
+) {}
+
+export class FeeRequired extends Schema.TaggedError<FeeRequired>()(
+  "FeeRequired",
+  { amountMinor: Schema.Number },
+  { httpApiStatus: 402 },
+) {}
 
 export class SandboxCapReached extends Schema.TaggedError<SandboxCapReached>()(
   "SandboxCapReached",
@@ -40,9 +57,23 @@ export const ensureProfile = (
     yield* db
       .run(
         "INSERT INTO author_profiles (id, user_id, display_name, status, fee_paid_at, created_at, updated_at) VALUES (?, ?, ?, 'active', NULL, ?, ?)",
-        [crypto.randomUUID(), identity.userId, "", now, now],
+        [crypto.randomUUID(), identity.userId, identity.email, now, now],
       )
       .pipe(Effect.orDie);
+  });
+
+export const feePaid = (
+  db: DatabaseImpl,
+  userId: string,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const row = yield* db
+      .first(
+        "SELECT id AS id FROM author_fees WHERE user_id = ? AND status = 'confirmed' LIMIT 1",
+        [userId],
+      )
+      .pipe(Effect.orDie);
+    return row !== null;
   });
 
 export const listingsFor = (
@@ -73,8 +104,8 @@ export interface DraftInput {
   readonly name: string;
   readonly tagline: string;
   readonly category: string;
+  readonly agentId: string;
   readonly priceMinor: number;
-  readonly budgetMinor: number;
   readonly briefFields: ReadonlyArray<string>;
   readonly soul: string;
 }
@@ -114,33 +145,22 @@ export const createAuthorDraft = (
       name: input.name,
       tagline: input.tagline,
       category: input.category,
-      agentId: `author:${input.slug}`,
+      agentId: input.agentId,
       briefFields: input.briefFields,
       priceMinor: input.priceMinor,
-      budgetMinor: input.budgetMinor,
     };
-    const manifest = manifestFor(definition, input.soul);
-    const hash = yield* manifestHash({
-      manifest,
-      briefFields: input.briefFields,
-      toolAllowlist: defaultToolAllowlist,
-      model: defaultModel,
-      budgetMinor: input.budgetMinor,
-    }).pipe(Effect.orDie);
+    const hash = yield* manifestHash(definition).pipe(Effect.orDie);
     yield* db
       .run(
-        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
+        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, brief_fields, tool_allowlist, model, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
         [
           crypto.randomUUID(),
           id,
           hash,
           input.soul,
-          encodeManifest(manifest),
           JSON.stringify(input.briefFields),
-          JSON.stringify(defaultToolAllowlist),
+          JSON.stringify(["fetch_url"]),
           defaultModel,
-          input.budgetMinor,
-          input.priceMinor,
           now,
         ],
       )
@@ -160,156 +180,14 @@ export const listingDetail = (
     }
     const version = yield* db
       .first(
-        "SELECT soul AS soul, brief_fields AS briefFields, budget_minor AS budgetMinor FROM listing_versions v JOIN agent_listings l ON l.id = v.listing_id AND l.current_version = v.version WHERE v.listing_id = ?",
+        "SELECT soul AS soul, brief_fields AS briefFields, price_minor AS priceMinor FROM listing_versions v JOIN agent_listings l ON l.id = v.listing_id AND l.current_version = v.version WHERE v.listing_id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (version === null) {
-      return yield* Effect.die("listing_version_missing");
+      return listing;
     }
-    return {
-      ...listing,
-      soul: version.soul,
-      briefFields: version.briefFields,
-      budgetMinor: version.budgetMinor,
-    };
-  });
-
-export interface UpdateInput {
-  readonly name: string;
-  readonly tagline: string;
-  readonly category: string;
-  readonly priceMinor: number;
-  readonly budgetMinor: number;
-  readonly briefFields: ReadonlyArray<string>;
-  readonly soul: string;
-}
-
-export const updateAuthorDraft = (
-  db: DatabaseImpl,
-  userId: string,
-  listingId: string,
-  input: UpdateInput,
-): Effect.Effect<void, ListingNotFound | ListingConflict> =>
-  Effect.gen(function* () {
-    const listing = yield* ownedListing(db, userId, listingId);
-    if (listing === null) {
-      return yield* Effect.fail(new ListingNotFound({}));
-    }
-    const status = String(listing.status);
-    if (status !== "draft" && status !== "rejected") {
-      return yield* Effect.fail(
-        new ListingConflict({ reason: `not_editable:${status}` }),
-      );
-    }
-    const slug = String(listing.slug);
-    const version = Number(listing.version);
-    const now = new Date().toISOString();
-    yield* db
-      .run(
-        "UPDATE agent_listings SET name = ?, tagline = ?, category = ?, price_minor = ?, updated_at = ? WHERE id = ?",
-        [input.name, input.tagline, input.category, input.priceMinor, now, listingId],
-      )
-      .pipe(Effect.orDie);
-    const definition: ListingDefinition = {
-      slug,
-      name: input.name,
-      tagline: input.tagline,
-      category: input.category,
-      agentId: `author:${slug}`,
-      briefFields: input.briefFields,
-      priceMinor: input.priceMinor,
-      budgetMinor: input.budgetMinor,
-    };
-    const manifest = manifestFor(definition, input.soul);
-    const hash = yield* manifestHash({
-      manifest,
-      briefFields: input.briefFields,
-      toolAllowlist: defaultToolAllowlist,
-      model: defaultModel,
-      budgetMinor: input.budgetMinor,
-    }).pipe(Effect.orDie);
-    yield* db
-      .run(
-        "UPDATE listing_versions SET soul = ?, manifest = ?, brief_fields = ?, manifest_hash = ?, budget_minor = ?, score = NULL WHERE listing_id = ? AND version = ?",
-        [
-          input.soul,
-          encodeManifest(manifest),
-          JSON.stringify(input.briefFields),
-          hash,
-          input.budgetMinor,
-          listingId,
-          version,
-        ],
-      )
-      .pipe(Effect.orDie);
-  });
-
-export const reviseListing = (
-  db: DatabaseImpl,
-  userId: string,
-  listingId: string,
-  input: UpdateInput,
-): Effect.Effect<{ version: number }, ListingNotFound | ListingConflict> =>
-  Effect.gen(function* () {
-    const listing = yield* ownedListing(db, userId, listingId);
-    if (listing === null) {
-      return yield* Effect.fail(new ListingNotFound({}));
-    }
-    const status = String(listing.status);
-    if (status !== "published") {
-      return yield* Effect.fail(
-        new ListingConflict({ reason: `not_revisable:${status}` }),
-      );
-    }
-    const slug = String(listing.slug);
-    const current = Number(listing.version);
-    const next = current + 1;
-    const now = new Date().toISOString();
-    const definition: ListingDefinition = {
-      slug,
-      name: input.name,
-      tagline: input.tagline,
-      category: input.category,
-      agentId: `author:${slug}`,
-      briefFields: input.briefFields,
-      priceMinor: input.priceMinor,
-      budgetMinor: input.budgetMinor,
-    };
-    const manifest = manifestFor(definition, input.soul);
-    const hash = yield* manifestHash({
-      manifest,
-      briefFields: input.briefFields,
-      toolAllowlist: defaultToolAllowlist,
-      model: defaultModel,
-      budgetMinor: input.budgetMinor,
-    }).pipe(Effect.orDie);
-    yield* db
-      .run(
-        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at, status, manifest_schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, 'draft', 1)",
-        [
-          crypto.randomUUID(),
-          listingId,
-          next,
-          hash,
-          input.soul,
-          encodeManifest(manifest),
-          JSON.stringify(input.briefFields),
-          JSON.stringify(defaultToolAllowlist),
-          defaultModel,
-          input.budgetMinor,
-          input.priceMinor,
-          now,
-        ],
-      )
-      .pipe(Effect.orDie);
-    yield* db
-      .run(
-        "UPDATE agent_listings SET name = ?, tagline = ?, category = ?, price_minor = ?, updated_at = ? WHERE id = ?",
-        [input.name, input.tagline, input.category, input.priceMinor, now, listingId],
-      )
-      .pipe(Effect.orDie);
-    return { version: next };
+    return { ...listing, soul: version.soul, briefFields: version.briefFields };
   });
 
 export const runsToday = (
@@ -323,10 +201,7 @@ export const runsToday = (
         [listingId, new Date(Date.now() - 86_400_000).toISOString()],
       )
       .pipe(Effect.orDie);
-    if (row === null) {
-      return yield* Effect.die("count_row_missing");
-    }
-    return Number(row.count);
+    return row === null ? 0 : Number(row.count);
   });
 
 export interface EvalOutcome {
@@ -376,18 +251,14 @@ const loadVersion = (
   Effect.gen(function* () {
     const row = yield* db
       .first(
-        "SELECT v.version AS version, v.soul AS soul FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id WHERE l.id = ? AND v.version = COALESCE((SELECT MAX(version) FROM listing_versions WHERE listing_id = l.id AND status = 'draft'), l.current_version)",
+        "SELECT l.current_version AS version, v.soul AS soul FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (row === null) {
       return null;
     }
-    return {
-      version: Number(row.version),
-      soul: String(row.soul),
-      manifest: null as string | null,
-    };
+    return { version: Number(row.version), soul: String(row.soul) };
   });
 
 export const sandbox = (
@@ -420,26 +291,22 @@ export const submit = (
   runtime: AgentRuntimeImpl,
   userId: string,
   listingId: string,
-): Effect.Effect<EvalOutcome & { status: string }, ListingNotFound | ListingConflict> =>
+): Effect.Effect<EvalOutcome & { status: string }, ListingNotFound | ListingConflict | FeeRequired> =>
   Effect.gen(function* () {
     const listing = yield* ownedListing(db, userId, listingId);
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
     }
-    const listingStatus = String(listing.status);
-    const revising = listingStatus === "published";
-    if (!revising && listingStatus !== "draft" && listingStatus !== "rejected") {
-      return yield* Effect.fail(
-        new ListingConflict({ reason: `not_submittable:${listingStatus}` }),
-      );
+    if (String(listing.status) === "published") {
+      return yield* Effect.fail(new ListingConflict({ reason: "already_published" }));
+    }
+    const paid = yield* feePaid(db, userId);
+    if (!paid) {
+      return yield* Effect.fail(new FeeRequired({ amountMinor: publishFeeMinor }));
     }
     const version = yield* loadVersion(db, listingId);
     if (version === null) {
       return yield* Effect.die("version_not_found");
-    }
-    const flagged = screenSoul(version.soul);
-    if (flagged !== null) {
-      return yield* Effect.fail(new ListingConflict({ reason: flagged }));
     }
     const outcome = yield* runListingEval(
       db,
@@ -457,17 +324,35 @@ export const submit = (
       )
       .pipe(Effect.orDie);
     yield* db
-      .run(
-        "UPDATE agent_listings SET status = CASE WHEN ? = 'published' AND ? = 'in_review' THEN status ELSE ? END, updated_at = ? WHERE id = ?",
-        [listingStatus, status, status, now, listingId],
-      )
-      .pipe(Effect.orDie);
-    yield* db
-      .run(
-        "UPDATE listing_versions SET status = ? WHERE listing_id = ? AND version = ?",
-        [status, listingId, version.version],
-      )
+      .run("UPDATE agent_listings SET status = ?, updated_at = ? WHERE id = ?", [
+        status,
+        now,
+        listingId,
+      ])
       .pipe(Effect.orDie);
     return { ...outcome, status };
   });
 
+export const initializeFee = (
+  db: DatabaseImpl,
+  env: Env,
+  userId: string,
+  email: string,
+): Effect.Effect<{ reference: string; checkoutUrl: string }> =>
+  Effect.gen(function* () {
+    const result = yield* initializePayment({
+      secret: env.PAYSTACK_SECRET_KEY,
+      sessionId: `fee_${userId}`,
+      amountMinor: publishFeeMinor,
+      callbackUrl: `${env.FRONTEND_BASE_URL}/studio`,
+      email,
+    }).pipe(Effect.orDie);
+    const now = new Date().toISOString();
+    yield* db
+      .run(
+        "INSERT INTO author_fees (id, user_id, provider, provider_reference, amount_minor, currency, status, confirmed_at, created_at, updated_at) VALUES (?, ?, 'paystack', ?, ?, 'NGN', 'pending', NULL, ?, ?)",
+        [crypto.randomUUID(), userId, result.reference, publishFeeMinor, now, now],
+      )
+      .pipe(Effect.orDie);
+    return result;
+  });
