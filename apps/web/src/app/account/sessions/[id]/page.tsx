@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
 import { addMember, getAccountSession, listMembers, submitFeedback } from "@/lib/account-api";
+import { Markdown } from "@/components/ui/Markdown";
 
 const humanize = (value: string): string =>
   value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -129,9 +130,9 @@ export function Component() {
                   Open report
                 </Button>
               </div>
-              <p className="font-mono text-klawva-text text-sm leading-relaxed">
-                {detail.report.summary}
-              </p>
+              <div className="font-mono text-klawva-text text-sm leading-relaxed">
+                <Markdown content={detail.report.summary} />
+              </div>
             </Card>
           )}
 
@@ -172,9 +173,7 @@ export function Component() {
                     <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-1">
                       {entry.role}
                     </div>
-                    <p className="font-mono text-klawva-text text-sm whitespace-pre-wrap">
-                      {entry.content}
-                    </p>
+                    <Markdown content={entry.content} />
                   </div>
                 ))}
               </div>
