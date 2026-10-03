@@ -15,6 +15,24 @@ import {
   secretHeader,
   TelegramUpdate,
 } from "./channels/telegram.ts";
+import {
+  AgentRuntime,
+  defaultModel,
+  layer as agentLayer,
+} from "./agent/runtime.ts";
+import { seedListings } from "./listings/listings.ts";
+import { runEval } from "./eval/eval.ts";
+
+const ListingRow = Schema.Struct({
+  id: Schema.String,
+  slug: Schema.String,
+  name: Schema.String,
+  tagline: Schema.String,
+  category: Schema.String,
+  priceMinor: Schema.Number,
+  version: Schema.Number,
+  score: Schema.NullOr(Schema.Number),
+});
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 
@@ -51,10 +69,30 @@ const telegramWebhook = HttpApiEndpoint.post(
   },
 );
 
+const seedListingsEndpoint = HttpApiEndpoint.post(
+  "seedListings",
+  "/api/listings/seed",
+  { success: Schema.Struct({ seeded: Schema.Number }) },
+);
+
+const listListingsEndpoint = HttpApiEndpoint.get(
+  "listListings",
+  "/api/listings",
+  { success: Schema.Array(ListingRow) },
+);
+
+const runEvalEndpoint = HttpApiEndpoint.post("runEval", "/api/eval/run", {
+  payload: Schema.Struct({ agentId: Schema.String, task: Schema.String }),
+  success: Schema.Struct({ score: Schema.Number, band: Schema.String }),
+});
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
   .add(createSession)
-  .add(telegramWebhook) {}
+  .add(telegramWebhook)
+  .add(seedListingsEndpoint)
+  .add(listListingsEndpoint)
+  .add(runEvalEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -66,8 +104,36 @@ const rootGroup = HttpApiBuilder.group(
   Effect.fn(function* (handlers) {
     const db = yield* Database;
     const env = yield* WorkerEnv;
+    const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("seedListings", () =>
+        Effect.gen(function* () {
+          const seeded = yield* seedListings(db).pipe(Effect.orDie);
+          return { seeded };
+        }),
+      )
+      .handle("listListings", () =>
+        Effect.gen(function* () {
+          const rows = yield* db
+            .all(
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, l.current_version AS version, v.score AS score FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.status = 'published' ORDER BY l.slug",
+            )
+            .pipe(Effect.orDie);
+          return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
+        }),
+      )
+      .handle("runEval", ({ payload }) =>
+        Effect.gen(function* () {
+          const result = yield* runEval({
+            runtime,
+            soul: soulFor(payload.agentId),
+            brief: { task: payload.task },
+            cases: [payload.task],
+          }).pipe(Effect.orDie);
+          return { score: result.score, band: result.band };
+        }),
+      )
       .handle("telegramWebhook", ({ payload }) =>
         Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
@@ -134,6 +200,7 @@ export const makeAppLayer = (env: Env) => {
   const services = Layer.mergeAll(
     databaseLayer(env.DB),
     Layer.succeed(WorkerEnv)(env),
+    agentLayer(env.AI, defaultModel),
   );
   const handlers = rootGroup.pipe(Layer.provide(services));
   return HttpApiBuilder.layer(KlawvaApi).pipe(
