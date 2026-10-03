@@ -54,6 +54,11 @@ export const router = createBrowserRouter([
     path: "/report/:sessionId",
     lazy: () => import("./app/report/[sessionId]/page.tsx"),
   },
+  { path: "/account", lazy: () => import("./app/account/page.tsx") },
+  {
+    path: "/account/sessions/:id",
+    lazy: () => import("./app/account/sessions/[id]/page.tsx"),
+  },
   {
     path: "/studio",
     element: <StudioLayout />,
