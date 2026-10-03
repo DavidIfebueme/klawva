@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { fallbackReport, parseReport } from "../src/report/report.ts";
+import * as Effect from "effect/Effect";
+import { fallbackReport, generateReport, parseReport } from "../src/report/report.ts";
+import { ModelError } from "../src/agent/runtime.ts";
 
 describe("report parsing", () => {
   it("parses a JSON report", () => {
@@ -22,5 +24,17 @@ describe("report parsing", () => {
 
   it("falls back cleanly with no history", () => {
     expect(fallbackReport([]).summary).toBe("Shift complete.");
+  });
+
+  it("skips the model on an empty transcript", async () => {
+    const runtime = {
+      complete: () =>
+        Effect.fail(new ModelError({ cause: "model should not be called" })),
+    };
+    const report = await Effect.runPromise(
+      generateReport({ runtime, history: [] }),
+    );
+    expect(report.summary).toBe("Shift complete.");
+    expect(report.stats).toEqual([]);
   });
 });
