@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { ApiError, failureMessage } from "./api-error.ts";
+import { ApiError } from "./api-error.ts";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -53,6 +53,21 @@ const sessionDetail = Schema.Struct({
 });
 export type AccountSessionDetail = typeof sessionDetail.Type;
 
+async function failureMessage(res: Response): Promise<string> {
+  try {
+    const payload: unknown = await res.json();
+    if (payload !== null && typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      if (typeof record.reason === "string") return record.reason;
+      if (typeof record._tag === "string") return record._tag;
+      if (typeof record.detail === "string") return record.detail;
+    }
+  } catch {
+    return `Request failed (${res.status})`;
+  }
+  return `Request failed (${res.status})`;
+}
+
 async function get(path: string, token: string): Promise<unknown> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "x-auth-token": token },
@@ -77,102 +92,5 @@ export async function getAccountSession(
 ): Promise<AccountSessionDetail> {
   return Schema.decodeUnknownSync(sessionDetail)(
     await get(`/api/account/sessions/${encodeURIComponent(id)}`, token),
-  );
-}
-
-const member = Schema.Struct({ email: Schema.String, role: Schema.String });
-export type AccountMember = typeof member.Type;
-
-async function post(
-  path: string,
-  token: string,
-  body: unknown,
-): Promise<unknown> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "x-auth-token": token, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new ApiError(await failureMessage(res), res.status);
-  }
-  return res.json();
-}
-
-export async function listMembers(
-  token: string,
-  id: string,
-): Promise<ReadonlyArray<AccountMember>> {
-  return Schema.decodeUnknownSync(Schema.Array(member))(
-    await get(`/api/account/sessions/${encodeURIComponent(id)}/members`, token),
-  );
-}
-
-export async function addMember(
-  token: string,
-  id: string,
-  email: string,
-): Promise<{ ok: boolean }> {
-  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
-    await post(`/api/account/sessions/${encodeURIComponent(id)}/members`, token, {
-      email,
-    }),
-  );
-}
-
-export async function submitFeedback(
-  token: string,
-  id: string,
-  rating: number,
-  report?: string,
-): Promise<{ ok: boolean }> {
-  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
-    await post(`/api/sessions/${encodeURIComponent(id)}/feedback`, token, {
-      rating,
-      report,
-    }),
-  );
-}
-
-export const LinkChannel = Schema.Literals([
-  "telegram",
-  "web",
-  "email",
-  "slack",
-  "discord",
-]);
-export type LinkChannel = typeof LinkChannel.Type;
-
-const channelLink = Schema.Struct({
-  channel: LinkChannel,
-  chatId: Schema.String,
-  createdAt: Schema.String,
-});
-export type AccountChannelLink = typeof channelLink.Type;
-
-export async function listChannels(
-  token: string,
-  id: string,
-): Promise<ReadonlyArray<AccountChannelLink>> {
-  return Schema.decodeUnknownSync(Schema.Array(channelLink))(
-    await get(`/api/account/sessions/${encodeURIComponent(id)}/channels`, token),
-  );
-}
-
-export async function unlinkChannel(
-  token: string,
-  id: string,
-  channel: LinkChannel,
-  chatId: string,
-): Promise<{ ok: boolean }> {
-  const res = await fetch(
-    `${BASE}/api/account/sessions/${encodeURIComponent(id)}/channels/${encodeURIComponent(channel)}/${encodeURIComponent(chatId)}`,
-    { method: "DELETE", headers: { "x-auth-token": token } },
-  );
-  if (!res.ok) {
-    throw new ApiError(await failureMessage(res), res.status);
-  }
-  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
-    await res.json(),
   );
 }

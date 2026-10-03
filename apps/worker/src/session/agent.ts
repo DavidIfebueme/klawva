@@ -304,7 +304,22 @@ const sessionGroup = HttpApiBuilder.group(
       )
       .handle("appendMessage", ({ payload }) =>
         Effect.gen(function* () {
+          const db = makeDatabase(sessionEnv.env.DB);
+          const mirror = (role: string, content: string) =>
+            db
+              .run(
+                "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+                [
+                  crypto.randomUUID(),
+                  sessionEnv.sessionId,
+                  role,
+                  content,
+                  new Date().toISOString(),
+                ],
+              )
+              .pipe(Effect.orDie);
           yield* store.append(payload.role, payload.content);
+          yield* mirror(payload.role, payload.content);
           if (payload.role !== "user") {
             return { ok: true };
           }
@@ -316,6 +331,7 @@ const sessionGroup = HttpApiBuilder.group(
           const history = yield* store.history();
           const reply = yield* runTurn({ runtime, soul, brief, history });
           yield* store.append("assistant", reply);
+          yield* mirror("assistant", reply);
           return { ok: true, reply };
         }).pipe(Effect.orDie),
       );
