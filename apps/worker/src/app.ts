@@ -28,6 +28,7 @@ import {
 } from "./listings/publish.ts";
 import { runEval } from "./eval/eval.ts";
 import { initializePayment } from "./payments/paystack.ts";
+import { generateAddress } from "./payments/breet.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -177,6 +178,15 @@ const listReviewsEndpoint = HttpApiEndpoint.get("listReviews", "/api/reviews", {
   success: Schema.Array(ListingRow),
 });
 
+const breetAddressEndpoint = HttpApiEndpoint.post(
+  "breetAddress",
+  "/api/breet/address",
+  {
+    payload: Schema.Struct({ sessionId: Schema.String, asset: Schema.String }),
+    success: Schema.Struct({ address: Schema.String }),
+  },
+);
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
   .add(createSession)
@@ -189,7 +199,8 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(createListingEndpoint)
   .add(submitListingEndpoint)
   .add(reviewListingEndpoint)
-  .add(listReviewsEndpoint) {}
+  .add(listReviewsEndpoint)
+  .add(breetAddressEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -204,6 +215,17 @@ const rootGroup = HttpApiBuilder.group(
     const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("breetAddress", ({ payload }) =>
+        Effect.gen(function* () {
+          const address = yield* generateAddress(
+            env,
+            db,
+            payload.sessionId,
+            payload.asset,
+          ).pipe(Effect.orDie);
+          return { address };
+        }),
+      )
       .handle("createListing", ({ payload }) =>
         Effect.gen(function* () {
           const id = yield* createDraft(db, {
