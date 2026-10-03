@@ -18,7 +18,6 @@ import {
 import { defaultModel, layer as agentLayer } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { initializePayment } from "./payments/paystack.ts";
-import { generateAddress } from "./payments/breet.ts";
 import {
   identityFromToken,
   requestMagicLink,
@@ -124,15 +123,6 @@ const sharedReportEndpoint = HttpApiEndpoint.get(
   },
 );
 
-const breetAddressEndpoint = HttpApiEndpoint.post(
-  "breetAddress",
-  "/api/breet/address",
-  {
-    payload: Schema.Struct({ sessionId: Schema.String, asset: Schema.String }),
-    success: Schema.Struct({ address: Schema.String }),
-  },
-);
-
 const requestLinkEndpoint = HttpApiEndpoint.post(
   "requestLink",
   "/api/auth/request-link",
@@ -166,8 +156,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(telegramWebhook)
   .add(listListingsEndpoint)
   .add(initializePaymentEndpoint)
-  .add(sharedReportEndpoint)
-  .add(breetAddressEndpoint) {}
+  .add(sharedReportEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -208,17 +197,6 @@ const rootGroup = HttpApiBuilder.group(
           return { email: identity.email, admin: identity.admin };
         }),
       )
-      .handle("breetAddress", ({ payload }) =>
-        Effect.gen(function* () {
-          const address = yield* generateAddress(
-            env,
-            db,
-            payload.sessionId,
-            payload.asset,
-          ).pipe(Effect.orDie);
-          return { address };
-        }),
-      )
       .handle("sharedReport", ({ params, query }) =>
         Effect.gen(function* () {
           const row = yield* db
@@ -237,10 +215,20 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("initializePayment", ({ payload }) =>
         Effect.gen(function* () {
+          const session = yield* db
+            .first(
+              "SELECT budget_minor AS budgetMinor FROM sessions WHERE id = ?",
+              [payload.sessionId],
+            )
+            .pipe(Effect.orDie);
+          if (session === null) {
+            return yield* Effect.die("session_not_found");
+          }
+          const amountMinor = Number(session.budgetMinor);
           const result = yield* initializePayment({
             secret: env.PAYSTACK_SECRET_KEY,
             sessionId: payload.sessionId,
-            amountMinor: payload.amountMinor,
+            amountMinor,
             callbackUrl: `https://klawva.xyz/session/${payload.sessionId}`,
             email: payload.email,
           }).pipe(Effect.orDie);
@@ -252,7 +240,7 @@ const rootGroup = HttpApiBuilder.group(
                 crypto.randomUUID(),
                 payload.sessionId,
                 result.reference,
-                payload.amountMinor,
+                amountMinor,
                 now,
                 now,
               ],
