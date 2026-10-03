@@ -73,3 +73,22 @@ export const shiftStartedEmail = (
     ctaHref: "https://www.klawva.xyz/employees",
   });
 };
+
+export const welcomeEmail = (employeeName: string): string =>
+  renderTemplate({
+    title: "Welcome to Klawva",
+    body: `Your first employee, <strong>${escapeHtml(employeeName)}</strong>, is ready to go. You will get a message when the shift starts, and the report when it ends. You can always open your account to see every employee you have hired.`,
+    ctaLabel: "Open your account",
+    ctaHref: "https://www.klawva.xyz/account",
+  });
+
+export const shiftEndingEmail = (
+  employeeName: string,
+  endIso: string,
+): string =>
+  renderTemplate({
+    title: "Your shift is almost over",
+    body: `<strong>${escapeHtml(employeeName)}</strong> finishes its 24-hour shift at <strong>${new Date(endIso).toUTCString()}</strong>. Send any last instructions now. The report follows when the shift ends.`,
+    ctaLabel: "Open your account",
+    ctaHref: "https://www.klawva.xyz/account",
+  });
