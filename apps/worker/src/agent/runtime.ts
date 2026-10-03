@@ -4,6 +4,8 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { BlockedHost, FetchError, fetchUrl } from "./tools.ts";
 
+export const defaultModel = "@cf/zai-org/glm-4.7-flash";
+
 export interface ChatMessage {
   readonly role: string;
   readonly content: string;
