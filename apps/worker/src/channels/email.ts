@@ -2,10 +2,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import PostalMime from "postal-mime";
 import { make as makeDatabase } from "../db/database.ts";
-import { liveSessionStates, type SessionState } from "../db/schema.ts";
 import { sendEmail } from "../email/brevo.ts";
-import { renderTemplate } from "../email/templates.ts";
-import { toEmailHtml } from "../lib/markdown.ts";
+import { escapeHtml, renderTemplate } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 
 export interface InboundEmail {
@@ -16,33 +14,17 @@ export interface InboundEmail {
   readonly setReject: (reason: string) => void;
 }
 
-const replyAddressValue = "employees@klawva.xyz";
-const replyAddressPrefix = "employees+";
+const sessionPrefix = "employee-";
 const maxBytes = 1_000_000;
 
-const replyableStates: ReadonlyArray<SessionState> = ["pending", ...liveSessionStates];
-const replyableSlots = replyableStates.map(() => "?").join(", ");
-
-export const replyAddress = (): string => replyAddressValue;
-
-export const sessionReplyAddress = (sessionToken: string): string =>
-  `employees+${sessionToken}@klawva.xyz`;
-
-const tokenFromRecipient = (to: string): string | null => {
-  const normalized = to.trim().toLowerCase();
-  if (!normalized.startsWith(replyAddressPrefix) || !normalized.endsWith("@klawva.xyz")) {
+export const sessionFromAddress = (to: string): string | null => {
+  const local = to.split("@")[0] ?? "";
+  if (!local.startsWith(sessionPrefix)) {
     return null;
   }
-  const token = normalized.slice(
-    replyAddressPrefix.length,
-    normalized.length - "@klawva.xyz".length,
-  );
-  return token.length > 0 ? token : null;
+  const id = local.slice(sessionPrefix.length);
+  return id.length > 0 ? id : null;
 };
-
-export const isEmployeeRecipient = (to: string): boolean =>
-  to.trim().toLowerCase() === replyAddressValue ||
-  tokenFromRecipient(to) !== null;
 
 const askSession = (
   env: Env,
@@ -73,12 +55,26 @@ const askSession = (
 
 export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<void> =>
   Effect.gen(function* () {
-    if (!isEmployeeRecipient(message.to)) {
+    const sessionId = sessionFromAddress(message.to);
+    if (sessionId === null) {
       message.setReject("Unknown recipient");
       return;
     }
     if (message.rawSize > maxBytes) {
       message.setReject("Message too large");
+      return;
+    }
+    const db = makeDatabase(env.DB);
+    const session = yield* db
+      .first("SELECT customer_email AS email FROM sessions WHERE id = ?", [sessionId])
+      .pipe(Effect.orDie);
+    if (session === null) {
+      message.setReject("Unknown session");
+      return;
+    }
+    const allowed = session.email === null ? "" : String(session.email).toLowerCase();
+    if (allowed.length > 0 && message.from.toLowerCase() !== allowed) {
+      message.setReject("Sender not allowed");
       return;
     }
     const raw = yield* Effect.tryPromise({
@@ -89,62 +85,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       try: () => PostalMime.parse(raw),
       catch: (cause) => new Error(String(cause)),
     }).pipe(Effect.catch(() => Effect.succeed(null)));
-    const sender = message.from.trim().toLowerCase();
-    if (sender.length === 0) {
-      message.setReject("Missing envelope sender");
-      return;
-    }
-    const db = makeDatabase(env.DB);
-    const recipientToken = tokenFromRecipient(message.to);
-    const session =
-      recipientToken !== null
-        ? yield* db
-            .first(
-              `SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE session_token = ? AND state IN (${replyableSlots}) LIMIT 1`,
-              [recipientToken, ...replyableStates],
-            )
-            .pipe(Effect.orDie)
-        : yield* db
-            .first(
-              `SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE customer_email = ? AND state IN (${replyableSlots}) ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, created_at DESC LIMIT 1`,
-              [sender, ...replyableStates],
-            )
-            .pipe(Effect.orDie);
-    if (session === null) {
-      message.setReject("No active employee for this sender");
-      return;
-    }
-    const ownerEmail = String(session.customerEmail ?? "").trim().toLowerCase();
-    if (ownerEmail.length === 0 || ownerEmail !== sender) {
-      message.setReject("Sender is not the session owner");
-      return;
-    }
-    const sessionId = String(session.id);
-    const sessionState = String(session.state);
-    const sessionToken = String(session.token ?? "");
-    const replyTo =
-      sessionToken.length > 0 ? sessionReplyAddress(sessionToken) : undefined;
-    if (sessionState === "pending") {
-      yield* sendEmail({
-        apiKey: env.BREVO_API_KEY,
-        senderEmail: env.BREVO_SENDER_EMAIL,
-        senderName: "Klawva",
-        toEmail: sender,
-        subject: "Your Klawva employee is spinning up",
-        html: renderTemplate({
-          title: "Almost ready",
-          body: "<p>Your employee is still getting set up. Reply to this thread in a few minutes and it will be with you.</p>",
-        }),
-        replyToEmail: replyTo,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-    const plain = (parsed?.text ?? "").trim();
-    const fromHtml = (parsed?.html ?? "")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const text = (plain.length > 0 ? plain : fromHtml).slice(0, 4000);
+    const text = (parsed?.text ?? "").trim().slice(0, 4000);
     if (text.length === 0) {
       return;
     }
@@ -153,12 +94,14 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       apiKey: env.BREVO_API_KEY,
       senderEmail: env.BREVO_SENDER_EMAIL,
       senderName: "Klawva",
-      toEmail: sender,
+      toEmail: message.from,
       subject: "Reply from your Klawva employee",
       html: renderTemplate({
         title: "Your employee replied",
-        body: toEmailHtml(reply),
+        body: escapeHtml(reply).replace(/\n/g, "<br/>"),
       }),
-      replyToEmail: replyTo,
     }).pipe(Effect.catch(() => Effect.void));
   });
+
+export const replyAddress = (sessionId: string): string =>
+  `${sessionPrefix}${sessionId}@mail.klawva.xyz`;
