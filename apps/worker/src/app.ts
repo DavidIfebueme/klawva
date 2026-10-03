@@ -75,6 +75,7 @@ const PublicListingDetail = Schema.Struct({
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 import { ListingNotFound } from "./errors.ts";
+import { rateLimited, verifyTurnstile } from "./lib/guard.ts";
 
 const HealthResponse = Schema.Struct({
   ok: Schema.Boolean,
@@ -258,6 +259,11 @@ const rootGroup = HttpApiBuilder.group(
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
       .handle("requestLink", ({ payload }) =>
         Effect.gen(function* () {
+          const allowed = yield* rateLimited(env.AUTH_LIMITER, payload.email.toLowerCase());
+          const human = yield* verifyTurnstile(env.TURNSTILE_SECRET, undefined);
+          if (!allowed || !human) {
+            return { ok: true };
+          }
           yield* requestMagicLink(env, db, payload.email).pipe(Effect.orDie);
           return { ok: true };
         }),
@@ -301,6 +307,10 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("initializePayment", ({ payload }) =>
         Effect.gen(function* () {
+          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, payload.sessionId);
+          if (!allowed) {
+            return { reference: "", checkoutUrl: "" };
+          }
           const session = yield* db
             .first(
               "SELECT l.price_minor AS priceMinor FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
@@ -406,6 +416,10 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("chatSend", ({ params, payload }) =>
         Effect.gen(function* () {
+          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, params.id);
+          if (!allowed) {
+            return { reply: "Too many messages right now. Please wait a moment." };
+          }
           const session = yield* db
             .first("SELECT state AS state FROM sessions WHERE id = ?", [params.id])
             .pipe(Effect.orDie);
@@ -438,6 +452,10 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("contact", ({ payload }) =>
         Effect.gen(function* () {
+          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, payload.email.toLowerCase());
+          if (!allowed) {
+            return { ok: false };
+          }
           const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email);
           const nameOk =
             payload.name.trim().length >= 1 && payload.name.length <= 120;
