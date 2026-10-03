@@ -59,21 +59,6 @@ export function Component() {
               {employee.tagline}
             </p>
           </div>
-          {employee.capabilitySheet !== undefined && (
-            <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4">
-              <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
-                What it can do on your machine
-              </p>
-              <ul className="font-mono text-klawva-text text-sm space-y-1.5 list-disc list-inside">
-                {employee.capabilitySheet.sentences.map((sentence) => (
-                  <li key={sentence}>{sentence}</li>
-                ))}
-              </ul>
-              <p className="font-mono text-klawva-muted text-xs mt-3">
-                {employee.capabilitySheet.privacyLine}
-              </p>
-            </div>
-          )}
           <div className="h-px w-full bg-klawva-border" />
           <p className="font-mono text-klawva-muted text-lg leading-relaxed">
             Hires run a 24-hour shift. You hand over a brief, then work with
@@ -81,19 +66,6 @@ export function Component() {
             {employee.name.split(" ").pop()} entirely through Telegram from the
             moment your payment clears.
           </p>
-          {(employee.lane ?? "authored") !== "authored" && (
-            <div className="border border-klawva-border rounded p-4 font-mono text-xs text-klawva-dim leading-relaxed">
-              <p className="text-klawva-muted mb-2">Data schedule</p>
-              <p>
-                Your brief goes to the employee's author to do the shift.
-                {employee.dataPolicy
-                  ? ` Reports and evidence are kept ${employee.dataPolicy.retentionDays} days.`
-                  : ""}{" "}
-                You can ask for your data back from the session page at any
-                time; the author has 7 days to delete it.
-              </p>
-            </div>
-          )}
         </div>
         <div className="lg:col-span-5 relative">
           <div className="sticky top-32 bg-klawva-surface border border-klawva-accent rounded-xl p-8">
