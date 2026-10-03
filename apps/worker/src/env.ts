@@ -11,6 +11,10 @@ export interface Env {
   readonly PAYSTACK_SECRET_KEY: string;
   readonly BREVO_API_KEY: string;
   readonly BREVO_SENDER_EMAIL: string;
+  readonly BREET_APP_ID: string;
+  readonly BREET_APP_SECRET: string;
+  readonly BREET_WEBHOOK_SECRET: string;
+  readonly BREET_ENV: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(
