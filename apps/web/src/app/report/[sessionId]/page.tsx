@@ -15,7 +15,6 @@ import { ResearcherIcon } from "../../../components/icons/ResearcherIcon";
 import { Button } from "../../../components/ui/Button";
 import { ApiError } from "../../../lib/api-error";
 import { getSharedReport } from "../../../lib/public-api";
-import { Markdown } from "../../../components/ui/Markdown";
 import { agents, type AgentId } from "../../../lib/agents";
 
 const isAgentId = (value: string): value is AgentId => value in agents;
@@ -70,14 +69,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
 
 export function Component() {
   const { sessionId, agentParam, report, error } = useLoaderData<typeof loader>();
-  const slug =
-    report !== null && isAgentId(report.agentSlug)
-      ? report.agentSlug
-      : isAgentId(agentParam)
-        ? agentParam
-        : "scrapper";
-  const agent = agents[slug];
-  const displayName = report !== null ? report.agentName : agent.name;
+  const agentId = isAgentId(agentParam) ? agentParam : "scrapper";
+  const agent = agents[agentId];
   const AgentIcon =
     agent.id === "vendor"
       ? VendorIcon
@@ -148,7 +141,7 @@ export function Component() {
                 <AgentIcon size={64} className="text-klawva-text" />
                 <div>
                   <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-klawva-text mb-2">
-                    {displayName}
+                    {agent.name}
                   </h1>
                   <div className="font-mono text-klawva-muted text-sm">
                     {report !== null ? "Shift report" : "Mission in progress"}
@@ -176,13 +169,10 @@ export function Component() {
                 <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-4">
                   Final Summary
                 </div>
-                {report?.summary !== undefined ? (
-                  <Markdown content={report.summary} />
-                ) : (
-                  <p className="font-mono text-klawva-text text-base leading-relaxed">
-                    Mission report is still compiling and will appear here after final delivery.
-                  </p>
-                )}
+                <p className="font-mono text-klawva-text text-base leading-relaxed">
+                  {report?.summary ??
+                    "Mission report is still compiling and will appear here after final delivery."}
+                </p>
               </div>
 
               <div className="flex items-center justify-between pt-8 border-t border-klawva-border">
@@ -216,7 +206,7 @@ export function Component() {
             </div>
             <div className="h-px w-full bg-klawva-border my-2" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button variant="primary" href={`/employees/${agent.id}`}>
+              <Button variant="primary" href={`/hire/${agent.id}`}>
                 Hire again →
               </Button>
               <Button variant="ghost" href="/employees">
