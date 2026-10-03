@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { redirect, useLoaderData, useNavigate } from "react-router-dom";
-import { getStudioSession } from "@/lib/studio-session";
+import { useLoaderData, useNavigate } from "react-router-dom";
+import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
   createStudioListing,
   getStudioListings,
@@ -18,14 +18,11 @@ const minPriceMinor = 1000;
 const maxPriceMinor = 25000;
 
 export const loader = async () => {
-  const session = getStudioSession();
-  if (session === null) {
-    throw redirect("/studio/login");
-  }
+  const session = requireSession();
   const [me, listings] = await Promise.all([
     getStudioMe(session.token),
     getStudioListings(session.token),
-  ]);
+  ]).catch(rethrowAuth);
   return { session, me, listings };
 };
 
@@ -35,7 +32,7 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
-export default function StudioHomePage() {
+export function Component() {
   const { session, me, listings } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
@@ -57,6 +54,7 @@ export default function StudioHomePage() {
       const checkout = await startAuthorFee(session.token);
       window.location.href = checkout.checkoutUrl;
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to start payment");
       setBusy(false);
     }
@@ -86,6 +84,7 @@ export default function StudioHomePage() {
       });
       navigate(`/studio/listings/${created.id}`);
     } catch (err) {
+      if (handleActionAuthError(err)) return;
       setError(err instanceof Error ? err.message : "Failed to create listing");
       setBusy(false);
     }
