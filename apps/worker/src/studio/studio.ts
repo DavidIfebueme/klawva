@@ -96,6 +96,7 @@ export interface DraftInput {
   readonly tagline: string;
   readonly category: string;
   readonly priceMinor: number;
+  readonly budgetMinor: number;
   readonly briefFields: ReadonlyArray<string>;
   readonly soul: string;
 }
@@ -138,11 +139,12 @@ export const createAuthorDraft = (
       agentId: `author:${input.slug}`,
       briefFields: input.briefFields,
       priceMinor: input.priceMinor,
+      budgetMinor: input.budgetMinor,
     };
     const hash = yield* manifestHash(definition).pipe(Effect.orDie);
     yield* db
       .run(
-        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, brief_fields, tool_allowlist, model, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
+        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
         [
           crypto.randomUUID(),
           id,
@@ -151,6 +153,7 @@ export const createAuthorDraft = (
           JSON.stringify(input.briefFields),
           JSON.stringify(["fetch_url"]),
           defaultModel,
+          input.budgetMinor,
           now,
         ],
       )
@@ -170,14 +173,19 @@ export const listingDetail = (
     }
     const version = yield* db
       .first(
-        "SELECT soul AS soul, brief_fields AS briefFields, price_minor AS priceMinor FROM listing_versions v JOIN agent_listings l ON l.id = v.listing_id AND l.current_version = v.version WHERE v.listing_id = ?",
+        "SELECT soul AS soul, brief_fields AS briefFields, budget_minor AS budgetMinor FROM listing_versions v JOIN agent_listings l ON l.id = v.listing_id AND l.current_version = v.version WHERE v.listing_id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (version === null) {
       return yield* Effect.die("listing_version_missing");
     }
-    return { ...listing, soul: version.soul, briefFields: version.briefFields };
+    return {
+      ...listing,
+      soul: version.soul,
+      briefFields: version.briefFields,
+      budgetMinor: version.budgetMinor,
+    };
   });
 
 export interface UpdateInput {
@@ -185,6 +193,7 @@ export interface UpdateInput {
   readonly tagline: string;
   readonly category: string;
   readonly priceMinor: number;
+  readonly budgetMinor: number;
   readonly briefFields: ReadonlyArray<string>;
   readonly soul: string;
 }
@@ -223,12 +232,20 @@ export const updateAuthorDraft = (
       agentId: `author:${slug}`,
       briefFields: input.briefFields,
       priceMinor: input.priceMinor,
+      budgetMinor: input.budgetMinor,
     };
     const hash = yield* manifestHash(definition).pipe(Effect.orDie);
     yield* db
       .run(
-        "UPDATE listing_versions SET soul = ?, brief_fields = ?, manifest_hash = ?, score = NULL WHERE listing_id = ? AND version = ?",
-        [input.soul, JSON.stringify(input.briefFields), hash, listingId, version],
+        "UPDATE listing_versions SET soul = ?, brief_fields = ?, manifest_hash = ?, budget_minor = ?, score = NULL WHERE listing_id = ? AND version = ?",
+        [
+          input.soul,
+          JSON.stringify(input.briefFields),
+          hash,
+          input.budgetMinor,
+          listingId,
+          version,
+        ],
       )
       .pipe(Effect.orDie);
   });

@@ -124,9 +124,14 @@ export function Component() {
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-klawva-border">
-                <span className="font-syne font-extrabold text-2xl text-klawva-accent">
-                  ₦{(employee.priceMinor / 100).toLocaleString()}
-                </span>
+                <div>
+                  <span className="font-syne font-extrabold text-2xl text-klawva-accent">
+                    ₦{(employee.priceMinor / 100).toLocaleString()}
+                  </span>
+                  <p className="font-mono text-klawva-dim text-xs mt-1">
+                    AI budget cap: {employee.budgetMinor}
+                  </p>
+                </div>
                 <Button type="submit" variant="primary" size="lg" loading={loading}>
                   Pay and launch →
                 </Button>

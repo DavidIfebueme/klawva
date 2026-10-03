@@ -44,6 +44,7 @@ const Detail = Schema.Struct({
   category: Schema.String,
   status: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   version: Schema.Number,
   soul: Schema.String,
   briefFields: Schema.String,
@@ -66,6 +67,7 @@ const DraftInput = Schema.Struct({
   tagline: Schema.String,
   category: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   briefFields: Schema.Array(Schema.String),
   soul: Schema.String,
 });
@@ -109,6 +111,7 @@ const UpdateInput = Schema.Struct({
   tagline: Schema.String,
   category: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   briefFields: Schema.Array(Schema.String),
   soul: Schema.String,
 });

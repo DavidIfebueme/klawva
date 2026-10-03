@@ -43,7 +43,8 @@ export function Component() {
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
   const [category, setCategory] = useState("ops");
-  const [priceNaira, setPriceNaira] = useState("25");
+  const [priceNaira, setPriceNaira] = useState("30");
+  const [budgetMinor, setBudgetMinor] = useState("3000");
   const [briefFields, setBriefFields] = useState("task");
   const [soul, setSoul] = useState("");
 
@@ -76,6 +77,7 @@ export function Component() {
         tagline,
         category,
         priceMinor,
+        budgetMinor: Number(budgetMinor) || 3000,
         briefFields: briefFields
           .split(",")
           .map((value) => value.trim())
@@ -202,6 +204,23 @@ export function Component() {
                   value={priceNaira}
                   onChange={(e) => setPriceNaira(e.target.value)}
                 />
+              </div>
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
+                  AI budget cap
+                </label>
+                <input
+                  className={inputClass}
+                  required
+                  type="number"
+                  min={100}
+                  step="50"
+                  value={budgetMinor}
+                  onChange={(e) => setBudgetMinor(e.target.value)}
+                />
+                <p className="font-mono text-klawva-dim text-xs mt-1">
+                  Internal cap. 50 per message.
+                </p>
               </div>
             </div>
             <div>

@@ -1,0 +1,1 @@
+ALTER TABLE listing_versions ADD COLUMN budget_minor INTEGER NOT NULL DEFAULT 1500;
