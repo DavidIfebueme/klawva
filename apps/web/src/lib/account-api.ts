@@ -94,3 +94,43 @@ export async function getAccountSession(
     await get(`/api/account/sessions/${encodeURIComponent(id)}`, token),
   );
 }
+
+const member = Schema.Struct({ email: Schema.String, role: Schema.String });
+export type AccountMember = typeof member.Type;
+
+async function post(
+  path: string,
+  token: string,
+  body: unknown,
+): Promise<unknown> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "x-auth-token": token, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new ApiError(await failureMessage(res), res.status);
+  }
+  return res.json();
+}
+
+export async function listMembers(
+  token: string,
+  id: string,
+): Promise<ReadonlyArray<AccountMember>> {
+  return Schema.decodeUnknownSync(Schema.Array(member))(
+    await get(`/api/account/sessions/${encodeURIComponent(id)}/members`, token),
+  );
+}
+
+export async function addMember(
+  token: string,
+  id: string,
+  email: string,
+): Promise<{ ok: boolean }> {
+  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
+    await post(`/api/account/sessions/${encodeURIComponent(id)}/members`, token, {
+      email,
+    }),
+  );
+}
