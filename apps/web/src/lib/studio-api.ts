@@ -28,7 +28,7 @@ const listingDetail = Schema.Struct({
 });
 export type StudioListingDetail = typeof listingDetail.Type;
 
-const identity = Schema.Struct({ email: Schema.String, feePaid: Schema.Boolean });
+const identity = Schema.Struct({ email: Schema.String });
 export type StudioIdentity = typeof identity.Type;
 
 const evalOutcome = Schema.Struct({ score: Schema.Number, band: Schema.String });
@@ -40,12 +40,6 @@ const submitOutcome = Schema.Struct({
   status: Schema.String,
 });
 export type SubmitOutcome = typeof submitOutcome.Type;
-
-const checkout = Schema.Struct({
-  reference: Schema.String,
-  checkoutUrl: Schema.String,
-});
-export type FeeCheckout = typeof checkout.Type;
 
 const authVerify = Schema.Struct({
   sessionToken: Schema.String,
@@ -104,12 +98,15 @@ function authHeaders(token: string): HeadersInit {
   return { "x-auth-token": token, "Content-Type": "application/json" };
 }
 
-export async function requestStudioLink(email: string): Promise<{ ok: boolean }> {
+export async function requestStudioLink(
+  email: string,
+  next: string,
+): Promise<{ ok: boolean }> {
   return Schema.decodeUnknownSync(okResponse)(
     await send("/api/auth/request-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, next }),
     }),
   );
 }
@@ -197,11 +194,5 @@ export async function submitStudioListing(
       method: "POST",
       headers: authHeaders(token),
     }),
-  );
-}
-
-export async function startAuthorFee(token: string): Promise<FeeCheckout> {
-  return Schema.decodeUnknownSync(checkout)(
-    await send("/api/author/fee", { method: "POST", headers: authHeaders(token) }),
   );
 }
