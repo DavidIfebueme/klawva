@@ -1,10 +1,5 @@
-import { linkChannel } from "../account/account.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-
-export class SlackError extends Schema.TaggedError<SlackError>()("SlackError", {
-  reason: Schema.String,
-}) {}
 import type { DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
@@ -116,10 +111,10 @@ export const postMessage = (
   token: string,
   channel: string,
   text: string,
-): Effect.Effect<void, SlackError> =>
+): Effect.Effect<void> =>
   Effect.tryPromise({
     try: async () => {
-      const response = await fetch("https://slack.com/api/chat.postMessage", {
+      await fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -127,19 +122,9 @@ export const postMessage = (
         },
         body: JSON.stringify({ channel, text: text.slice(0, 4000) }),
       });
-      if (!response.ok) {
-        throw new Error(`slack_${response.status}`);
-      }
-      const body: unknown = await response.json();
-      const decoded = Schema.decodeUnknownOption(
-        Schema.Struct({ ok: Schema.Boolean }),
-      )(body);
-      if (decoded._tag === "Some" && !decoded.value.ok) {
-        throw new Error("slack_not_ok");
-      }
     },
-    catch: (cause) => new SlackError({ reason: String(cause) }),
-  });
+    catch: (cause) => new Error(String(cause)),
+  }).pipe(Effect.catch(() => Effect.void));
 
 const askSession = (
   env: Env,
@@ -250,11 +235,15 @@ export const handleEvent = (
     }
     const sessionId = String(session.id);
     const chatId = `${teamId}:${event.channel}`;
-    yield* linkChannel(db, sessionId, "slack", chatId);
+    const now = new Date().toISOString();
+    yield* db
+      .run(
+        "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, 'slack', ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET status = 'linked', updated_at = excluded.updated_at",
+        [crypto.randomUUID(), sessionId, chatId, now, now],
+      )
+      .pipe(Effect.orDie);
     const text = (event.text ?? "").replace(/<@[^>]+>/g, "").trim();
     const reply = yield* askSession(env, sessionId, text.length > 0 ? text : "Hello");
-    yield* postMessage(String(connection.token), event.channel, reply).pipe(
-      Effect.catch(() => Effect.void),
-    );
+    yield* postMessage(String(connection.token), event.channel, reply);
     return "ok";
   });
