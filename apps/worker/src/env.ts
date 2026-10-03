@@ -15,6 +15,9 @@ export interface Env {
   readonly BREET_APP_SECRET: string;
   readonly BREET_WEBHOOK_SECRET: string;
   readonly BREET_ENV: string;
+  readonly ADMIN_EMAILS: string;
+  readonly AUTH_SECRET: string;
+  readonly FRONTEND_BASE_URL: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(
