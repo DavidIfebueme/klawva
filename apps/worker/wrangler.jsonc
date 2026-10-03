@@ -3,10 +3,15 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
   "account_id": "dc22b5614ced449009cac59911622f11",
   "observability": { "enabled": true },
   "vars": { "ENV": "development", "TELEGRAM_BOT_USERNAME": "klawva_employee_1_bot" },
   "triggers": { "crons": ["0 * * * *"] },
+  "routes": [
+    { "pattern": "klawva.xyz", "custom_domain": true },
+    { "pattern": "www.klawva.xyz", "custom_domain": true }
+  ],
   "ratelimits": [
     { "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
     { "name": "PUBLIC_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
