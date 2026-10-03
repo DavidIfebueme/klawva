@@ -98,7 +98,13 @@ export default {
         ? exit.value
         : Response.json({ ok: false }, { status: 500 });
     }
-    return toResponse(request, env);
+    if (url.pathname.startsWith("/api/") ||
+      url.pathname.startsWith("/webhooks/") ||
+      url.pathname.startsWith("/internal/") ||
+      url.pathname === "/health") {
+      return toResponse(request, env);
+    }
+    return env.ASSETS.fetch(request);
   },
   async scheduled(_event: unknown, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
     ctx.waitUntil(
