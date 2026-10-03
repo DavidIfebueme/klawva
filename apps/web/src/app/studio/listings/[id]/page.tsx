@@ -1,34 +1,18 @@
-import React, { useState } from "react";
-import {
-  redirect,
-  useLoaderData,
-  useNavigate,
-  useRevalidator,
-  type LoaderFunctionArgs,
-} from "react-router-dom";
-import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
+import React, { useEffect, useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useStudioAuth } from "@/components/studio-auth-provider";
 import {
   getStudioListing,
   runStudioSandbox,
   submitStudioListing,
   updateStudioListing,
+  startAuthorFee,
+  type StudioListingDetail,
 } from "@/lib/studio-api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { Toast, type ToastState } from "@/components/ui/Toast";
-import { FlaskConical, Send, Save, ArrowLeft } from "lucide-react";
-
-export const loader = async ({ params }: LoaderFunctionArgs) => {
-  const session = requireSession();
-  if (params.id === undefined) {
-    throw redirect("/studio");
-  }
-  const detail = await getStudioListing(session.token, params.id).catch(
-    rethrowAuth,
-  );
-  return { session, detail };
-};
+import { Loader2, FlaskConical, Send, Save, ArrowLeft } from "lucide-react";
 
 function parseBriefFields(raw: string): string {
   try {
@@ -48,95 +32,141 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
-export function Component() {
-  const { session, detail } = useLoaderData<typeof loader>();
+export default function StudioListingPage() {
+  const { session } = useStudioAuth();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
-  const [busyAction, setBusyAction] = useState<null | "save" | "sandbox" | "submit">(null);
+  const [listing, setListing] = useState<StudioListingDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState<ToastState | null>(null);
+  const [notice, setNotice] = useState("");
   const [outcome, setOutcome] = useState<{ score: number; band: string } | null>(null);
 
-  const showToast = (kind: ToastState["kind"], message: string) => {
-    setToast({ kind, message });
-    window.setTimeout(() => setToast(null), 5000);
-  };
+  const [name, setName] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [category, setCategory] = useState("");
+  const [priceNaira, setPriceNaira] = useState("");
+  const [briefFields, setBriefFields] = useState("");
+  const [soul, setSoul] = useState("");
 
-  const [name, setName] = useState(detail.name);
-  const [tagline, setTagline] = useState(detail.tagline);
-  const [category, setCategory] = useState(detail.category);
-  const [priceNaira, setPriceNaira] = useState(String(detail.priceMinor / 100));
-  const [budgetMinor, setBudgetMinor] = useState(String(detail.budgetMinor));
-  const [briefFields, setBriefFields] = useState(parseBriefFields(detail.briefFields));
-  const [soul, setSoul] = useState(detail.soul);
+  useEffect(() => {
+    if (session === null || id === undefined) return;
+    const token = session.token;
+    async function load() {
+      try {
+        const detail = await getStudioListing(token, id as string);
+        setListing(detail);
+        setName(detail.name);
+        setTagline(detail.tagline);
+        setCategory(detail.category);
+        setPriceNaira(String(detail.priceMinor / 100));
+        setBriefFields(parseBriefFields(detail.briefFields));
+        setSoul(detail.soul);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load listing");
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [session, id]);
 
-  const editable = detail.status === "draft" || detail.status === "rejected";
+  if (session === null) {
+    return <Navigate to="/studio/login" replace />;
+  }
+
+  const editable =
+    listing !== null && (listing.status === "draft" || listing.status === "rejected");
 
   const handleSave = async () => {
-    setBusyAction("save");
+    if (id === undefined) return;
+    setBusy(true);
     setError("");
-    const priceMinor = Math.round(Number(priceNaira) * 100);
-    if (!Number.isFinite(priceMinor) || priceMinor < 100000 || priceMinor > 2500000) {
-      setError("Price must be between ₦1,000 and ₦25,000");
-      setBusyAction(null);
-      return;
-    }
+    setNotice("");
     try {
-      await updateStudioListing(session.token, detail.id, {
+      await updateStudioListing(session.token, id, {
         name,
         tagline,
         category,
-        priceMinor,
-        budgetMinor: Number(budgetMinor) || 3000,
+        priceMinor: Math.round(Number(priceNaira) * 100),
         briefFields: briefFields
           .split(",")
           .map((v) => v.trim())
           .filter((v) => v.length > 0),
         soul,
       });
-      showToast("success", "Draft saved.");
-      revalidator.revalidate();
+      setNotice("Draft saved.");
     } catch (err) {
-      if (handleActionAuthError(err)) return;
-      showToast("error", err instanceof Error ? err.message : "Failed to save");
+      setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setBusyAction(null);
+      setBusy(false);
     }
   };
 
   const handleSandbox = async () => {
-    setBusyAction("sandbox");
+    if (id === undefined) return;
+    setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const result = await runStudioSandbox(session.token, detail.id);
+      const result = await runStudioSandbox(session.token, id);
       setOutcome(result);
-      showToast("success", `Sandbox score ${result.score}, band ${result.band}.`);
     } catch (err) {
-      if (handleActionAuthError(err)) return;
-      showToast("error", err instanceof Error ? err.message : "Sandbox failed");
+      setError(err instanceof Error ? err.message : "Sandbox failed");
     } finally {
-      setBusyAction(null);
+      setBusy(false);
     }
   };
 
   const handleSubmit = async () => {
-    setBusyAction("submit");
+    if (id === undefined) return;
+    setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const result = await submitStudioListing(session.token, detail.id);
+      const result = await submitStudioListing(session.token, id);
       setOutcome({ score: result.score, band: result.band });
-      showToast("success", `Submitted for review. New status: ${result.status.replace("_", " ")}.`);
-      revalidator.revalidate();
+      setListing((prev) => (prev ? { ...prev, status: result.status } : prev));
+      setNotice(`Submitted. New status: ${result.status.replace("_", " ")}.`);
     } catch (err) {
-      if (handleActionAuthError(err)) return;
-      showToast("error", err instanceof Error ? err.message : "Submit failed");
+      const message = err instanceof Error ? err.message : "Submit failed";
+      setError(message);
+      if (message === "FeeRequired") {
+        try {
+          const checkout = await startAuthorFee(session.token);
+          window.location.href = checkout.checkoutUrl;
+        } catch (payErr) {
+          setError(payErr instanceof Error ? payErr.message : "Fee payment failed");
+        }
+      }
     } finally {
-      setBusyAction(null);
+      setBusy(false);
     }
   };
 
   const inputClass =
     "w-full h-11 bg-klawva-bg border border-klawva-border rounded px-4 text-sm text-klawva-text placeholder-klawva-dim focus:border-klawva-accent focus:outline-none transition-colors font-mono";
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 py-24 text-xs text-klawva-muted">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading listing...
+      </div>
+    );
+  }
+
+  if (listing === null) {
+    return (
+      <div className="space-y-6">
+        <p className="text-sm text-klawva-orange">{error || "Listing not found."}</p>
+        <Button variant="secondary" size="sm" onClick={() => navigate("/studio")}>
+          Back to listings
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -151,20 +181,25 @@ export function Component() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider block mb-1">
-            {detail.slug}
+            {listing.slug}
           </span>
           <h1 className="font-syne font-bold text-3xl uppercase text-white">
-            {detail.name}
+            {listing.name}
           </h1>
         </div>
-        <Badge variant={statusVariant(detail.status)}>
-          {detail.status.replace("_", " ")}
+        <Badge variant={statusVariant(listing.status)}>
+          {listing.status.replace("_", " ")}
         </Badge>
       </div>
 
       {error && (
         <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p className="text-xs text-klawva-accent bg-klawva-accent/10 border border-klawva-accent/20 rounded p-3 font-mono">
+          {notice}
         </p>
       )}
 
@@ -219,25 +254,9 @@ export function Component() {
               <input
                 className={inputClass}
                 type="number"
-                min="1000"
-                max="25000"
-                step="1"
+                step="0.01"
                 value={priceNaira}
                 onChange={(e) => setPriceNaira(e.target.value)}
-                disabled={!editable}
-              />
-            </div>
-            <div>
-              <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
-                AI budget cap
-              </label>
-              <input
-                className={inputClass}
-                type="number"
-                min="100"
-                step="50"
-                value={budgetMinor}
-                onChange={(e) => setBudgetMinor(e.target.value)}
                 disabled={!editable}
               />
             </div>
@@ -281,19 +300,13 @@ export function Component() {
               variant="secondary"
               size="md"
               onClick={handleSave}
-              loading={busyAction === "save"}
+              loading={busy}
               disabled={!editable}
             >
               <Save size={16} />
               Save Draft
             </Button>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={handleSandbox}
-              loading={busyAction === "sandbox"}
-              disabled={busyAction !== null}
-            >
+            <Button variant="secondary" size="md" onClick={handleSandbox} loading={busy}>
               <FlaskConical size={16} />
               Run Sandbox
             </Button>
@@ -301,8 +314,8 @@ export function Component() {
               variant="primary"
               size="md"
               onClick={handleSubmit}
-              loading={busyAction === "submit"}
-              disabled={detail.status === "published" || busyAction !== null}
+              loading={busy}
+              disabled={listing.status === "published"}
             >
               <Send size={16} />
               Submit for Review
@@ -310,8 +323,6 @@ export function Component() {
           </div>
         </div>
       </Card>
-
-      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }

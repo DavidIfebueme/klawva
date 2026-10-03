@@ -1,42 +1,32 @@
-import * as Schema from "effect/Schema";
-import { ApiError } from "./api-error.ts";
-
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
-const overview = Schema.Struct({
-  users: Schema.Number,
-  authors: Schema.Number,
-  sessions: Schema.Number,
-  pendingReviews: Schema.Number,
-  listingsByStatus: Schema.Array(
-    Schema.Struct({ status: Schema.String, count: Schema.Number }),
-  ),
-});
-export type AdminOverview = typeof overview.Type;
+export interface AdminOverview {
+  users: number;
+  authors: number;
+  sessions: number;
+  pendingReviews: number;
+  listingsByStatus: { status: string; count: number }[];
+}
 
-const reviewItem = Schema.Struct({
-  id: Schema.String,
-  slug: Schema.String,
-  name: Schema.String,
-  priceMinor: Schema.Number,
-  ownerId: Schema.String,
-  ownerEmail: Schema.NullOr(Schema.String),
-  score: Schema.NullOr(Schema.Number),
-  soul: Schema.NullOr(Schema.String),
-});
-export type ReviewItem = typeof reviewItem.Type;
+export interface ReviewItem {
+  id: string;
+  slug: string;
+  name: string;
+  priceMinor: number;
+  ownerId: string;
+  ownerEmail: string | null;
+  score: number | null;
+  soul: string | null;
+}
 
-const auditItem = Schema.Struct({
-  id: Schema.String,
-  actorEmail: Schema.String,
-  action: Schema.String,
-  targetId: Schema.String,
-  detail: Schema.String,
-  createdAt: Schema.String,
-});
-export type AuditItem = typeof auditItem.Type;
-
-const statusResponse = Schema.Struct({ status: Schema.String });
+export interface AuditItem {
+  id: string;
+  actorEmail: string;
+  action: string;
+  targetId: string;
+  detail: string;
+  createdAt: string;
+}
 
 async function failureMessage(res: Response): Promise<string> {
   try {
@@ -53,12 +43,12 @@ async function failureMessage(res: Response): Promise<string> {
   return `Request failed (${res.status})`;
 }
 
-async function send(path: string, init: RequestInit): Promise<unknown> {
+async function request<T>(path: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init);
   if (!res.ok) {
-    throw new ApiError(await failureMessage(res), res.status);
+    throw new Error(await failureMessage(res));
   }
-  return res.json();
+  return await res.json();
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -66,33 +56,25 @@ function authHeaders(token: string): HeadersInit {
 }
 
 export async function getAdminOverview(token: string): Promise<AdminOverview> {
-  return Schema.decodeUnknownSync(overview)(
-    await send("/api/admin/overview", { headers: authHeaders(token) }),
-  );
+  return request("/api/admin/overview", { headers: authHeaders(token) });
 }
 
-export async function getAdminReviews(token: string): Promise<ReadonlyArray<ReviewItem>> {
-  return Schema.decodeUnknownSync(Schema.Array(reviewItem))(
-    await send("/api/admin/reviews", { headers: authHeaders(token) }),
-  );
+export async function getAdminReviews(token: string): Promise<ReviewItem[]> {
+  return request("/api/admin/reviews", { headers: authHeaders(token) });
 }
 
-export async function getAdminAudit(token: string): Promise<ReadonlyArray<AuditItem>> {
-  return Schema.decodeUnknownSync(Schema.Array(auditItem))(
-    await send("/api/admin/audit", { headers: authHeaders(token) }),
-  );
+export async function getAdminAudit(token: string): Promise<AuditItem[]> {
+  return request("/api/admin/audit", { headers: authHeaders(token) });
 }
 
 export async function approveListing(
   token: string,
   id: string,
 ): Promise<{ status: string }> {
-  return Schema.decodeUnknownSync(statusResponse)(
-    await send(`/api/admin/listings/${id}/approve`, {
-      method: "POST",
-      headers: authHeaders(token),
-    }),
-  );
+  return request(`/api/admin/listings/${id}/approve`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
 }
 
 export async function rejectListing(
@@ -100,11 +82,9 @@ export async function rejectListing(
   id: string,
   reason: string,
 ): Promise<{ status: string }> {
-  return Schema.decodeUnknownSync(statusResponse)(
-    await send(`/api/admin/listings/${id}/reject`, {
-      method: "POST",
-      headers: authHeaders(token),
-      body: JSON.stringify({ reason }),
-    }),
-  );
+  return request(`/api/admin/listings/${id}/reject`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ reason }),
+  });
 }
