@@ -61,3 +61,54 @@ export const backfillSessionsForUser = (
       [userId, email],
     )
     .pipe(Effect.orDie);
+
+export const ownsSession = (
+  db: DatabaseImpl,
+  userId: string,
+  email: string,
+  sessionId: string,
+): Effect.Effect<boolean> =>
+  db
+    .first(
+      "SELECT id AS id FROM sessions WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND customer_email = ?))",
+      [sessionId, userId, email],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => row !== null),
+    );
+
+export const listMembers = (
+  db: DatabaseImpl,
+  sessionId: string,
+): Effect.Effect<ReadonlyArray<Readonly<Record<string, unknown>>>> =>
+  db
+    .all(
+      "SELECT email AS email, role AS role FROM session_members WHERE session_id = ? ORDER BY created_at",
+      [sessionId],
+    )
+    .pipe(Effect.orDie);
+
+export const addMember = (
+  db: DatabaseImpl,
+  sessionId: string,
+  email: string,
+): Effect.Effect<void> =>
+  db
+    .run(
+      "INSERT INTO session_members (id, session_id, email, role, created_at) VALUES (?, ?, ?, 'member', ?) ON CONFLICT(session_id, email) DO NOTHING",
+      [crypto.randomUUID(), sessionId, email.trim().toLowerCase(), new Date().toISOString()],
+    )
+    .pipe(Effect.orDie);
+
+export const removeMember = (
+  db: DatabaseImpl,
+  sessionId: string,
+  email: string,
+): Effect.Effect<void> =>
+  db
+    .run("DELETE FROM session_members WHERE session_id = ? AND email = ?", [
+      sessionId,
+      email.trim().toLowerCase(),
+    ])
+    .pipe(Effect.orDie);

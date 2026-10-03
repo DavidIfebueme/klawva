@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
-import { getAccountSession } from "@/lib/account-api";
-import { sendFeedback } from "@/lib/employees-api";
+import { addMember, getAccountSession, listMembers } from "@/lib/account-api";import { sendFeedback } from "@/lib/employees-api";
 
 const humanize = (value: string): string =>
   value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -34,7 +33,8 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   const detail = await getAccountSession(session.token, params.id).catch(
     rethrowAccountAuth,
   );
-  return { detail };
+  const members = await listMembers(session.token, params.id).catch(() => []);
+  return { session, detail, members };
 };
 
 function statusVariant(state: string): "active" | "pending" | "warning" {
@@ -44,12 +44,27 @@ function statusVariant(state: string): "active" | "pending" | "warning" {
 }
 
 export function Component() {
-  const { detail } = useLoaderData<typeof loader>();
+  const { session, detail, members } = useLoaderData<typeof loader>();
   const brief = parseBrief(detail.session.brief);
   const [rating, setRating] = useState(5);
   const [report, setReport] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberBusy, setMemberBusy] = useState(false);
+
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = memberEmail.trim();
+    if (email.length === 0) return;
+    setMemberBusy(true);
+    try {
+      await addMember(session.token, detail.session.id, email);
+      setMemberEmail("");
+    } finally {
+      setMemberBusy(false);
+    }
+  };
 
   const handleFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,6 +201,36 @@ export function Component() {
                 </Button>
               </form>
             )}
+          </Card>
+
+          <Card>
+            <h2 className="font-syne font-bold text-lg uppercase text-white mb-4">
+              Team
+            </h2>
+            {members.length === 0 ? (
+              <p className="font-mono text-klawva-muted text-sm mb-4">
+                Only you so far.
+              </p>
+            ) : (
+              <ul className="space-y-2 mb-4">
+                {members.map((entry) => (
+                  <li key={entry.email} className="font-mono text-klawva-text text-sm">
+                    {entry.email} · {entry.role}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form onSubmit={handleAddMember} className="flex gap-3">
+              <input
+                className="flex-grow h-10 bg-klawva-bg border border-klawva-border rounded px-3 text-sm text-klawva-text placeholder-klawva-dim focus:border-klawva-accent focus:outline-none font-mono"
+                placeholder="teammate@example.com"
+                value={memberEmail}
+                onChange={(e) => setMemberEmail(e.target.value)}
+              />
+              <Button type="submit" variant="secondary" size="sm" loading={memberBusy}>
+                Add
+              </Button>
+            </form>
           </Card>
         </div>
       </main>
