@@ -78,6 +78,21 @@ export const ownsSession = (
       Effect.map((row) => row !== null),
     );
 
+export const sessionTokenMatches = (
+  db: DatabaseImpl,
+  sessionId: string,
+  token: string,
+): Effect.Effect<boolean> =>
+  db
+    .first("SELECT id AS id FROM sessions WHERE id = ? AND session_token = ?", [
+      sessionId,
+      token,
+    ])
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => row !== null),
+    );
+
 export const listMembers = (
   db: DatabaseImpl,
   sessionId: string,

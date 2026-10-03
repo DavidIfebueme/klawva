@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { ApiError } from "./api-error.ts";
+import { ApiError, failureMessage } from "./api-error.ts";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -52,21 +52,6 @@ const sessionDetail = Schema.Struct({
   report: Schema.NullOr(report),
 });
 export type AccountSessionDetail = typeof sessionDetail.Type;
-
-async function failureMessage(res: Response): Promise<string> {
-  try {
-    const payload: unknown = await res.json();
-    if (payload !== null && typeof payload === "object") {
-      const record = payload as Record<string, unknown>;
-      if (typeof record.reason === "string") return record.reason;
-      if (typeof record._tag === "string") return record._tag;
-      if (typeof record.detail === "string") return record.detail;
-    }
-  } catch {
-    return `Request failed (${res.status})`;
-  }
-  return `Request failed (${res.status})`;
-}
 
 async function get(path: string, token: string): Promise<unknown> {
   const res = await fetch(`${BASE}${path}`, {
@@ -131,6 +116,20 @@ export async function addMember(
   return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
     await post(`/api/account/sessions/${encodeURIComponent(id)}/members`, token, {
       email,
+    }),
+  );
+}
+
+export async function submitFeedback(
+  token: string,
+  id: string,
+  rating: number,
+  report?: string,
+): Promise<{ ok: boolean }> {
+  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
+    await post(`/api/sessions/${encodeURIComponent(id)}/feedback`, token, {
+      rating,
+      report,
     }),
   );
 }
