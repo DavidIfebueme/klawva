@@ -60,19 +60,6 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       message.setReject("Message too large");
       return;
     }
-    const from = message.from.trim().toLowerCase();
-    const db = makeDatabase(env.DB);
-    const session = yield* db
-      .first(
-        "SELECT id AS id FROM sessions WHERE customer_email = ? AND state IN ('ready', 'active') ORDER BY created_at DESC LIMIT 1",
-        [from],
-      )
-      .pipe(Effect.orDie);
-    if (session === null) {
-      message.setReject("No active employee for this sender");
-      return;
-    }
-    const sessionId = String(session.id);
     const raw = yield* Effect.tryPromise({
       try: () => new Response(message.raw).arrayBuffer(),
       catch: (cause) => new Error(String(cause)),
@@ -81,7 +68,27 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       try: () => PostalMime.parse(raw),
       catch: (cause) => new Error(String(cause)),
     }).pipe(Effect.catch(() => Effect.succeed(null)));
-    const text = (parsed?.text ?? "").trim().slice(0, 4000);
+    const headerSender = parsed?.from?.address?.trim().toLowerCase() ?? "";
+    const sender =
+      headerSender.length > 0 ? headerSender : message.from.trim().toLowerCase();
+    const db = makeDatabase(env.DB);
+    const session = yield* db
+      .first(
+        "SELECT id AS id FROM sessions WHERE customer_email = ? AND state IN ('ready', 'active') ORDER BY created_at DESC LIMIT 1",
+        [sender],
+      )
+      .pipe(Effect.orDie);
+    if (session === null) {
+      message.setReject("No active employee for this sender");
+      return;
+    }
+    const sessionId = String(session.id);
+    const plain = (parsed?.text ?? "").trim();
+    const fromHtml = (parsed?.html ?? "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const text = (plain.length > 0 ? plain : fromHtml).slice(0, 4000);
     if (text.length === 0) {
       return;
     }
@@ -90,7 +97,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       apiKey: env.BREVO_API_KEY,
       senderEmail: env.BREVO_SENDER_EMAIL,
       senderName: "Klawva",
-      toEmail: message.from,
+      toEmail: sender,
       subject: "Reply from your Klawva employee",
       html: renderTemplate({
         title: "Your employee replied",
