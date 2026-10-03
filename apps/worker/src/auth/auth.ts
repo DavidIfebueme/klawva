@@ -58,7 +58,7 @@ export const requestMagicLink = (
       exp: nowSeconds() + magicLinkTtlSeconds,
       scope: "magic_link",
     });
-    const link = `${env.FRONTEND_BASE_URL}/studio/verify?token=${token}`;
+    const link = `${env.FRONTEND_BASE_URL}/studio/auth/verify?token=${token}`;
     yield* sendEmail({
       apiKey: env.BREVO_API_KEY,
       senderEmail: env.BREVO_SENDER_EMAIL,
@@ -66,7 +66,7 @@ export const requestMagicLink = (
       toEmail: normalized,
       subject: "Your Klawva studio login link",
       html: `<div style="font-family:Inter,system-ui,sans-serif"><p><a href="${link}">Open Klawva studio</a></p><p>This link expires in 15 minutes.</p></div>`,
-    }).pipe(Effect.catch(() => Effect.void));
+    }).pipe(Effect.orDie);
   });
 
 export interface Identity {
