@@ -15,17 +15,13 @@ export interface InboundEmail {
   readonly setReject: (reason: string) => void;
 }
 
-const sessionPrefix = "employee-";
+const replyAddressValue = "employees@klawva.xyz";
 const maxBytes = 1_000_000;
 
-export const sessionFromAddress = (to: string): string | null => {
-  const local = to.split("@")[0] ?? "";
-  if (!local.startsWith(sessionPrefix)) {
-    return null;
-  }
-  const id = local.slice(sessionPrefix.length);
-  return id.length > 0 ? id : null;
-};
+export const replyAddress = (): string => replyAddressValue;
+
+export const isEmployeeRecipient = (to: string): boolean =>
+  to.trim().toLowerCase() === replyAddressValue;
 
 const askSession = (
   env: Env,
@@ -56,8 +52,7 @@ const askSession = (
 
 export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const sessionId = sessionFromAddress(message.to);
-    if (sessionId === null) {
+    if (!isEmployeeRecipient(message.to)) {
       message.setReject("Unknown recipient");
       return;
     }
@@ -65,19 +60,19 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       message.setReject("Message too large");
       return;
     }
+    const from = message.from.trim().toLowerCase();
     const db = makeDatabase(env.DB);
     const session = yield* db
-      .first("SELECT customer_email AS email FROM sessions WHERE id = ?", [sessionId])
+      .first(
+        "SELECT id AS id FROM sessions WHERE customer_email = ? AND state IN ('ready', 'active') ORDER BY created_at DESC LIMIT 1",
+        [from],
+      )
       .pipe(Effect.orDie);
     if (session === null) {
-      message.setReject("Unknown session");
+      message.setReject("No active employee for this sender");
       return;
     }
-    const allowed = session.email === null ? "" : String(session.email).toLowerCase();
-    if (allowed.length > 0 && message.from.toLowerCase() !== allowed) {
-      message.setReject("Sender not allowed");
-      return;
-    }
+    const sessionId = String(session.id);
     const raw = yield* Effect.tryPromise({
       try: () => new Response(message.raw).arrayBuffer(),
       catch: (cause) => new Error(String(cause)),
@@ -103,6 +98,3 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       }),
     }).pipe(Effect.catch(() => Effect.void));
   });
-
-export const replyAddress = (sessionId: string): string =>
-  `${sessionPrefix}${sessionId}@mail.klawva.xyz`;
