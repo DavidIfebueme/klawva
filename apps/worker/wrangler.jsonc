@@ -14,8 +14,8 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "SESSION", "class_name": "SessionCounter" }]
+    "bindings": [{ "name": "SESSION", "class_name": "SessionAgent" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionCounter"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionAgent"] }],
   "ai": { "binding": "AI" }
 }
