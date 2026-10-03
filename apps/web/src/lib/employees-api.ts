@@ -10,7 +10,9 @@ const employeeSummary = Schema.Struct({
   tagline: Schema.String,
   category: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   version: Schema.Number,
+  ownerId: Schema.String,
   score: Schema.NullOr(Schema.Number),
 });
 export type EmployeeSummary = typeof employeeSummary.Type;
