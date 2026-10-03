@@ -51,6 +51,15 @@ export function Component() {
           <p className="font-mono text-klawva-dim text-xs mt-2">
             Or email employee-{session}@mail.klawva.xyz
           </p>
+          <p className="font-mono text-klawva-dim text-xs mt-2">
+            For teams:{" "}
+            <a
+              href={`/api/slack/install?session=${session}`}
+              className="text-klawva-accent underline"
+            >
+              Connect Slack
+            </a>
+          </p>
           <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
         </div>
       </main>
