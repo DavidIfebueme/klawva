@@ -120,7 +120,7 @@ export async function sendChatMessage(
 export interface HireSessionInput {
   listingId: string;
   agentId: string;
-  channel: "telegram" | "whatsapp";
+  channel: "telegram" | "web" | "email";
   brief: Record<string, string>;
   customerEmail: string;
 }
