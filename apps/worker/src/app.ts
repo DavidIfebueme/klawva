@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { HttpServer } from "effect/http";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
@@ -9,6 +10,11 @@ import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { Database, layer as databaseLayer } from "./db/database.ts";
 import { Channel } from "./db/schema.ts";
 import { soulFor } from "./agent/souls.ts";
+import {
+  handleUpdate,
+  secretHeader,
+  TelegramUpdate,
+} from "./channels/telegram.ts";
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 
@@ -36,9 +42,19 @@ const createSession = HttpApiEndpoint.post("createSession", "/api/sessions", {
   success: SessionCreated,
 });
 
+const telegramWebhook = HttpApiEndpoint.post(
+  "telegramWebhook",
+  "/webhooks/telegram",
+  {
+    payload: TelegramUpdate,
+    success: Schema.Struct({ ok: Schema.Boolean }),
+  },
+);
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
-  .add(createSession) {}
+  .add(createSession)
+  .add(telegramWebhook) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -52,6 +68,22 @@ const rootGroup = HttpApiBuilder.group(
     const env = yield* WorkerEnv;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("telegramWebhook", ({ payload }) =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const provided = request.headers[secretHeader];
+          if (
+            env.TELEGRAM_WEBHOOK_SECRET.length === 0 ||
+            provided !== env.TELEGRAM_WEBHOOK_SECRET
+          ) {
+            return { ok: false };
+          }
+          yield* handleUpdate(env, db, payload).pipe(
+            Effect.catch(() => Effect.void),
+          );
+          return { ok: true };
+        }),
+      )
       .handle("createSession", ({ payload }) =>
         Effect.gen(function* () {
           const id = crypto.randomUUID();
