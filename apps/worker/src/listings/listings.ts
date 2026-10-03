@@ -1,9 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { defaultModel, defaultToolAllowlist } from "../agent/runtime.ts";
+import { defaultModel } from "../agent/runtime.ts";
 import { soulFor } from "../agent/souls.ts";
 import type { DatabaseImpl } from "../db/database.ts";
-import { type Manifest } from "../db/schema.ts";
 import { definitions, type ListingDefinition } from "./definitions.ts";
 
 export class ListingError extends Schema.TaggedError<ListingError>()(
@@ -13,36 +12,12 @@ export class ListingError extends Schema.TaggedError<ListingError>()(
   },
 ) {}
 
-export const manifestFor = (
-  definition: ListingDefinition,
-  soul: string,
-): Manifest => ({
-  soul,
-  ...(definition.voice === undefined ? {} : { voice: definition.voice }),
-  ...(definition.phone === undefined ? {} : { phone: definition.phone }),
-  ...(definition.desktop === undefined ? {} : { desktop: definition.desktop }),
-  ...(definition.launchMarkets === undefined
-    ? {}
-    : { launchMarkets: [...definition.launchMarkets] }),
-});
-
-export const encodeManifest = (manifest: Manifest): string =>
-  JSON.stringify(manifest);
-
-export interface VersionContent {
-  readonly manifest: Manifest;
-  readonly briefFields: ReadonlyArray<string>;
-  readonly toolAllowlist: ReadonlyArray<string>;
-  readonly model: string;
-  readonly budgetMinor: number;
-}
-
 export const manifestHash = (
-  content: VersionContent,
+  definition: ListingDefinition,
 ): Effect.Effect<string, ListingError> =>
   Effect.tryPromise({
     try: async () => {
-      const bytes = new TextEncoder().encode(JSON.stringify(content));
+      const bytes = new TextEncoder().encode(JSON.stringify(definition));
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       return Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -57,16 +32,7 @@ export const seedListings = (
   Effect.gen(function* () {
     let count = 0;
     for (const definition of definitions) {
-      const soul = soulFor(definition.agentId);
-      const manifest = manifestFor(definition, soul);
-      const hash = yield* manifestHash({
-        manifest,
-        briefFields: definition.briefFields,
-        toolAllowlist: defaultToolAllowlist,
-        model: defaultModel,
-        budgetMinor: definition.budgetMinor,
-      });
-      const manifestJson = encodeManifest(manifest);
+      const hash = yield* manifestHash(definition);
       const now = new Date().toISOString();
       yield* db
         .run(
@@ -91,17 +57,15 @@ export const seedListings = (
       }
       yield* db
         .run(
-          "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at, manifest_schema_version) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, 'system', ?, ?, 1) ON CONFLICT(listing_id, version) DO UPDATE SET manifest_hash = excluded.manifest_hash, soul = excluded.soul, manifest = excluded.manifest, brief_fields = excluded.brief_fields, tool_allowlist = excluded.tool_allowlist, model = excluded.model, budget_minor = excluded.budget_minor",
+          "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, brief_fields, tool_allowlist, model, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, NULL, 'system', ?, ?) ON CONFLICT(listing_id, version) DO UPDATE SET manifest_hash = excluded.manifest_hash, soul = excluded.soul, brief_fields = excluded.brief_fields, tool_allowlist = excluded.tool_allowlist, model = excluded.model",
           [
             crypto.randomUUID(),
             String(listing.id),
             hash,
-            soul,
-            manifestJson,
+            soulFor(definition.agentId),
             JSON.stringify(definition.briefFields),
-            JSON.stringify(defaultToolAllowlist),
+            JSON.stringify(["fetch_url"]),
             defaultModel,
-            definition.budgetMinor,
             now,
             now,
           ],
