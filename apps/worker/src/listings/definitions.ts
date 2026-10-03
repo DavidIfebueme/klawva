@@ -17,7 +17,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "data",
     agentId: "scrapper",
     briefFields: ["task", "urls", "output"],
-    priceMinor: 3000,
+    priceMinor: 300000,
     budgetMinor: 3000,
   },
   {
@@ -27,7 +27,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "research",
     agentId: "researcher",
     briefFields: ["topic", "depth", "context"],
-    priceMinor: 7500,
+    priceMinor: 750000,
     budgetMinor: 10000,
   },
   {
@@ -37,7 +37,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "careers",
     agentId: "jobseeker",
     briefFields: ["role_preference", "location", "salary_range", "extra_criteria"],
-    priceMinor: 1000,
+    priceMinor: 100000,
     budgetMinor: 600,
   },
   {
@@ -47,7 +47,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "sales",
     agentId: "leadscout",
     briefFields: ["ideal_customer", "industry", "contact_preference", "extra_criteria"],
-    priceMinor: 3000,
+    priceMinor: 300000,
     budgetMinor: 3000,
   },
 ];
