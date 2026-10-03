@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import type { RateLimiter } from "./lib/guard.ts";
 
 export interface Env {
   readonly DB: D1Database;
@@ -23,6 +24,9 @@ export interface Env {
   readonly SLACK_CLIENT_ID: string;
   readonly SLACK_CLIENT_SECRET: string;
   readonly SLACK_SIGNING_SECRET: string;
+  readonly TURNSTILE_SECRET: string;
+  readonly AUTH_LIMITER: RateLimiter;
+  readonly PUBLIC_LIMITER: RateLimiter;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(
