@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
+import { listingApprovedEmail, listingRejectedEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { seedListings } from "../listings/listings.ts";
@@ -169,8 +170,8 @@ export const approveListing = (
       db,
       env,
       listing.ownerId,
-      "Your Klawva listing was approved",
-      `<p>Your listing <strong>${listing.name}</strong> is now live.</p>`,
+      "Your Klawva employee is live",
+      listingApprovedEmail(listing.name),
     );
     return { status: "published" };
   });
@@ -211,8 +212,8 @@ export const rejectListing = (
       db,
       env,
       listing.ownerId,
-      "Your Klawva listing needs changes",
-      `<p>Your listing <strong>${listing.name}</strong> was not approved.</p><p>Reason: ${reason}</p>`,
+      "Your Klawva employee needs changes",
+      listingRejectedEmail(listing.name, reason),
     );
     return { status: "rejected" };
   });
