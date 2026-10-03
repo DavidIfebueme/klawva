@@ -97,7 +97,7 @@ export const handleUpdate = (
       const now = new Date().toISOString();
       yield* db
         .run(
-          "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, 'telegram', ?, 'linked', ?, ?) ON CONFLICT(session_id) DO UPDATE SET chat_id = excluded.chat_id, status = 'linked', updated_at = excluded.updated_at",
+          "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, 'telegram', ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET status = 'linked', updated_at = excluded.updated_at",
           [crypto.randomUUID(), payload, String(chatId), now, now],
         )
         .pipe(Effect.orDie);
