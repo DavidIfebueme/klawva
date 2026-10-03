@@ -6,6 +6,7 @@ export interface ListingDefinition {
   readonly agentId: string;
   readonly briefFields: ReadonlyArray<string>;
   readonly priceMinor: number;
+  readonly budgetMinor: number;
 }
 
 export const definitions: ReadonlyArray<ListingDefinition> = [
@@ -16,7 +17,8 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "data",
     agentId: "scrapper",
     briefFields: ["task", "urls", "output"],
-    priceMinor: 1500,
+    priceMinor: 3000,
+    budgetMinor: 3000,
   },
   {
     slug: "researcher",
@@ -25,7 +27,8 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "research",
     agentId: "researcher",
     briefFields: ["topic", "depth", "context"],
-    priceMinor: 2500,
+    priceMinor: 7500,
+    budgetMinor: 10000,
   },
   {
     slug: "jobseeker",
@@ -34,7 +37,8 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "careers",
     agentId: "jobseeker",
     briefFields: ["role_preference", "location", "salary_range", "extra_criteria"],
-    priceMinor: 1500,
+    priceMinor: 1000,
+    budgetMinor: 600,
   },
   {
     slug: "leadscout",
@@ -43,6 +47,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     category: "sales",
     agentId: "leadscout",
     briefFields: ["ideal_customer", "industry", "contact_preference", "extra_criteria"],
-    priceMinor: 2500,
+    priceMinor: 3000,
+    budgetMinor: 3000,
   },
 ];
