@@ -15,6 +15,7 @@ import { ResearcherIcon } from "../../../components/icons/ResearcherIcon";
 import { Button } from "../../../components/ui/Button";
 import { ApiError } from "../../../lib/api-error";
 import { getSharedReport } from "../../../lib/public-api";
+import { Markdown } from "../../../components/ui/Markdown";
 import { agents, type AgentId } from "../../../lib/agents";
 
 const isAgentId = (value: string): value is AgentId => value in agents;
@@ -175,10 +176,13 @@ export function Component() {
                 <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-4">
                   Final Summary
                 </div>
-                <p className="font-mono text-klawva-text text-base leading-relaxed">
-                  {report?.summary ??
-                    "Mission report is still compiling and will appear here after final delivery."}
-                </p>
+                {report?.summary !== undefined ? (
+                  <Markdown content={report.summary} />
+                ) : (
+                  <p className="font-mono text-klawva-text text-base leading-relaxed">
+                    Mission report is still compiling and will appear here after final delivery.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-between pt-8 border-t border-klawva-border">
