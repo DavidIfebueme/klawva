@@ -54,8 +54,20 @@ const ListingRow = Schema.Struct({
   version: Schema.Number,
   score: Schema.NullOr(Schema.Number),
 });
+
+const PublicListingDetail = Schema.Struct({
+  id: Schema.String,
+  slug: Schema.String,
+  name: Schema.String,
+  tagline: Schema.String,
+  category: Schema.String,
+  priceMinor: Schema.Number,
+  version: Schema.Number,
+  briefFields: Schema.String,
+});
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
+import { ListingNotFound } from "./errors.ts";
 
 const HealthResponse = Schema.Struct({
   ok: Schema.Boolean,
@@ -95,6 +107,20 @@ const listListingsEndpoint = HttpApiEndpoint.get(
   "/api/listings",
   { success: Schema.Array(ListingRow) },
 );
+
+const listingDetailBySlugEndpoint = HttpApiEndpoint.get(
+  "listingDetailBySlug",
+  "/api/listings/:slug",
+  {
+    params: Schema.Struct({ slug: Schema.String }),
+    success: PublicListingDetail,
+    error: ListingNotFound,
+  },
+);
+
+const configEndpoint = HttpApiEndpoint.get("config", "/api/config", {
+  success: Schema.Struct({ telegramBotUsername: Schema.String }),
+});
 
 const initializePaymentEndpoint = HttpApiEndpoint.post(
   "initializePayment",
@@ -155,6 +181,8 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(createSession)
   .add(telegramWebhook)
   .add(listListingsEndpoint)
+  .add(listingDetailBySlugEndpoint)
+  .add(configEndpoint)
   .add(initializePaymentEndpoint)
   .add(sharedReportEndpoint) {}
 
@@ -217,19 +245,19 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const session = yield* db
             .first(
-              "SELECT budget_minor AS budgetMinor FROM sessions WHERE id = ?",
+              "SELECT l.price_minor AS priceMinor FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
               [payload.sessionId],
             )
             .pipe(Effect.orDie);
           if (session === null) {
             return yield* Effect.die("session_not_found");
           }
-          const amountMinor = Number(session.budgetMinor);
+          const amountMinor = Number(session.priceMinor);
           const result = yield* initializePayment({
             secret: env.PAYSTACK_SECRET_KEY,
             sessionId: payload.sessionId,
             amountMinor,
-            callbackUrl: `https://klawva.xyz/session/${payload.sessionId}`,
+            callbackUrl: `${env.FRONTEND_BASE_URL}/employees/launch?session=${payload.sessionId}`,
             email: payload.email,
           }).pipe(Effect.orDie);
           const now = new Date().toISOString();
@@ -261,6 +289,23 @@ const rootGroup = HttpApiBuilder.group(
             .pipe(Effect.orDie);
           return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
         }),
+      )
+      .handle("listingDetailBySlug", ({ params }) =>
+        Effect.gen(function* () {
+          const row = yield* db
+            .first(
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, l.current_version AS version, v.brief_fields AS briefFields FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
+              [params.slug],
+            )
+            .pipe(Effect.orDie);
+          if (row === null) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          return Schema.decodeUnknownSync(PublicListingDetail)(row);
+        }),
+      )
+      .handle("config", () =>
+        Effect.succeed({ telegramBotUsername: env.TELEGRAM_BOT_USERNAME }),
       )
       .handle("telegramWebhook", ({ payload }) =>
         Effect.gen(function* () {
