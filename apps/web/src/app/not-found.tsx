@@ -1,6 +1,5 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import Link from "@/components/ui/AppLink";
 import { Button } from "@/components/ui/Button";
 
 export default function NotFound() {
@@ -18,9 +17,7 @@ export default function NotFound() {
           <p className="font-mono text-klawva-muted mb-8">
             That page does not exist.
           </p>
-          <Link href="/">
-            <Button variant="primary">Back to Klawva</Button>
-          </Link>
+          <Button variant="primary" href="/">Back to Klawva</Button>
         </div>
       </main>
       <Footer />

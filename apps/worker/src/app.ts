@@ -322,6 +322,15 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("contact", ({ payload }) =>
         Effect.gen(function* () {
+          const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email);
+          const nameOk =
+            payload.name.trim().length >= 1 && payload.name.length <= 120;
+          const descriptionOk =
+            payload.description.trim().length >= 10 &&
+            payload.description.length <= 4000;
+          if (!emailOk || !nameOk || !descriptionOk) {
+            return { ok: false };
+          }
           const to = env.ADMIN_EMAILS.split(",")[0]?.trim() ?? "";
           if (to.length > 0) {
             yield* sendEmail({
