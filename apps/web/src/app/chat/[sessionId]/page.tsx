@@ -5,12 +5,17 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { getChatMessages, sendChatMessage } from "@/lib/employees-api";
 
-export const loader = async ({ params }: LoaderFunctionArgs) => {
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   if (params.sessionId === undefined) {
     throw redirect("/employees");
   }
-  const messages = await getChatMessages(params.sessionId);
-  return { sessionId: params.sessionId, messages };
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token");
+  if (token === null) {
+    throw redirect("/employees");
+  }
+  const messages = await getChatMessages(params.sessionId, token);
+  return { sessionId: params.sessionId, token, messages };
 };
 
 interface Entry {
@@ -20,7 +25,7 @@ interface Entry {
 }
 
 export function Component() {
-  const { sessionId, messages } = useLoaderData<typeof loader>();
+  const { sessionId, token, messages } = useLoaderData<typeof loader>();
   const [entries, setEntries] = useState<ReadonlyArray<Entry>>(messages);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,7 +43,7 @@ export function Component() {
     ]);
     setBusy(true);
     try {
-      const result = await sendChatMessage(sessionId, message);
+      const result = await sendChatMessage(sessionId, message, token);
       setEntries((prev) => [
         ...prev,
         { role: "assistant", content: result.reply, createdAt: new Date().toISOString() },
