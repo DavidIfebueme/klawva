@@ -26,6 +26,7 @@ export interface Env {
   readonly SLACK_CLIENT_SECRET: string;
   readonly SLACK_SIGNING_SECRET: string;
   readonly TURNSTILE_SECRET: string;
+  readonly DISCORD_PUBLIC_KEY: string;
   readonly AUTH_LIMITER: RateLimiter;
   readonly PUBLIC_LIMITER: RateLimiter;
 }
