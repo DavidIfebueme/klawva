@@ -19,6 +19,7 @@ const listingDetail = Schema.Struct({
   name: Schema.String,
   status: Schema.String,
   priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
   version: Schema.Number,
   tagline: Schema.String,
   category: Schema.String,
@@ -61,6 +62,7 @@ export interface DraftInput {
   tagline: string;
   category: string;
   priceMinor: number;
+  budgetMinor: number;
   briefFields: string[];
   soul: string;
 }
@@ -70,6 +72,7 @@ export interface UpdateInput {
   tagline: string;
   category: string;
   priceMinor: number;
+  budgetMinor: number;
   briefFields: string[];
   soul: string;
 }
