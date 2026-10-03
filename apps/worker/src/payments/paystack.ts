@@ -78,11 +78,12 @@ export const handlePaystackWebhook = (
     });
     const signature = request.headers.get("x-paystack-signature") ?? "";
     const secret = env.PAYSTACK_SECRET_KEY;
-    if (secret.length > 0) {
-      const valid = yield* verifySignature(rawBody, secret, signature);
-      if (!valid) {
-        return Response.json({ ok: false }, { status: 401 });
-      }
+    if (secret.length === 0) {
+      return Response.json({ ok: false }, { status: 401 });
+    }
+    const valid = yield* verifySignature(rawBody, secret, signature);
+    if (!valid) {
+      return Response.json({ ok: false }, { status: 401 });
     }
     const parsed = yield* Effect.try({
       try: () => {
