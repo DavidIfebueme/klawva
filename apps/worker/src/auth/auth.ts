@@ -1,10 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { backfillSessionsForUser } from "../account/account.ts";
 import type { DatabaseImpl } from "../db/database.ts";
-import type { LaunchMarket } from "../db/schema.ts";
 import { sendEmail } from "../email/brevo.ts";
-import { magicLinkEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { AuthError, signToken, verifyToken } from "./tokens.ts";
 
@@ -14,20 +11,6 @@ const sessionTtlSeconds = 30 * 24 * 60 * 60;
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
 const normalize = (email: string): string => email.trim().toLowerCase();
-
-const hashToken = (token: string): Effect.Effect<string, AuthError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const digest = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(token),
-      );
-      return Array.from(new Uint8Array(digest))
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-    },
-    catch: (cause) => new AuthError({ reason: String(cause) }),
-  });
 
 export const isAdmin = (env: Env, email: string): boolean => {
   const allow = env.ADMIN_EMAILS.split(",")
@@ -62,51 +45,28 @@ export const upsertUser = (
     return id;
   });
 
-export const stampMarketIfUnset = (
-  db: DatabaseImpl,
-  userId: string,
-  market: LaunchMarket,
-): Effect.Effect<void> =>
-  db
-    .run(
-      "UPDATE users SET market = ?, updated_at = ? WHERE id = ? AND market IS NULL",
-      [market, new Date().toISOString(), userId],
-    )
-    .pipe(Effect.orDie);
-
 export const requestMagicLink = (
   env: Env,
   db: DatabaseImpl,
   email: string,
-  next: string,
-  market?: LaunchMarket,
 ): Effect.Effect<void, AuthError> =>
   Effect.gen(function* () {
     const normalized = normalize(email);
-    const userId = yield* upsertUser(db, normalized);
-    if (market !== undefined) {
-      yield* stampMarketIfUnset(db, userId, market);
-    }
+    yield* upsertUser(db, normalized);
     const token = yield* signToken(env.AUTH_SECRET, {
       email: normalized,
       exp: nowSeconds() + magicLinkTtlSeconds,
       scope: "magic_link",
     });
-    const safeNext =
-      next.startsWith("/") && !next.startsWith("//") ? next : "/studio";
-    const link = `${env.FRONTEND_BASE_URL}/studio/auth/verify?token=${token}&next=${encodeURIComponent(safeNext)}`;
-    const context = safeNext === "/account" ? "account" : "studio";
+    const link = `${env.FRONTEND_BASE_URL}/studio/verify?token=${token}`;
     yield* sendEmail({
       apiKey: env.BREVO_API_KEY,
       senderEmail: env.BREVO_SENDER_EMAIL,
       senderName: "Klawva",
       toEmail: normalized,
-      subject:
-        context === "account"
-          ? "Your Klawva account login link"
-          : "Your Klawva studio login link",
-      html: magicLinkEmail(link, context),
-    }).pipe(Effect.orDie);
+      subject: "Your Klawva studio login link",
+      html: `<div style="font-family:Inter,system-ui,sans-serif"><p><a href="${link}">Open Klawva studio</a></p><p>This link expires in 15 minutes.</p></div>`,
+    }).pipe(Effect.catch(() => Effect.void));
   });
 
 export interface Identity {
@@ -125,23 +85,7 @@ export const verifyMagicLink = (
     if (payload.scope !== "magic_link") {
       return yield* Effect.fail(new AuthError({ reason: "wrong_scope" }));
     }
-    const tokenHash = yield* hashToken(token);
-    const alreadyUsed = yield* db
-      .first("SELECT token_hash AS tokenHash FROM used_tokens WHERE token_hash = ?", [
-        tokenHash,
-      ])
-      .pipe(Effect.orDie);
-    if (alreadyUsed !== null) {
-      return yield* Effect.fail(new AuthError({ reason: "token_used" }));
-    }
-    yield* db
-      .run("INSERT INTO used_tokens (token_hash, used_at) VALUES (?, ?)", [
-        tokenHash,
-        new Date().toISOString(),
-      ])
-      .pipe(Effect.orDie);
     const userId = yield* upsertUser(db, payload.email);
-    yield* backfillSessionsForUser(db, userId, payload.email);
     const sessionToken = yield* signToken(env.AUTH_SECRET, {
       email: payload.email,
       exp: nowSeconds() + sessionTtlSeconds,
@@ -186,8 +130,5 @@ export const tokenFromHeaders = (
   return direct !== undefined && direct.length > 0 ? direct : null;
 };
 
-export const RequestEmail = Schema.Struct({
-  email: Schema.String,
-  next: Schema.optionalKey(Schema.String),
-});
+export const RequestEmail = Schema.Struct({ email: Schema.String });
 export const VerifyToken = Schema.Struct({ token: Schema.String });
