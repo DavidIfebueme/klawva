@@ -69,8 +69,14 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
 
 export function Component() {
   const { sessionId, agentParam, report, error } = useLoaderData<typeof loader>();
-  const agentId = isAgentId(agentParam) ? agentParam : "scrapper";
-  const agent = agents[agentId];
+  const slug =
+    report !== null && isAgentId(report.agentSlug)
+      ? report.agentSlug
+      : isAgentId(agentParam)
+        ? agentParam
+        : "scrapper";
+  const agent = agents[slug];
+  const displayName = report !== null ? report.agentName : agent.name;
   const AgentIcon =
     agent.id === "vendor"
       ? VendorIcon
@@ -141,7 +147,7 @@ export function Component() {
                 <AgentIcon size={64} className="text-klawva-text" />
                 <div>
                   <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-klawva-text mb-2">
-                    {agent.name}
+                    {displayName}
                   </h1>
                   <div className="font-mono text-klawva-muted text-sm">
                     {report !== null ? "Shift report" : "Mission in progress"}
