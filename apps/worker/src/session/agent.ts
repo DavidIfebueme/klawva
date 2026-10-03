@@ -10,46 +10,7 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
-import {
-  liveSessionStates,
-  SessionState,
-  sessionTransitions,
-  terminalSessionStates,
-  TransportType,
-} from "../db/schema.ts";
-import { sessionTokenMatches, ownsSession } from "../account/account.ts";
-import { identityFromToken } from "../auth/auth.ts";
-import { deviceForToken } from "../auth/devices.ts";
-import {
-  defaultModel,
-  defaultToolAllowlist,
-  ModelError,
-  resolveAllowlist,
-  runTurn,
-} from "../agent/runtime.ts";
-import { resolveRuntime } from "../agent/proxy.ts";
-import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
-import {
-  charsToTokens,
-  checkNeuronBudget,
-  recordAiUsage,
-} from "../agent/meter.ts";
-import { isConversational, screenScope, steerReply } from "../moderation/moderation.ts";
-import { closeTransports, projectTransports } from "./transports.ts";
-import {
-  clefFlashModel,
-  decideScope,
-  isInScope,
-  scoreShift,
-  shiftScore,
-} from "../moderation/clef.ts";
-import { fallbackReport, generateReport, zeroTurnReport } from "../report/report.ts";
-import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
-import { sendMessage } from "../channels/telegram.ts";
-import { postMessage } from "../channels/slack.ts";
-import { deliverCompletion, DeliveryError } from "../channels/delivery.ts";
-import type { Env } from "../env.ts";
-import type { UIMessage } from "ai";
+import { SessionState } from "../db/schema.ts";
 
 export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
   "IllegalTransition",
@@ -57,7 +18,6 @@ export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
     from: Schema.String,
     to: Schema.String,
   },
-  { httpApiStatus: 409 },
 ) {}
 
 export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()(
@@ -68,8 +28,18 @@ export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()(
   },
 ) {}
 
+const transitions: Record<SessionState, ReadonlyArray<SessionState>> = {
+  pending: ["provisioning", "failed"],
+  provisioning: ["active", "failed"],
+  active: ["hibernating", "recovering", "completed", "failed"],
+  hibernating: ["recovering", "completed", "failed"],
+  recovering: ["active", "failed"],
+  completed: [],
+  failed: [],
+};
+
 export const canTransition = (from: SessionState, to: SessionState): boolean =>
-  sessionTransitions[from].includes(to);
+  transitions[from].includes(to);
 
 export const canSpend = (
   budgetMinor: number,
@@ -152,479 +122,18 @@ export const makeStore = (sql: SqlStorage): SessionStoreImpl => ({
     }),
 });
 
-export const projectState = (
-  store: SessionStoreImpl,
-  db: DatabaseImpl,
-  sessionId: string,
-  state: SessionState,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const windowStart = yield* store.get("window_start");
-    const windowEnd = yield* store.get("window_end");
-    yield* db
-      .run(
-        "UPDATE sessions SET state = ?, window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
-        [state, windowStart, windowEnd, new Date().toISOString(), sessionId],
-      )
-      .pipe(Effect.orDie);
-  });
-
-export class SessionEnv extends Context.Service<
-  SessionEnv,
-  { readonly env: Env; readonly sessionId: string }
->()("klawva/session/SessionEnv") {}
-
-export interface TurnConfig {
-  readonly soul: string;
-  readonly brief: Readonly<Record<string, string>>;
-  readonly allowlist: ReadonlyArray<string>;
-  readonly model: string;
-}
-
-export const mirrorMessage = (
-  db: DatabaseImpl,
-  sessionId: string,
-  role: string,
-  content: string,
-): Effect.Effect<void> =>
-  db
-    .run(
-      "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
-      [crypto.randomUUID(), sessionId, role, content, new Date().toISOString()],
-    )
-    .pipe(Effect.orDie);
-
-export const loadTurnConfig = (
-  store: SessionStoreImpl,
-): Effect.Effect<TurnConfig> =>
-  Effect.gen(function* () {
-    const soul = (yield* store.get("soul")) ?? "";
-    const brief = Schema.decodeUnknownSync(Brief)(
-      JSON.parse((yield* store.get("brief")) ?? "{}"),
-    );
-    return {
-      soul,
-      brief,
-      allowlist: resolveAllowlist(yield* store.get("tool_allowlist")),
-      model: (yield* store.get("model")) ?? defaultModel,
-    };
-  });
-
-export const capacityReply =
-  "Klawva is at capacity for today. Please try again tomorrow.";
-
-export const takeCapacitySlot = (
-  db: DatabaseImpl,
-): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const day = new Date().toISOString().slice(0, 10);
-    const counterKey = `turns:${day}`;
-    const counter = yield* db
-      .first("SELECT value AS value FROM counters WHERE key = ?", [counterKey])
-      .pipe(Effect.orDie);
-    const used = counter === null ? 0 : Number(counter.value);
-    if (used >= 5000) {
-      return false;
-    }
-    yield* db
-      .run(
-        "INSERT INTO counters (key, value, updated_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at",
-        [counterKey, new Date().toISOString()],
-      )
-      .pipe(Effect.orDie);
-    return true;
-  });
-
-export type TurnAdmission =
-  | { readonly _tag: "Rejected"; readonly reply: string }
-  | { readonly _tag: "AtCapacity" }
-  | { readonly _tag: "AwaitingPayment"; readonly reply: string }
-  | { readonly _tag: "ShiftOver"; readonly reply: string }
-  | { readonly _tag: "Admitted"; readonly config: TurnConfig };
-
-export const admitTurn = (
-  store: SessionStoreImpl,
-  db: DatabaseImpl,
-  sessionId: string,
-  userText: string,
-  ai?: Ai,
-): Effect.Effect<TurnAdmission, BudgetExhausted> =>
-  Effect.gen(function* () {
-    const state = yield* currentState(store);
-    if (state === "pending") {
-      return {
-        _tag: "AwaitingPayment",
-        reply:
-          "This shift hasn't started yet. If you just paid, give it a minute and try again.",
-      } as const;
-    }
-    if (state === "completed") {
-      return {
-        _tag: "ShiftOver",
-        reply: "This shift has ended. Check your email for the report.",
-      } as const;
-    }
-    if (state === "failed") {
-      return {
-        _tag: "ShiftOver",
-        reply: "This shift hit a problem and had to stop. Check your email for what happened.",
-      } as const;
-    }
-    if (state === "expired") {
-      return {
-        _tag: "ShiftOver",
-        reply: "This shift expired before it started. Start a new hire to begin one.",
-      } as const;
-    }
-    const config = yield* loadTurnConfig(store);
-    const verdict = screenScope(userText, config.brief);
-    if (verdict !== "in_scope") {
-      return { _tag: "Rejected", reply: steerReply(verdict) } as const;
-    }
-    if (ai !== undefined && !isConversational(userText)) {
-      const scope = yield* decideScope(ai, config.brief, userText).pipe(
-        Effect.tap((output) =>
-          recordAiUsage(db, {
-            model: clefFlashModel,
-            inTokens: output.usage?.input_tokens ?? 0,
-            outTokens: 0,
-            ok: true,
-          }),
-        ),
-        Effect.tapError(() =>
-          recordAiUsage(db, {
-            model: clefFlashModel,
-            inTokens: 0,
-            outTokens: 0,
-            ok: false,
-          }),
-        ),
-        Effect.option,
-      );
-      if (scope._tag === "Some" && !isInScope(scope.value)) {
-        return { _tag: "Rejected", reply: steerReply("off_brief") } as const;
-      }
-    }
-    if (!(yield* checkNeuronBudget(db))) {
-      return { _tag: "AtCapacity" } as const;
-    }
-    if (!(yield* takeCapacitySlot(db))) {
-      return { _tag: "AtCapacity" } as const;
-    }
-    yield* store.spend(50);
-    yield* mirrorMessage(db, sessionId, "user", userText);
-    return { _tag: "Admitted", config } as const;
-  });
-
-export const persistReply = (
-  store: SessionStoreImpl,
-  db: DatabaseImpl,
-  sessionId: string,
-  reply: string,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    yield* store.append("assistant", reply);
-    yield* mirrorMessage(db, sessionId, "assistant", reply);
-  });
-
-export const budgetReply =
-  "This shift has used up its budget. Top up the wallet to keep the employee working.";
-
-export const modelRetryReply =
-  "My model dropped that turn. Send your message again and I'll pick it up.";
-
-export const turnSucceeded = (
-  status: string,
-  failed: boolean,
-): boolean => status === "completed" && !failed;
-
-export const retryTextFor = (
-  status: string,
-  textLength: number,
-): string | null =>
-  status === "error" && textLength === 0 ? modelRetryReply : null;
-
-export const sanitized = (
-  messages: ReadonlyArray<UIMessage>,
-): Array<UIMessage> =>
-  messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .map((message) => ({
-      ...message,
-      parts: message.parts.filter((part) => part.type === "text"),
-    }));
-
-export const persistAssistant = (
-  store: SessionStoreImpl,
-  db: DatabaseImpl,
-  sessionId: string,
-  text: string,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    yield* store.append("assistant", text);
-    yield* mirrorMessage(db, sessionId, "assistant", text);
-  });
-
-export type StreamIdentity =
-  | { readonly kind: "session" }
-  | { readonly kind: "user"; readonly userId: string }
-  | { readonly kind: "device"; readonly deviceId: string };
-
-export const streamIdentity = (
-  env: Env,
-  db: DatabaseImpl,
-  sessionId: string,
-  token: string | null,
-  authHeader: string | null,
-): Effect.Effect<StreamIdentity | null> =>
-  Effect.gen(function* () {
-    if (token !== null && token.length > 0) {
-      const matches = yield* sessionTokenMatches(db, sessionId, token);
-      if (matches) {
-        return { kind: "session" as const };
-      }
-    }
-    if (authHeader === null) {
-      return null;
-    }
-    const clean =
-      authHeader.toLowerCase().startsWith("bearer ") && authHeader.length > 7
-        ? authHeader.slice(7).trim()
-        : authHeader;
-    const identity = yield* identityFromToken(env, db, clean).pipe(
-      Effect.catch(() => Effect.succeed(null)),
-    );
-    if (identity !== null) {
-      const owns = yield* ownsSession(db, identity.userId, identity.email, sessionId);
-      return owns ? { kind: "user" as const, userId: identity.userId } : null;
-    }
-    const deviceId = yield* deviceForToken(db, sessionId, clean).pipe(
-      Effect.catch(() => Effect.succeed(null)),
-    );
-    return deviceId === null ? null : { kind: "device" as const, deviceId };
-  });
-
-export const authorizeStream = (
-  env: Env,
-  db: DatabaseImpl,
-  sessionId: string,
-  token: string | null,
-  authHeader: string | null,
-): Effect.Effect<boolean> =>
-  streamIdentity(env, db, sessionId, token, authHeader).pipe(
-    Effect.map((identity) => identity !== null),
-  );
-
-export const messageText = (message: UIMessage): string =>
-  message.parts
-    .filter((part) => part.type === "text")
-    .map((part) => (part.type === "text" ? part.text : ""))
-    .join("\n");
-
-export const lastUserText = (messages: ReadonlyArray<UIMessage>): string => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message !== undefined && message.role === "user") {
-      return messageText(message);
-    }
-  }
-  return "";
-};
-
-export const completeShift = (
-  store: SessionStoreImpl,
-  env: Env,
-  sessionId: string,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const db = makeDatabase(env.DB);
-    const state = yield* currentState(store);
-    if (terminalSessionStates.includes(state)) {
-      yield* projectState(store, db, sessionId, state);
-      return;
-    }
-    const history = yield* store.history();
-    const runtime = resolveRuntime(env, db, defaultModel);
-    const briefRaw = (yield* store.get("brief")) ?? "{}";
-    const brief = Schema.decodeUnknownSync(Brief)(JSON.parse(briefRaw));
-    const inChars =
-      history.reduce((n, m) => n + m.content.length, 0) +
-      JSON.stringify(brief).length;
-    const report = yield* (history.length === 0
-      ? Effect.succeed(zeroTurnReport)
-      : generateReport({ runtime, history, brief }).pipe(
-      Effect.tap((result) =>
-        recordAiUsage(db, {
-          model: defaultModel,
-          inTokens: charsToTokens(inChars),
-          outTokens: charsToTokens(result.summary.length),
-          ok: true,
-        }),
-      ),
-      Effect.catch(() =>
-        recordAiUsage(db, {
-          model: defaultModel,
-          inTokens: charsToTokens(inChars),
-          outTokens: 0,
-          ok: false,
-        }).pipe(Effect.andThen(() => Effect.succeed(fallbackReport(history)))),
-      ),
-    ));
-    const scoreResult = yield* scoreShift(env.AI, brief, history).pipe(
-      Effect.timeoutOption("10 seconds"),
-      Effect.option,
-    );
-    const scoreValue =
-      scoreResult._tag === "Some" ? scoreResult.value : undefined;
-    const stats =
-      history.length > 0 && scoreValue !== undefined && scoreValue._tag === "Some"
-        ? [
-            ...report.stats,
-            {
-              label: "Quality score (0-3)",
-              value: shiftScore(scoreValue.value).toFixed(2),
-            },
-          ]
-        : report.stats;
-    const shareToken = crypto.randomUUID().replace(/-/g, "");
-    const now = new Date().toISOString();
-    const briefHash = yield* Effect.tryPromise({
-      try: async () => {
-        const digest = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(briefRaw),
-        );
-        return Array.from(new Uint8Array(digest))
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join("");
-      },
-      catch: (cause) => new Error(String(cause)),
-    }).pipe(Effect.catch(() => Effect.succeed(null)));
-    const outcome = history.length === 0 ? "failed" : (report.outcome ?? "complete");
-    yield* db
-      .run(
-        "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at, outcome, evidence, limitations, brief_hash) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) WHERE transport_id IS NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, outcome = excluded.outcome, evidence = excluded.evidence, limitations = excluded.limitations, brief_hash = excluded.brief_hash, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
-        [
-          crypto.randomUUID(),
-          sessionId,
-          report.summary,
-          JSON.stringify(stats),
-          shareToken,
-          now,
-          now,
-          now,
-          outcome,
-          JSON.stringify(report.evidence ?? []),
-          JSON.stringify(report.limitations ?? []),
-          briefHash,
-        ],
-      )
-      .pipe(Effect.orDie);
-    yield* store.set("state", "completed");
-    yield* projectState(store, db, sessionId, "completed");
-    const reportUrl = `${env.FRONTEND_BASE_URL}/report/${sessionId}?shareToken=${shareToken}`;
-    const email = yield* store.get("email");
-    yield* deliverCompletion({
-      db,
-      senders: {
-        telegram: (chatId, text) =>
-          sendMessage(env.TELEGRAM_BOT_TOKEN, Number(chatId), text).pipe(
-            Effect.mapError(
-              (cause) =>
-                new DeliveryError({
-                  channel: "telegram",
-                  reason: cause.reason,
-                }),
-            ),
-          ),
-        slack: (team, channel, text) =>
-          Effect.gen(function* () {
-            const connection = yield* db
-              .first(
-                "SELECT access_token AS token FROM connections WHERE provider = 'slack' AND external_id = ?",
-                [team],
-              )
-              .pipe(Effect.orDie);
-            if (connection === null) {
-              return yield* Effect.fail(
-                new DeliveryError({
-                  channel: "slack",
-                  reason: "no_connection",
-                }),
-              );
-            }
-            yield* postMessage(String(connection.token), channel, text);
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new DeliveryError({
-                  channel: "slack",
-                  reason: String(cause),
-                }),
-            ),
-          ),
-        email: (address, url) => {
-          if (
-            env.BREVO_API_KEY.length === 0 ||
-            env.BREVO_SENDER_EMAIL.length === 0
-          ) {
-            return Effect.fail(
-              new DeliveryError({
-                channel: "email",
-                reason: "not_configured",
-              }),
-            );
-          }
-          return sendEmail({
-            apiKey: env.BREVO_API_KEY,
-            senderEmail: env.BREVO_SENDER_EMAIL,
-            senderName: "Klawva",
-            toEmail: address,
-            subject: "Your Klawva worker shift has ended",
-            html: reportEmailHtml(url),
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new DeliveryError({
-                  channel: "email",
-                  reason: cause.reason,
-                }),
-            ),
-          );
-        },
-      },
-      sessionId,
-      reportUrl,
-      email,
-    });
-  });
-
 const StateResponse = Schema.Struct({ state: Schema.String });
 
 const getState = HttpApiEndpoint.get("state", "/state", { success: StateResponse });
 
-const Brief = Schema.Record(Schema.String, Schema.String);
-
 const init = HttpApiEndpoint.post("init", "/init", {
-  payload: Schema.Struct({
-    state: SessionState,
-    budgetMinor: Schema.Number,
-    soul: Schema.String,
-    brief: Brief,
-    email: Schema.optionalKey(Schema.String),
-    allowlist: Schema.optionalKey(Schema.Array(Schema.String)),
-    model: Schema.optionalKey(Schema.String),
-    transports: Schema.optionalKey(Schema.Array(TransportType)),
-  }),
+  payload: Schema.Struct({ state: Schema.String, budgetMinor: Schema.Number }),
   success: StateResponse,
 });
 
 const activate = HttpApiEndpoint.post("activate", "/activate", {
   payload: Schema.Struct({ windowEnd: Schema.String }),
-  success: Schema.Struct({
-    state: SessionState,
-    newlyActivated: Schema.Boolean,
-  }),
+  success: StateResponse,
   error: IllegalTransition,
 });
 
@@ -633,34 +142,13 @@ const complete = HttpApiEndpoint.post("complete", "/complete", {
   error: IllegalTransition,
 });
 
-const expire = HttpApiEndpoint.post("expire", "/expire", {
-  success: StateResponse,
-});
-
 const history = HttpApiEndpoint.get("history", "/history", {
   success: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.String })),
 });
 
-const report = HttpApiEndpoint.post("report", "/report", {
-  success: Schema.Struct({ ok: Schema.Boolean }),
-});
-
-const kickoff = HttpApiEndpoint.post("kickoff", "/kickoff", {
-  success: Schema.Struct({
-    ok: Schema.Boolean,
-    reply: Schema.optionalKey(Schema.String),
-  }),
-});
-
 const appendMessage = HttpApiEndpoint.post("appendMessage", "/messages", {
-  payload: Schema.Struct({
-    role: Schema.Literals(["user", "assistant"]),
-    content: Schema.String,
-  }),
-  success: Schema.Struct({
-    ok: Schema.Boolean,
-    reply: Schema.optionalKey(Schema.String),
-  }),
+  payload: Schema.Struct({ role: Schema.String, content: Schema.String }),
+  success: Schema.Struct({ ok: Schema.Boolean }),
 });
 
 class SessionGroup extends HttpApiGroup.make("Session")
@@ -668,72 +156,15 @@ class SessionGroup extends HttpApiGroup.make("Session")
   .add(init)
   .add(activate)
   .add(complete)
-  .add(expire)
   .add(history)
-  .add(report)
-  .add(kickoff)
   .add(appendMessage) {}
 
 class SessionApi extends HttpApi.make("SessionApi").add(SessionGroup) {}
 
-const legacyStates: Readonly<Record<string, SessionState>> = {
-  provisioning: "expired",
-};
-
 const currentState = (store: SessionStoreImpl): Effect.Effect<SessionState> =>
   Effect.gen(function* () {
     const raw = yield* store.get("state");
-    if (raw === null) {
-      return "pending";
-    }
-    const legacy = legacyStates[raw];
-    return legacy ?? Schema.decodeUnknownSync(SessionState)(raw);
-  });
-
-export const activateSession = (
-  store: SessionStoreImpl,
-  db: DatabaseImpl,
-  sessionId: string,
-  windowEnd: string,
-): Effect.Effect<
-  { state: SessionState; newlyActivated: boolean },
-  IllegalTransition
-> =>
-  Effect.gen(function* () {
-    const from = yield* currentState(store);
-    if (liveSessionStates.includes(from)) {
-      const existing = yield* store.get("window_end");
-      if (existing === null || windowEnd > existing) {
-        yield* store.set("window_end", windowEnd);
-      }
-      yield* projectState(store, db, sessionId, from);
-      return { state: from, newlyActivated: false };
-    }
-    const next = yield* transition(from, "active");
-    yield* store.set("state", next);
-    const started = yield* store.get("window_start");
-    if (started === null) {
-      yield* store.set("window_start", new Date().toISOString());
-    }
-    yield* store.set("window_end", windowEnd);
-    yield* projectState(store, db, sessionId, next);
-    return { state: next, newlyActivated: true };
-  });
-
-export const expireSession = (
-  store: SessionStoreImpl,
-  db: DatabaseImpl,
-  sessionId: string,
-): Effect.Effect<SessionState> =>
-  Effect.gen(function* () {
-    const from = yield* currentState(store);
-    if (!canTransition(from, "expired")) {
-      yield* projectState(store, db, sessionId, from);
-      return from;
-    }
-    yield* store.set("state", "expired");
-    yield* projectState(store, db, sessionId, "expired");
-    return "expired";
+    return raw === null ? "pending" : Schema.decodeUnknownSync(SessionState)(raw);
   });
 
 const sessionGroup = HttpApiBuilder.group(
@@ -741,7 +172,6 @@ const sessionGroup = HttpApiBuilder.group(
   "Session",
   Effect.fn(function* (handlers) {
     const store = yield* SessionStore;
-    const sessionEnv = yield* SessionEnv;
     return handlers
       .handle("state", () =>
         Effect.gen(function* () {
@@ -751,247 +181,91 @@ const sessionGroup = HttpApiBuilder.group(
       )
       .handle("init", ({ payload }) =>
         Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
           yield* store.set("state", payload.state);
           yield* store.set("budget_minor", String(payload.budgetMinor));
           yield* store.set("spent_minor", "0");
-          yield* store.set("soul", payload.soul);
-          yield* store.set("brief", JSON.stringify(payload.brief));
-          yield* store.set("email", payload.email ?? "");
-          yield* store.set(
-            "tool_allowlist",
-            JSON.stringify(payload.allowlist ?? defaultToolAllowlist),
-          );
-          yield* store.set("model", payload.model ?? defaultModel);
-          yield* projectState(store, db, sessionEnv.sessionId, payload.state);
-          yield* projectTransports(db, sessionEnv.sessionId, payload.transports ?? []);
           return { state: payload.state };
         }),
       )
-      .handle("activate", ({ payload }) => {
-        const db = makeDatabase(sessionEnv.env.DB);
-        return activateSession(store, db, sessionEnv.sessionId, payload.windowEnd);
-      })
-      .handle("complete", () =>
+      .handle("activate", ({ payload }) =>
         Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
-          const next = yield* transition(yield* currentState(store), "completed");
+          let from = yield* currentState(store);
+          if (from === "pending") {
+            from = yield* transition(from, "provisioning");
+            yield* store.set("state", from);
+          }
+          const next = yield* transition(from, "active");
           yield* store.set("state", next);
-          yield* projectState(store, db, sessionEnv.sessionId, next);
-          yield* closeTransports(db, sessionEnv.sessionId);
+          yield* store.set("window_end", payload.windowEnd);
           return { state: next };
         }),
       )
-      .handle("expire", () =>
+      .handle("complete", () =>
         Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
-          const state = yield* expireSession(store, db, sessionEnv.sessionId);
-          yield* closeTransports(db, sessionEnv.sessionId);
-          return { state };
+          const next = yield* transition(yield* currentState(store), "completed");
+          yield* store.set("state", next);
+          return { state: next };
         }),
-      )
-      .handle("kickoff", () =>
-        Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
-          const mirror = (role: string, content: string) =>
-            mirrorMessage(db, sessionEnv.sessionId, role, content);
-          const state = yield* currentState(store);
-          if (state !== "active") {
-            return { ok: true, reply: undefined };
-          }
-          if (!(yield* checkNeuronBudget(db))) {
-            return { ok: true, reply: undefined };
-          }
-          if (!(yield* takeCapacitySlot(db))) {
-            return { ok: true, reply: undefined };
-          }
-          yield* store.spend(50);
-          const config = yield* loadTurnConfig(store);
-          const kickoffText = `Begin the shift. Restate the task from the brief in one line, state your immediate plan in two or three steps, then take the first action now.`;
-          const sessionRuntime = resolveRuntime(
-            sessionEnv.env,
-            db,
-            config.model,
-            config.allowlist,
-          );
-          const history = yield* store.history();
-          const reply = yield* runTurn({
-            runtime: sessionRuntime,
-            soul: config.soul,
-            brief: config.brief,
-            history: [
-              ...history,
-              { role: "user", content: kickoffText },
-            ],
-            sessionId: sessionEnv.sessionId,
-            allowlist: config.allowlist,
-            braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
-            ai: sessionEnv.env.AI,
-          }).pipe(
-            Effect.flatMap((turn) =>
-              Effect.forEach(turn.steps, (step) =>
-                recordAiUsage(db, {
-                  model: config.model,
-                  inTokens: step.inTokens,
-                  outTokens: step.outTokens,
-                  ok: true,
-                }),
-              ).pipe(Effect.as(turn.text)),
-            ),
-            Effect.catch(() => Effect.succeed("")),
-          );
-          if (reply.length > 0) {
-            yield* store.append("assistant", reply);
-            yield* mirror("assistant", reply);
-          }
-          return { ok: true, reply: reply.length > 0 ? reply : undefined };
-        }).pipe(Effect.orDie),
       )
       .handle("history", () =>
         Effect.gen(function* () {
           return [...(yield* store.history())];
         }),
       )
-      .handle("report", () =>
-        Effect.gen(function* () {
-          yield* completeShift(store, sessionEnv.env, sessionEnv.sessionId);
-          return { ok: true };
-        }),
-      )
       .handle("appendMessage", ({ payload }) =>
         Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
-          const mirror = (role: string, content: string) =>
-            mirrorMessage(db, sessionEnv.sessionId, role, content);
           yield* store.append(payload.role, payload.content);
-          yield* mirror(payload.role, payload.content);
-          if (payload.role !== "user") {
-            return { ok: true };
-          }
-          const admission = yield* admitTurn(
-            store,
-            db,
-            sessionEnv.sessionId,
-            payload.content,
-            sessionEnv.env.AI,
-          ).pipe(
-            Effect.catch(() =>
-              Effect.succeed({ _tag: "OutOfBudget" } as const),
-            ),
-          );
-          if (admission._tag === "Rejected") {
-            yield* persistReply(store, db, sessionEnv.sessionId, admission.reply);
-            return { ok: true, reply: admission.reply };
-          }
-          if (admission._tag === "AwaitingPayment" || admission._tag === "ShiftOver") {
-            yield* persistReply(store, db, sessionEnv.sessionId, admission.reply);
-            return { ok: true, reply: admission.reply };
-          }
-          if (admission._tag === "AtCapacity") {
-            yield* persistReply(store, db, sessionEnv.sessionId, capacityReply);
-            return { ok: true, reply: capacityReply };
-          }
-          if (admission._tag === "OutOfBudget") {
-            yield* persistReply(store, db, sessionEnv.sessionId, budgetReply);
-            return { ok: true, reply: budgetReply };
-          }
-          const sessionRuntime = resolveRuntime(
-            sessionEnv.env,
-            db,
-            admission.config.model,
-            admission.config.allowlist,
-          );
-          const history = yield* store.history();
-          const inChars =
-            admission.config.soul.length +
-            JSON.stringify(admission.config.brief).length +
-            history.reduce((n, m) => n + m.content.length, 0);
-          const reply = yield* runTurn({
-            runtime: sessionRuntime,
-            soul: admission.config.soul,
-            brief: admission.config.brief,
-            history,
-            sessionId: sessionEnv.sessionId,
-            allowlist: admission.config.allowlist,
-            braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
-            ai: sessionEnv.env.AI,
-          }).pipe(
-            Effect.flatMap((turn) =>
-              Effect.forEach(turn.steps, (step) =>
-                recordAiUsage(db, {
-                  model: admission.config.model,
-                  inTokens: step.inTokens,
-                  outTokens: step.outTokens,
-                  ok: true,
-                }),
-              ).pipe(Effect.as(turn.text)),
-            ),
-            Effect.catch(() =>
-              recordAiUsage(db, {
-                model: admission.config.model,
-                inTokens: charsToTokens(inChars),
-                outTokens: 0,
-                ok: false,
-              }).pipe(
-                Effect.andThen(() =>
-                  Effect.succeed(
-                    "I could not reach my model just now. Please try again.",
-                  ),
-                ),
-              ),
-            ),
-          );
-          yield* store.append("assistant", reply);
-          yield* mirror("assistant", reply);
-          return { ok: true, reply };
-        }).pipe(Effect.orDie),
+          return { ok: true };
+        }),
       );
   }),
 );
 
-export const makeLayer = (
-  store: SessionStoreImpl,
-  env: Env,
-  sessionId: string,
-) =>
+const makeLayer = (store: SessionStoreImpl) =>
   HttpApiBuilder.layer(SessionApi).pipe(
     Layer.provide(
-      sessionGroup.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(SessionStore)(store),
-            Layer.succeed(SessionEnv)({ env, sessionId }),
-          ),
-        ),
-      ),
+      sessionGroup.pipe(Layer.provide(Layer.succeed(SessionStore)(store))),
     ),
     Layer.provide(HttpServer.layerServices),
   );
 
-export const serveRestApi = async (
-  request: Request,
-  store: SessionStoreImpl,
-  env: Env,
-  sessionId: string,
-): Promise<Response> => {
-  const layer = makeLayer(store, env, sessionId);
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const handler = yield* HttpRouter.toHttpEffect(layer);
-      return yield* handler.pipe(
-        Effect.provideService(
-          HttpServerRequest.HttpServerRequest,
-          HttpServerRequest.fromWeb(request),
-        ),
-      );
-    }).pipe(Effect.scoped),
-  );
-  if (exit._tag === "Success") {
-    return HttpServerResponse.toWeb(exit.value);
-  }
-  const [response] = await Effect.runPromise(
-    HttpServerError.causeResponse(exit.cause),
-  );
-  return HttpServerResponse.toWeb(response);
-};
+export class SessionAgent {
+  private readonly ctx: DurableObjectState;
 
+  constructor(ctx: DurableObjectState, _env: unknown) {
+    this.ctx = ctx;
+    this.ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS session_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    );
+    this.ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS session_messages (id TEXT PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)",
+    );
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const layer = makeLayer(makeStore(this.ctx.storage.sql));
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const handler = yield* HttpRouter.toHttpEffect(layer);
+        return yield* handler.pipe(
+          Effect.provideService(
+            HttpServerRequest.HttpServerRequest,
+            HttpServerRequest.fromWeb(request),
+          ),
+        );
+      }).pipe(Effect.scoped),
+    );
+    if (exit._tag === "Success") {
+      return HttpServerResponse.toWeb(exit.value);
+    }
+    const [response] = await Effect.runPromise(
+      HttpServerError.causeResponse(exit.cause),
+    );
+    return HttpServerResponse.toWeb(response);
+  }
+
+  async alarm(): Promise<void> {
+    const store = makeStore(this.ctx.storage.sql);
+    await Effect.runPromise(store.set("state", "completed"));
+  }
+}
