@@ -3,6 +3,7 @@ import type { DatabaseImpl, Param } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import type { Env } from "../env.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
+import { seedListings } from "../listings/listings.ts";
 
 const scalar = (
   db: DatabaseImpl,
@@ -122,24 +123,19 @@ const notifyOwner = (
     );
   });
 
-const loadReviewable = (
+const loadOwner = (
   db: DatabaseImpl,
   listingId: string,
-): Effect.Effect<{ ownerId: string; name: string }, ListingNotFound | ListingConflict> =>
+): Effect.Effect<{ ownerId: string; name: string }, ListingNotFound> =>
   Effect.gen(function* () {
     const listing = yield* db
       .first(
-        "SELECT owner_id AS ownerId, name AS name, status AS status FROM agent_listings WHERE id = ?",
+        "SELECT owner_id AS ownerId, name AS name FROM agent_listings WHERE id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
-    }
-    if (String(listing.status) !== "in_review") {
-      return yield* Effect.fail(
-        new ListingConflict({ reason: `not_in_review:${String(listing.status)}` }),
-      );
     }
     return { ownerId: String(listing.ownerId), name: String(listing.name) };
   });
@@ -151,14 +147,17 @@ export const approveListing = (
   listingId: string,
 ): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
   Effect.gen(function* () {
-    const listing = yield* loadReviewable(db, listingId);
+    const listing = yield* loadOwner(db, listingId);
     const now = new Date().toISOString();
-    yield* db
-      .run("UPDATE agent_listings SET status = 'published', updated_at = ? WHERE id = ?", [
-        now,
-        listingId,
-      ])
+    const updated = yield* db
+      .first(
+        "UPDATE agent_listings SET status = 'published', updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
+        [now, listingId],
+      )
       .pipe(Effect.orDie);
+    if (updated === null) {
+      return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
+    }
     yield* db
       .run(
         "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
@@ -184,14 +183,17 @@ export const rejectListing = (
   reason: string,
 ): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
   Effect.gen(function* () {
-    const listing = yield* loadReviewable(db, listingId);
+    const listing = yield* loadOwner(db, listingId);
     const now = new Date().toISOString();
-    yield* db
-      .run("UPDATE agent_listings SET status = 'rejected', updated_at = ? WHERE id = ?", [
-        now,
-        listingId,
-      ])
+    const updated = yield* db
+      .first(
+        "UPDATE agent_listings SET status = 'rejected', updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
+        [now, listingId],
+      )
       .pipe(Effect.orDie);
+    if (updated === null) {
+      return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
+    }
     yield* db
       .run(
         "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
@@ -214,6 +216,9 @@ export const rejectListing = (
     );
     return { status: "rejected" };
   });
+
+export const seed = (db: DatabaseImpl): Effect.Effect<number> =>
+  seedListings(db).pipe(Effect.orDie);
 
 export const auditLog = (
   db: DatabaseImpl,

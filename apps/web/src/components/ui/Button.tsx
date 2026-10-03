@@ -17,6 +17,7 @@ export function Button({
   className = '',
   children,
   href,
+  disabled = false,
   ...props
 }: ButtonProps) {
   const baseStyles = 'relative inline-flex items-center justify-center overflow-hidden transition-all duration-200 uppercase tracking-wider font-syne font-bold outline-none rounded';
@@ -65,7 +66,7 @@ export function Button({
   }
 
   return (
-    <button className={classes} disabled={loading || props.disabled} {...props}>
+    <button className={classes} disabled={loading || disabled} {...props}>
       {content}
     </button>
   );
