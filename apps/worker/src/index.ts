@@ -4,6 +4,13 @@ import { make as makeDatabase } from "./db/database.ts";
 import type { Env } from "./env.ts";
 import { sweep } from "./lifecycle/lifecycle.ts";
 import { handleInbound } from "./channels/email.ts";
+import {
+  authorizeUrl,
+  exchangeCode,
+  handleEvent,
+  saveConnection,
+  verifySlackSignature,
+} from "./channels/slack.ts";
 import { handlePaystackWebhook } from "./payments/paystack.ts";
 import { handleBreetWebhook } from "./payments/breet.ts";
 
@@ -22,6 +29,58 @@ export default {
       return exit._tag === "Success"
         ? Response.json(exit.value)
         : Response.json({ ok: false }, { status: 500 });
+    }
+    if (url.pathname === "/api/slack/install") {
+      const session = url.searchParams.get("session") ?? "";
+      const redirectUri = `${env.FRONTEND_BASE_URL}/api/slack/oauth`;
+      return Response.redirect(
+        authorizeUrl(env.SLACK_CLIENT_ID, redirectUri, session),
+        302,
+      );
+    }
+    if (url.pathname === "/api/slack/oauth") {
+      const code = url.searchParams.get("code") ?? "";
+      const state = url.searchParams.get("state") ?? "";
+      const redirectUri = `${env.FRONTEND_BASE_URL}/api/slack/oauth`;
+      const install = await Effect.runPromise(
+        exchangeCode(env.SLACK_CLIENT_ID, env.SLACK_CLIENT_SECRET, code, redirectUri),
+      );
+      if (install === null) {
+        return Response.redirect(
+          `${env.FRONTEND_BASE_URL}/employees/launch?session=${state}&slack=failed`,
+          302,
+        );
+      }
+      const db = makeDatabase(env.DB);
+      const sessionRow = await Effect.runPromise(
+        db
+          .first("SELECT user_id AS userId FROM sessions WHERE id = ?", [state])
+          .pipe(Effect.orDie),
+      );
+      if (sessionRow !== null && sessionRow.userId !== null) {
+        await Effect.runPromise(
+          saveConnection(db, String(sessionRow.userId), install),
+        );
+      }
+      return Response.redirect(
+        `${env.FRONTEND_BASE_URL}/employees/launch?session=${state}&slack=connected`,
+        302,
+      );
+    }
+    if (url.pathname === "/api/slack/events") {
+      const rawBody = await request.text();
+      const timestamp = request.headers.get("x-slack-request-timestamp") ?? "";
+      const signature = request.headers.get("x-slack-signature") ?? "";
+      const valid = await Effect.runPromise(
+        verifySlackSignature(env.SLACK_SIGNING_SECRET, timestamp, rawBody, signature),
+      );
+      if (!valid) {
+        return Response.json({ ok: false }, { status: 401 });
+      }
+      const challenge = await Effect.runPromise(
+        handleEvent(env, makeDatabase(env.DB), rawBody),
+      );
+      return Response.json({ challenge });
     }
     if (url.pathname === "/webhooks/paystack") {
       const exit = await Effect.runPromiseExit(
