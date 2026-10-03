@@ -22,6 +22,7 @@ import {
 } from "./agent/runtime.ts";
 import { seedListings } from "./listings/listings.ts";
 import { runEval } from "./eval/eval.ts";
+import { initializePayment } from "./payments/paystack.ts";
 
 const ListingRow = Schema.Struct({
   id: Schema.String,
@@ -86,13 +87,30 @@ const runEvalEndpoint = HttpApiEndpoint.post("runEval", "/api/eval/run", {
   success: Schema.Struct({ score: Schema.Number, band: Schema.String }),
 });
 
+const initializePaymentEndpoint = HttpApiEndpoint.post(
+  "initializePayment",
+  "/api/payments/initialize",
+  {
+    payload: Schema.Struct({
+      sessionId: Schema.String,
+      amountMinor: Schema.Number,
+      email: Schema.String,
+    }),
+    success: Schema.Struct({
+      reference: Schema.String,
+      checkoutUrl: Schema.String,
+    }),
+  },
+);
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
   .add(createSession)
   .add(telegramWebhook)
   .add(seedListingsEndpoint)
   .add(listListingsEndpoint)
-  .add(runEvalEndpoint) {}
+  .add(runEvalEndpoint)
+  .add(initializePaymentEndpoint) {}
 
 class KlawvaApi extends HttpApi.make("Klawva").add(RootGroup) {}
 
@@ -107,6 +125,35 @@ const rootGroup = HttpApiBuilder.group(
     const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("initializePayment", ({ payload }) =>
+        Effect.gen(function* () {
+          const result = yield* initializePayment({
+            secret: env.PAYSTACK_SECRET_KEY,
+            sessionId: payload.sessionId,
+            amountMinor: payload.amountMinor,
+            callbackUrl: `https://klawva.xyz/session/${payload.sessionId}`,
+            email: payload.email,
+          }).pipe(Effect.orDie);
+          const now = new Date().toISOString();
+          yield* db
+            .run(
+              "INSERT INTO payments (id, session_id, provider, provider_reference, amount_minor, currency, status, confirmed_at, created_at, updated_at) VALUES (?, ?, 'paystack', ?, ?, 'NGN', 'pending', NULL, ?, ?)",
+              [
+                crypto.randomUUID(),
+                payload.sessionId,
+                result.reference,
+                payload.amountMinor,
+                now,
+                now,
+              ],
+            )
+            .pipe(Effect.orDie);
+          return {
+            reference: result.reference,
+            checkoutUrl: result.checkoutUrl,
+          };
+        }),
+      )
       .handle("seedListings", () =>
         Effect.gen(function* () {
           const seeded = yield* seedListings(db).pipe(Effect.orDie);
