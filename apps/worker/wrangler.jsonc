@@ -29,5 +29,5 @@
     { "tag": "v2", "new_sqlite_classes": ["WalletAgent"] }
   ],
   "ai": { "binding": "AI" },
-  "assets": { "directory": "./assets", "not_found_handling": "single-page-application" }
+  "assets": { "directory": "./assets", "binding": "ASSETS", "not_found_handling": "single-page-application" }
 }
