@@ -61,6 +61,7 @@ export function Component() {
   const [tagline, setTagline] = useState(detail.tagline);
   const [category, setCategory] = useState(detail.category);
   const [priceNaira, setPriceNaira] = useState(String(detail.priceMinor / 100));
+  const [budgetMinor, setBudgetMinor] = useState(String(detail.budgetMinor));
   const [briefFields, setBriefFields] = useState(parseBriefFields(detail.briefFields));
   const [soul, setSoul] = useState(detail.soul);
 
@@ -82,6 +83,7 @@ export function Component() {
         tagline,
         category,
         priceMinor,
+        budgetMinor: Number(budgetMinor) || 3000,
         briefFields: briefFields
           .split(",")
           .map((v) => v.trim())
@@ -233,6 +235,20 @@ export function Component() {
                 step="0.01"
                 value={priceNaira}
                 onChange={(e) => setPriceNaira(e.target.value)}
+                disabled={!editable}
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
+                AI budget cap
+              </label>
+              <input
+                className={inputClass}
+                type="number"
+                min="100"
+                step="50"
+                value={budgetMinor}
+                onChange={(e) => setBudgetMinor(e.target.value)}
                 disabled={!editable}
               />
             </div>
