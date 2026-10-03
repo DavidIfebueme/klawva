@@ -14,8 +14,14 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "SESSION", "class_name": "SessionAgent" }]
+    "bindings": [
+      { "name": "SESSION", "class_name": "SessionAgent" },
+      { "name": "WALLET", "class_name": "WalletAgent" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionAgent"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SessionAgent"] },
+    { "tag": "v2", "new_sqlite_classes": ["WalletAgent"] }
+  ],
   "ai": { "binding": "AI" }
 }
