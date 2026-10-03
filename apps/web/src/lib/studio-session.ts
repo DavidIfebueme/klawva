@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import * as Schema from "effect/Schema";
 
 export interface StudioSession {
   token: string;
@@ -10,40 +9,33 @@ export interface StudioSession {
 const STORAGE_KEY = "klawva_studio_session";
 const listeners = new Set<() => void>();
 
-const storedSession = Schema.Struct({
-  token: Schema.String,
-  email: Schema.String,
-  admin: Schema.optionalKey(Schema.Boolean),
-});
-
 function readStored(): StudioSession | null {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  const raw = localStorage.getItem(STORAGE_KEY);
   if (raw === null) {
     return null;
   }
-  const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(storedSession))(raw);
-  if (parsed._tag === "None") {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      typeof (parsed as Record<string, unknown>).token === "string" &&
+      typeof (parsed as Record<string, unknown>).email === "string"
+    ) {
+      const record = parsed as Record<string, unknown>;
+      return {
+        token: String(record.token),
+        email: String(record.email),
+        admin: record.admin === true,
+      };
+    }
+  } catch {
     return null;
   }
-  return {
-    token: parsed.value.token,
-    email: parsed.value.email,
-    admin: parsed.value.admin === true,
-  };
+  return null;
 }
 
 let current: StudioSession | null = readStored();
-
-const notify = (): void => {
-  for (const listener of listeners) {
-    listener();
-  }
-};
 
 export const getStudioSession = (): StudioSession | null => current;
 
@@ -56,32 +48,19 @@ export const subscribeStudioSession = (listener: () => void): (() => void) => {
 
 export const setStudioSession = (session: StudioSession): void => {
   current = session;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  } catch {
-    current = session;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  for (const listener of listeners) {
+    listener();
   }
-  notify();
 };
 
 export const clearStudioSession = (): void => {
   current = null;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    current = null;
+  localStorage.removeItem(STORAGE_KEY);
+  for (const listener of listeners) {
+    listener();
   }
-  notify();
 };
-
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (event) => {
-    if (event.key === null || event.key === STORAGE_KEY) {
-      current = readStored();
-      notify();
-    }
-  });
-}
 
 export function useStudioSession(): StudioSession | null {
   return useSyncExternalStore(
