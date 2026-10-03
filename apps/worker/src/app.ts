@@ -75,8 +75,9 @@ const PublicListingDetail = Schema.Struct({
 });
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
-import { ListingNotFound } from "./errors.ts";
+import { ListingConflict, ListingNotFound } from "./errors.ts";
 import { rateLimited, verifyTurnstile } from "./lib/guard.ts";
+import { screenBrief } from "./moderation/moderation.ts";
 
 const HealthResponse = Schema.Struct({
   ok: Schema.Boolean,
@@ -100,6 +101,7 @@ const health = HttpApiEndpoint.get("health", "/health", {
 const createSession = HttpApiEndpoint.post("createSession", "/api/sessions", {
   payload: CreateSession,
   success: SessionCreated,
+  error: ListingConflict,
 });
 
 const telegramWebhook = HttpApiEndpoint.post(
@@ -566,6 +568,10 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("createSession", ({ payload }) =>
         Effect.gen(function* () {
+          const flagged = screenBrief(payload.brief);
+          if (flagged !== null) {
+            return yield* Effect.fail(new ListingConflict({ reason: flagged }));
+          }
           const id = crypto.randomUUID();
           const now = new Date().toISOString();
           const userId =
