@@ -6,6 +6,7 @@ export interface Env {
   readonly SESSION: DurableObjectNamespace;
   readonly WALLET: DurableObjectNamespace;
   readonly AI: Ai;
+  readonly ASSETS: Fetcher;
   readonly ENV: string;
   readonly TELEGRAM_BOT_TOKEN: string;
   readonly TELEGRAM_WEBHOOK_SECRET: string;
