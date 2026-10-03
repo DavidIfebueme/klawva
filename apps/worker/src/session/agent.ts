@@ -21,6 +21,7 @@ import {
 import { make as makeDatabase } from "../db/database.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
+import { sendMessage } from "../channels/telegram.ts";
 import type { Env } from "../env.ts";
 
 export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
@@ -171,9 +172,9 @@ export const completeShift = (
       )
       .pipe(Effect.orDie);
     yield* store.set("state", "completed");
+    const reportUrl = `${env.FRONTEND_BASE_URL}/report/${sessionId}?shareToken=${shareToken}`;
     const email = yield* store.get("email");
     if (email !== null && email.length > 0) {
-      const reportUrl = `https://klawva.xyz/report/${sessionId}?shareToken=${shareToken}`;
       yield* sendEmail({
         apiKey: env.BREVO_API_KEY,
         senderEmail: env.BREVO_SENDER_EMAIL,
@@ -182,6 +183,19 @@ export const completeShift = (
         subject: "Your Klawva worker shift has ended",
         html: reportEmailHtml(reportUrl),
       }).pipe(Effect.catch(() => Effect.void));
+    }
+    const link = yield* db
+      .first(
+        "SELECT chat_id AS chatId FROM channel_links WHERE session_id = ? AND channel = 'telegram' LIMIT 1",
+        [sessionId],
+      )
+      .pipe(Effect.orDie);
+    if (link !== null) {
+      yield* sendMessage(
+        env.TELEGRAM_BOT_TOKEN,
+        Number(link.chatId),
+        `Your shift is complete. Here is your report: ${reportUrl}`,
+      ).pipe(Effect.catch(() => Effect.void));
     }
   });
 
