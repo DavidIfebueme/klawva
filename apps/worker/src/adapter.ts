@@ -3,48 +3,26 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerError from "effect/http/HttpServerError";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
-import { makeAppLayer } from "./app.ts";
-import type { Env } from "./env.ts";
+import { appLayer } from "./app.ts";
 
-const securityHeaders = (headers: Headers): Headers => {
-  headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  headers.set("X-Frame-Options", "DENY");
-  return headers;
-};
+const program = (request: Request) =>
+  Effect.gen(function* () {
+    const handler = yield* HttpRouter.toHttpEffect(appLayer);
+    return yield* handler.pipe(
+      Effect.provideService(
+        HttpServerRequest.HttpServerRequest,
+        HttpServerRequest.fromWeb(request),
+      ),
+    );
+  }).pipe(Effect.scoped);
 
-export const toResponse = async (
-  request: Request,
-  env: Env,
-): Promise<Response> => {
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const handler = yield* HttpRouter.toHttpEffect(makeAppLayer(env));
-      return yield* handler.pipe(
-        Effect.provideService(
-          HttpServerRequest.HttpServerRequest,
-          HttpServerRequest.fromWeb(request),
-        ),
-      );
-    }).pipe(Effect.scoped),
-  );
+export const toResponse = async (request: Request): Promise<Response> => {
+  const exit = await Effect.runPromiseExit(program(request));
   if (exit._tag === "Success") {
-    const response = HttpServerResponse.toWeb(exit.value);
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: securityHeaders(new Headers(response.headers)),
-    });
+    return HttpServerResponse.toWeb(exit.value);
   }
   const [response] = await Effect.runPromise(
     HttpServerError.causeResponse(exit.cause),
   );
-  const web = HttpServerResponse.toWeb(response);
-  return new Response(web.body, {
-    status: web.status,
-    statusText: web.statusText,
-    headers: securityHeaders(new Headers(web.headers)),
-  });
+  return HttpServerResponse.toWeb(response);
 };
-
