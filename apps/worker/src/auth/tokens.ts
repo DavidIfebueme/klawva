@@ -27,8 +27,11 @@ const decodeBase64Url = (value: string): string =>
 const hmacHex = (
   secret: string,
   message: string,
-): Effect.Effect<string, AuthError> =>
-  Effect.tryPromise({
+): Effect.Effect<string, AuthError> => {
+  if (secret.length === 0) {
+    return Effect.fail(new AuthError({ reason: "auth_secret_missing" }));
+  }
+  return Effect.tryPromise({
     try: async () => {
       const key = await crypto.subtle.importKey(
         "raw",
@@ -48,6 +51,7 @@ const hmacHex = (
     },
     catch: (cause) => new AuthError({ reason: String(cause) }),
   });
+};
 
 export const signToken = (
   secret: string,
