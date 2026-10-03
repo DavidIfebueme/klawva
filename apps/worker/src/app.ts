@@ -30,6 +30,13 @@ import { runEval } from "./eval/eval.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import { generateAddress } from "./payments/breet.ts";
+import {
+  identityFromToken,
+  requestMagicLink,
+  tokenFromHeaders,
+  verifyMagicLink,
+} from "./auth/auth.ts";
+import { AuthError } from "./auth/tokens.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -189,8 +196,35 @@ const breetAddressEndpoint = HttpApiEndpoint.post(
   },
 );
 
+const requestLinkEndpoint = HttpApiEndpoint.post(
+  "requestLink",
+  "/api/auth/request-link",
+  {
+    payload: Schema.Struct({ email: Schema.String }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+  },
+);
+
+const verifyLinkEndpoint = HttpApiEndpoint.post("verifyLink", "/api/auth/verify", {
+  payload: Schema.Struct({ token: Schema.String }),
+  success: Schema.Struct({
+    sessionToken: Schema.String,
+    email: Schema.String,
+    admin: Schema.Boolean,
+  }),
+  error: AuthError,
+});
+
+const meEndpoint = HttpApiEndpoint.get("me", "/api/auth/me", {
+  success: Schema.Struct({ email: Schema.String, admin: Schema.Boolean }),
+  error: AuthError,
+});
+
 class RootGroup extends HttpApiGroup.make("Root")
   .add(health)
+  .add(requestLinkEndpoint)
+  .add(verifyLinkEndpoint)
+  .add(meEndpoint)
   .add(createSession)
   .add(telegramWebhook)
   .add(seedListingsEndpoint)
@@ -217,6 +251,33 @@ const rootGroup = HttpApiBuilder.group(
     const runtime = yield* AgentRuntime;
     return handlers
       .handle("health", () => Effect.succeed({ ok: true, service: "klawva" }))
+      .handle("requestLink", ({ payload }) =>
+        Effect.gen(function* () {
+          yield* requestMagicLink(env, db, payload.email).pipe(Effect.orDie);
+          return { ok: true };
+        }),
+      )
+      .handle("verifyLink", ({ payload }) =>
+        Effect.gen(function* () {
+          const result = yield* verifyMagicLink(env, db, payload.token);
+          return {
+            sessionToken: result.sessionToken,
+            email: result.identity.email,
+            admin: result.identity.admin,
+          };
+        }),
+      )
+      .handle("me", () =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const token = tokenFromHeaders(request.headers);
+          if (token === null) {
+            return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
+          }
+          const identity = yield* identityFromToken(env, db, token);
+          return { email: identity.email, admin: identity.admin };
+        }),
+      )
       .handle("breetAddress", ({ payload }) =>
         Effect.gen(function* () {
           const address = yield* generateAddress(
