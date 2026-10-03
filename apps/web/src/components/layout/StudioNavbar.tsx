@@ -1,18 +1,24 @@
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Link from "@/components/ui/AppLink";
 import { KlawvaMark } from "../icons/KlawvaMark";
 import { Button } from "../ui/Button";
-import { useStudioAuth } from "../studio-auth-provider";
+import { clearStudioSession, useStudioSession } from "@/lib/studio-session";
 import { LayoutList, ShieldCheck, LogOut } from "lucide-react";
 
 export function StudioNavbar() {
-  const { session, logout } = useStudioAuth();
+  const session = useStudioSession();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-2 text-sm transition-colors ${
       active ? "text-klawva-accent" : "text-klawva-muted hover:text-klawva-text"
     }`;
+
+  const handleLogout = () => {
+    clearStudioSession();
+    navigate("/studio/login");
+  };
 
   return (
     <nav className="fixed top-0 left-0 w-full h-16 z-50 bg-klawva-bg/85 backdrop-blur-md border-b border-klawva-border">
@@ -42,7 +48,7 @@ export function StudioNavbar() {
           <span className="hidden sm:inline text-xs font-mono text-klawva-muted border-r border-klawva-border pr-4">
             {session?.email}
           </span>
-          <Button variant="ghost" size="sm" onClick={logout} className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="flex items-center gap-2">
             <LogOut size={14} />
             <span>Logout</span>
           </Button>

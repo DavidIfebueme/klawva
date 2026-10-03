@@ -1,22 +1,33 @@
-import React, { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { useStudioAuth } from "@/components/studio-auth-provider";
+import React, { useState } from "react";
+import { redirect, useLoaderData, useNavigate } from "react-router-dom";
+import { getStudioSession } from "@/lib/studio-session";
 import {
   createStudioListing,
   getStudioListings,
   getStudioMe,
   startAuthorFee,
-  type StudioListingSummary,
 } from "@/lib/studio-api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import Link from "@/components/ui/AppLink";
-import { Loader2, Plus, ArrowRight, ShieldCheck } from "lucide-react";
+import { Plus, ArrowRight, ShieldCheck } from "lucide-react";
 
 const feeMinor = 2000;
 const minPriceMinor = 1000;
 const maxPriceMinor = 25000;
+
+export const loader = async () => {
+  const session = getStudioSession();
+  if (session === null) {
+    throw redirect("/studio/login");
+  }
+  const [me, listings] = await Promise.all([
+    getStudioMe(session.token),
+    getStudioListings(session.token),
+  ]);
+  return { session, me, listings };
+};
 
 function statusVariant(status: string): "active" | "pending" | "warning" {
   if (status === "published") return "active";
@@ -25,11 +36,8 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
 }
 
 export default function StudioHomePage() {
-  const { session } = useStudioAuth();
+  const { session, me, listings } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
-  const [listings, setListings] = useState<StudioListingSummary[]>([]);
-  const [feePaid, setFeePaid] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,31 +49,6 @@ export default function StudioHomePage() {
   const [priceNaira, setPriceNaira] = useState("25");
   const [briefFields, setBriefFields] = useState("task");
   const [soul, setSoul] = useState("");
-
-  useEffect(() => {
-    if (session === null) return;
-    const token = session.token;
-    async function load() {
-      try {
-        const [me, list] = await Promise.all([
-          getStudioMe(token),
-          getStudioListings(token),
-        ]);
-        setFeePaid(me.feePaid);
-        setListings(list);
-      } catch (err) {
-        console.error(err);
-        setError(err instanceof Error ? err.message : "Failed to load studio");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [session]);
-
-  if (session === null) {
-    return <Navigate to="/studio/login" replace />;
-  }
 
   const handlePayFee = async () => {
     setBusy(true);
@@ -134,7 +117,7 @@ export default function StudioHomePage() {
         </p>
       )}
 
-      {feePaid === false && (
+      {!me.feePaid && (
         <Card className="border-klawva-accent/40">
           <div className="flex flex-wrap items-center justify-between gap-6">
             <div className="flex items-start gap-3">
@@ -157,7 +140,7 @@ export default function StudioHomePage() {
         </Card>
       )}
 
-      {feePaid === true && (
+      {me.feePaid && (
         <div className="flex items-center gap-2 text-xs font-mono text-klawva-muted">
           <ShieldCheck size={14} className="text-klawva-accent" />
           Author fee paid. Submissions unlocked.
@@ -278,12 +261,7 @@ export default function StudioHomePage() {
         <h2 className="font-syne font-bold text-lg uppercase text-white tracking-wider border-b border-klawva-border pb-3">
           Listings ({listings.length})
         </h2>
-        {loading ? (
-          <div className="flex items-center gap-3 py-12 text-xs text-klawva-muted">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading listings...
-          </div>
-        ) : listings.length === 0 ? (
+        {listings.length === 0 ? (
           <Card className="text-center py-12">
             <p className="text-sm text-klawva-muted">
               No listings yet. Create your first agent to get started.

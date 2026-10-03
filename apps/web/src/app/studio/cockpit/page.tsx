@@ -1,64 +1,42 @@
-import React, { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
-import { useStudioAuth } from "@/components/studio-auth-provider";
+import { useState } from "react";
+import { redirect, useLoaderData, useRevalidator } from "react-router-dom";
+import { getStudioSession } from "@/lib/studio-session";
 import {
   approveListing,
   getAdminAudit,
   getAdminOverview,
   getAdminReviews,
   rejectListing,
-  type AdminOverview,
-  type AuditItem,
-  type ReviewItem,
 } from "@/lib/cockpit-api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Loader2, Check, X, ShieldAlert } from "lucide-react";
+import { Check, X, ShieldAlert } from "lucide-react";
+
+export const loader = async () => {
+  const session = getStudioSession();
+  if (session === null) {
+    throw redirect("/studio/login");
+  }
+  if (!session.admin) {
+    return { session, admin: false as const, overview: null, reviews: [], audit: [] };
+  }
+  const [overview, reviews, audit] = await Promise.all([
+    getAdminOverview(session.token),
+    getAdminReviews(session.token),
+    getAdminAudit(session.token),
+  ]);
+  return { session, admin: true as const, overview, reviews, audit };
+};
 
 export default function CockpitPage() {
-  const { session } = useStudioAuth();
-  const [overview, setOverview] = useState<AdminOverview | null>(null);
-  const [reviews, setReviews] = useState<ReviewItem[]>([]);
-  const [audit, setAudit] = useState<AuditItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const data = useLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
-  const token = session?.token;
-
-  const refresh = async (authToken: string) => {
-    const [o, r, a] = await Promise.all([
-      getAdminOverview(authToken),
-      getAdminReviews(authToken),
-      getAdminAudit(authToken),
-    ]);
-    setOverview(o);
-    setReviews(r);
-    setAudit(a);
-  };
-
-  useEffect(() => {
-    if (token === undefined) return;
-    const authToken = token;
-    async function load() {
-      try {
-        await refresh(authToken);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load cockpit");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [token]);
-
-  if (session === null) {
-    return <Navigate to="/studio/login" replace />;
-  }
-
-  if (!session.admin) {
+  if (!data.admin) {
     return (
       <Card className="text-center py-16">
         <ShieldAlert className="text-klawva-orange w-10 h-10 mx-auto mb-4" />
@@ -72,12 +50,14 @@ export default function CockpitPage() {
     );
   }
 
+  const { session, overview, reviews, audit } = data;
+
   const run = async (id: string, action: () => Promise<unknown>) => {
     setBusyId(id);
     setError("");
     try {
       await action();
-      await refresh(session.token);
+      revalidator.revalidate();
       setReasonFor(null);
       setReason("");
     } catch (err) {
@@ -86,15 +66,6 @@ export default function CockpitPage() {
       setBusyId(null);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-3 py-24 text-xs text-klawva-muted">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Loading cockpit...
-      </div>
-    );
-  }
 
   const stat = (label: string, value: number) => (
     <Card key={label}>
