@@ -15,8 +15,12 @@ import {
   AgentRuntime,
   defaultModel,
   layer as agentLayer,
+  makeRuntime,
   runTurn,
 } from "../agent/runtime.ts";
+import { make as makeDatabase } from "../db/database.ts";
+import { fallbackReport, generateReport } from "../report/report.ts";
+import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import type { Env } from "../env.ts";
 
 export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
@@ -129,6 +133,55 @@ export const makeStore = (sql: SqlStorage): SessionStoreImpl => ({
     }),
 });
 
+export class SessionEnv extends Context.Service<
+  SessionEnv,
+  { readonly env: Env; readonly sessionId: string }
+>()("klawva/session/SessionEnv") {}
+
+export const completeShift = (
+  store: SessionStoreImpl,
+  env: Env,
+  sessionId: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const history = yield* store.history();
+    const runtime = makeRuntime(env.AI, defaultModel);
+    const report = yield* generateReport({ runtime, history }).pipe(
+      Effect.catch(() => Effect.succeed(fallbackReport(history))),
+    );
+    const db = makeDatabase(env.DB);
+    const shareToken = crypto.randomUUID().replace(/-/g, "");
+    const now = new Date().toISOString();
+    yield* db
+      .run(
+        "INSERT INTO mission_reports (id, session_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, stats = excluded.stats, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
+        [
+          crypto.randomUUID(),
+          sessionId,
+          report.summary,
+          JSON.stringify(report.stats),
+          shareToken,
+          now,
+          now,
+          now,
+        ],
+      )
+      .pipe(Effect.orDie);
+    yield* store.set("state", "completed");
+    const email = yield* store.get("email");
+    if (email !== null && email.length > 0) {
+      const reportUrl = `https://klawva.xyz/report/${sessionId}?shareToken=${shareToken}`;
+      yield* sendEmail({
+        apiKey: env.BREVO_API_KEY,
+        senderEmail: env.BREVO_SENDER_EMAIL,
+        senderName: "Klawva",
+        toEmail: email,
+        subject: "Your Klawva worker shift has ended",
+        html: reportEmailHtml(reportUrl),
+      }).pipe(Effect.catch(() => Effect.void));
+    }
+  });
+
 const StateResponse = Schema.Struct({ state: Schema.String });
 
 const getState = HttpApiEndpoint.get("state", "/state", { success: StateResponse });
@@ -141,6 +194,7 @@ const init = HttpApiEndpoint.post("init", "/init", {
     budgetMinor: Schema.Number,
     soul: Schema.String,
     brief: Brief,
+    email: Schema.optionalKey(Schema.String),
   }),
   success: StateResponse,
 });
@@ -160,6 +214,10 @@ const history = HttpApiEndpoint.get("history", "/history", {
   success: Schema.Array(Schema.Struct({ role: Schema.String, content: Schema.String })),
 });
 
+const report = HttpApiEndpoint.post("report", "/report", {
+  success: Schema.Struct({ ok: Schema.Boolean }),
+});
+
 const appendMessage = HttpApiEndpoint.post("appendMessage", "/messages", {
   payload: Schema.Struct({ role: Schema.String, content: Schema.String }),
   success: Schema.Struct({
@@ -174,6 +232,7 @@ class SessionGroup extends HttpApiGroup.make("Session")
   .add(activate)
   .add(complete)
   .add(history)
+  .add(report)
   .add(appendMessage) {}
 
 class SessionApi extends HttpApi.make("SessionApi").add(SessionGroup) {}
@@ -190,6 +249,7 @@ const sessionGroup = HttpApiBuilder.group(
   Effect.fn(function* (handlers) {
     const store = yield* SessionStore;
     const runtime = yield* AgentRuntime;
+    const sessionEnv = yield* SessionEnv;
     return handlers
       .handle("state", () =>
         Effect.gen(function* () {
@@ -204,6 +264,7 @@ const sessionGroup = HttpApiBuilder.group(
           yield* store.set("spent_minor", "0");
           yield* store.set("soul", payload.soul);
           yield* store.set("brief", JSON.stringify(payload.brief));
+          yield* store.set("email", payload.email ?? "");
           return { state: payload.state };
         }),
       )
@@ -232,6 +293,12 @@ const sessionGroup = HttpApiBuilder.group(
           return [...(yield* store.history())];
         }),
       )
+      .handle("report", () =>
+        Effect.gen(function* () {
+          yield* completeShift(store, sessionEnv.env, sessionEnv.sessionId);
+          return { ok: true };
+        }),
+      )
       .handle("appendMessage", ({ payload }) =>
         Effect.gen(function* () {
           yield* store.append(payload.role, payload.content);
@@ -252,13 +319,18 @@ const sessionGroup = HttpApiBuilder.group(
   }),
 );
 
-const makeLayer = (store: SessionStoreImpl, env: Env) =>
+const makeLayer = (
+  store: SessionStoreImpl,
+  env: Env,
+  sessionId: string,
+) =>
   HttpApiBuilder.layer(SessionApi).pipe(
     Layer.provide(
       sessionGroup.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(SessionStore)(store),
+            Layer.succeed(SessionEnv)({ env, sessionId }),
             agentLayer(env.AI, defaultModel),
           ),
         ),
@@ -283,7 +355,11 @@ export class SessionAgent {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const layer = makeLayer(makeStore(this.ctx.storage.sql), this.env);
+    const layer = makeLayer(
+      makeStore(this.ctx.storage.sql),
+      this.env,
+      String(this.ctx.id.name ?? ""),
+    );
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const handler = yield* HttpRouter.toHttpEffect(layer);
@@ -305,7 +381,12 @@ export class SessionAgent {
   }
 
   async alarm(): Promise<void> {
-    const store = makeStore(this.ctx.storage.sql);
-    await Effect.runPromise(store.set("state", "completed"));
+    await Effect.runPromise(
+      completeShift(
+        makeStore(this.ctx.storage.sql),
+        this.env,
+        String(this.ctx.id.name ?? ""),
+      ),
+    );
   }
 }
