@@ -5,6 +5,10 @@ import type { Env } from "./env.ts";
 import { sweep } from "./lifecycle/lifecycle.ts";
 import { handleInbound } from "./channels/email.ts";
 import {
+  handleDiscordInteraction,
+  verifyDiscordSignature,
+} from "./channels/discord.ts";
+import {
   authorizeUrl,
   exchangeCode,
   handleEvent,
@@ -29,6 +33,23 @@ export default {
       return exit._tag === "Success"
         ? Response.json(exit.value)
         : Response.json({ ok: false }, { status: 500 });
+    }
+    if (url.pathname === "/api/discord/interactions") {
+      const rawBody = await request.text();
+      const signature = request.headers.get("x-signature-ed25519") ?? "";
+      const timestamp = request.headers.get("x-signature-timestamp") ?? "";
+      const valid = await Effect.runPromise(
+        verifyDiscordSignature(env.DISCORD_PUBLIC_KEY, signature, timestamp, rawBody),
+      );
+      if (!valid) {
+        return Response.json({ error: "invalid signature" }, { status: 401 });
+      }
+      const body = await Effect.runPromise(
+        handleDiscordInteraction(env, makeDatabase(env.DB), rawBody),
+      );
+      return new Response(body, {
+        headers: { "Content-Type": "application/json" },
+      });
     }
     if (url.pathname === "/api/slack/install") {
       const session = url.searchParams.get("session") ?? "";
