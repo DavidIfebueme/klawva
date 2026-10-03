@@ -18,6 +18,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-6 mr-4">
             <Link href="/employees" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Employees</Link>
             <Link href="/#pricing" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Pricing</Link>
+            <Link href="/account" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors">Account</Link>
             <Link href="/studio/login" className="text-sm text-klawva-muted hover:text-klawva-text transition-colors font-bold text-klawva-accent">Studio</Link>
           </div>
           <div className="hidden md:block">
