@@ -8,6 +8,7 @@ import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { Database, layer as databaseLayer } from "./db/database.ts";
 import { Channel } from "./db/schema.ts";
+import { soulFor } from "./agent/souls.ts";
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 
@@ -80,9 +81,12 @@ const rootGroup = HttpApiBuilder.group(
                 "https://session/init",
                 {
                   method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     state: "pending",
                     budgetMinor: defaultBudgetMinor,
+                    soul: soulFor(payload.agentId),
+                    brief: payload.brief,
                   }),
                 },
               ),
