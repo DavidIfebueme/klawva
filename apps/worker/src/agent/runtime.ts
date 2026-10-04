@@ -11,6 +11,20 @@ export const defaultToolAllowlist: ReadonlyArray<string> = [
   "extract_links",
 ];
 
+const StoredAllowlist = Schema.fromJsonString(Schema.Array(Schema.String));
+
+export const resolveAllowlist = (
+  raw: string | null,
+): ReadonlyArray<string> => {
+  if (raw === null) {
+    return [...defaultToolAllowlist];
+  }
+  const decoded = Schema.decodeUnknownOption(StoredAllowlist)(raw);
+  return decoded._tag === "Some"
+    ? decoded.value.filter((name) => defaultToolAllowlist.includes(name))
+    : [...defaultToolAllowlist];
+};
+
 export interface ChatMessage {
   readonly role: string;
   readonly content: string;

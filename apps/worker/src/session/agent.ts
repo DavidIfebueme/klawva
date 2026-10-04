@@ -14,8 +14,8 @@ import { SessionState } from "../db/schema.ts";
 import {
   defaultModel,
   defaultToolAllowlist,
-  layer as agentLayer,
   makeRuntime,
+  resolveAllowlist,
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase } from "../db/database.ts";
@@ -367,15 +367,7 @@ const sessionGroup = HttpApiBuilder.group(
           const brief = Schema.decodeUnknownSync(Brief)(
             JSON.parse((yield* store.get("brief")) ?? "{}"),
           );
-          const storedAllowlist = Schema.decodeUnknownOption(
-            Schema.fromJsonString(Schema.Array(Schema.String)),
-          )((yield* store.get("tool_allowlist")) ?? "[]");
-          const allowlist =
-            storedAllowlist._tag === "Some"
-              ? storedAllowlist.value.filter((name) =>
-                  defaultToolAllowlist.includes(name),
-                )
-              : [...defaultToolAllowlist];
+          const allowlist = resolveAllowlist(yield* store.get("tool_allowlist"));
           const model = (yield* store.get("model")) ?? defaultModel;
           const sessionRuntime = makeRuntime(sessionEnv.env.AI, model, allowlist);
           const history = yield* store.history();
@@ -411,7 +403,6 @@ const makeLayer = (
           Layer.mergeAll(
             Layer.succeed(SessionStore)(store),
             Layer.succeed(SessionEnv)({ env, sessionId }),
-            agentLayer(env.AI, defaultModel),
           ),
         ),
       ),

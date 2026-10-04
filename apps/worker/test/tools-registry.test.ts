@@ -1,24 +1,36 @@
 import * as Effect from "effect/Effect";
-import { createServer, type Server } from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import * as Schema from "effect/Schema";
+import { describe, expect, it } from "vitest";
 import {
   defaultToolAllowlist,
+  resolveAllowlist,
   resolveToolCall,
   runTurn,
   specsFor,
   type AgentRuntimeImpl,
 } from "../src/agent/runtime.ts";
-import { BlockedHost } from "../src/agent/tools.ts";
-import { extractLinks, fetchLinks, fetchUrl, toText } from "../src/agent/tools.ts";
+import {
+  extractLinks,
+  fetchLinks,
+  fetchUrl,
+  isBlockedHost,
+  maxRedirects,
+  toText,
+  type Fetcher,
+} from "../src/agent/tools.ts";
+
+const SpecName = Schema.decodeUnknownSync(
+  Schema.Struct({ function: Schema.Struct({ name: Schema.String }) }),
+);
+
+const specNames = (allowlist: ReadonlyArray<string>): ReadonlyArray<string> =>
+  specsFor(allowlist).map((spec) => SpecName(spec).function.name);
 
 describe("tool allowlist", () => {
   it("exposes only allowed tools to the model", () => {
-    const names = specsFor(["fetch_url"]).map(
-      (spec) => (spec["function"] as { name: string }).name,
-    );
-    expect(names).toEqual(["fetch_url"]);
-    expect(specsFor([])).toEqual([]);
-    expect(specsFor(defaultToolAllowlist).length).toBe(2);
+    expect(specNames(["fetch_url"])).toEqual(["fetch_url"]);
+    expect(specNames([])).toEqual([]);
+    expect(specNames(defaultToolAllowlist).length).toBe(2);
   });
 
   it("refuses tools outside the allowlist", async () => {
@@ -30,6 +42,194 @@ describe("tool allowlist", () => {
       ),
     );
     expect(result).toBe("tool fetch_url is not available");
+  });
+});
+
+describe("stored allowlist", () => {
+  it("keeps the full default when a session predates the column", () => {
+    expect(resolveAllowlist(null)).toEqual(defaultToolAllowlist);
+  });
+
+  it("honours an explicit empty listing", () => {
+    expect(resolveAllowlist("[]")).toEqual([]);
+  });
+
+  it("drops names the registry does not define", () => {
+    expect(resolveAllowlist('["fetch_url","rm_rf","extract_links"]')).toEqual([
+      "fetch_url",
+      "extract_links",
+    ]);
+  });
+
+  it("falls back to the default on unreadable json", () => {
+    expect(resolveAllowlist("not json")).toEqual(defaultToolAllowlist);
+  });
+});
+
+const blockedHosts = [
+  "localhost",
+  "api.localhost",
+  "metadata.internal",
+  "printer.local",
+  "127.0.0.1",
+  "127.13.9.2",
+  "0.0.0.0",
+  "0.0.0.1",
+  "10.4.5.6",
+  "172.16.0.1",
+  "172.31.255.254",
+  "192.168.0.1",
+  "169.254.169.254",
+  "100.64.0.1",
+  "100.127.255.255",
+  "192.0.0.8",
+  "198.18.0.1",
+  "198.19.255.255",
+  "224.0.0.1",
+  "239.1.2.3",
+  "240.0.0.1",
+  "255.255.255.255",
+  "[::1]",
+  "[::]",
+  "[0:0:0:0:0:0:0:1]",
+  "[0000:0000:0000:0000:0000:0000:0000:0001]",
+  "[::ffff:127.0.0.1]",
+  "[::ffff:7f00:1]",
+  "[::ffff:a9fe:a9fe]",
+  "[64:ff9b::7f00:1]",
+  "[fe80::1]",
+  "[fe80:0:0:0:0:0:0:1]",
+  "[fc00::1]",
+  "[fd12:3456::1]",
+  "[fdff::abcd]",
+  "[ff02::1]",
+];
+
+const allowedHosts = [
+  "boards.example",
+  "www.klawva.xyz",
+  "8.8.8.8",
+  "172.15.255.255",
+  "172.32.0.1",
+  "100.63.255.255",
+  "100.128.0.1",
+  "192.0.1.1",
+  "198.20.0.1",
+  "223.255.255.255",
+  "[2606:4700:4700::1111]",
+  "[2001:db8::1]",
+  "[fe00::1]",
+];
+
+describe("host guard", () => {
+  it.each(blockedHosts)("blocks %s", (host) => {
+    expect(isBlockedHost(host)).toBe(true);
+  });
+
+  it.each(allowedHosts)("allows %s", (host) => {
+    expect(isBlockedHost(host)).toBe(false);
+  });
+});
+
+describe("redirect chain", () => {
+  const recordingFetcher = (
+    respond: (url: URL) => Response,
+  ): { fetcher: Fetcher; asked: ReadonlyArray<string> } => {
+    const asked: string[] = [];
+    return {
+      asked,
+      fetcher: (url) => {
+        asked.push(url.toString());
+        return Promise.resolve(respond(url));
+      },
+    };
+  };
+
+  it("refuses a redirect into a private host and never fetches it", async () => {
+    const { fetcher, asked } = recordingFetcher((url) =>
+      url.hostname === "boards.example"
+        ? new Response(null, {
+            status: 302,
+            headers: { location: "http://169.254.169.254/latest/meta-data/" },
+          })
+        : new Response("INTERNAL-SECRET", { status: 200 }),
+    );
+    const outcome = await Effect.runPromise(
+      Effect.result(fetchUrl("https://boards.example/start", fetcher)),
+    );
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      expect(outcome.failure._tag).toBe("BlockedHost");
+    }
+    expect(asked).toEqual(["https://boards.example/start"]);
+    expect(asked.join(" ")).not.toContain("169.254");
+  });
+
+  it("refuses a redirect into an ipv6 loopback literal", async () => {
+    const { fetcher, asked } = recordingFetcher(
+      () =>
+        new Response(null, {
+          status: 307,
+          headers: { location: "http://[::1]:8080/admin" },
+        }),
+    );
+    const outcome = await Effect.runPromise(
+      Effect.result(fetchLinks("https://boards.example/x", fetcher)),
+    );
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      expect(outcome.failure._tag).toBe("BlockedHost");
+    }
+    expect(asked.length).toBe(1);
+  });
+
+  it("follows a public redirect and returns the body", async () => {
+    const { fetcher, asked } = recordingFetcher((url) =>
+      url.hostname === "boards.example"
+        ? new Response(null, {
+            status: 301,
+            headers: { location: "https://www.klawva.xyz/hiring" },
+          })
+        : new Response("<p>we are hiring</p>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          }),
+    );
+    const text = await Effect.runPromise(
+      fetchUrl("https://boards.example/jobs", fetcher),
+    );
+    expect(text).toBe("we are hiring");
+    expect(asked).toEqual([
+      "https://boards.example/jobs",
+      "https://www.klawva.xyz/hiring",
+    ]);
+  });
+
+  it("gives up after the hop budget", async () => {
+    let hop = 0;
+    const { fetcher } = recordingFetcher((url) => {
+      hop += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { location: `https://boards.example/${hop}` },
+      });
+    });
+    const outcome = await Effect.runPromise(
+      Effect.result(fetchUrl("https://boards.example/start", fetcher)),
+    );
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      expect(outcome.failure._tag).toBe("FetchError");
+      if (outcome.failure._tag === "FetchError") {
+        expect(outcome.failure.reason).toBe("too_many_redirects");
+      }
+    }
+    expect(hop).toBe(maxRedirects + 1);
+  });
+
+  it("rejects an invalid url without fetching", async () => {
+    const outcome = await Effect.runPromise(Effect.result(fetchLinks("not a url")));
+    expect(outcome._tag).toBe("Failure");
   });
 });
 
@@ -57,48 +257,6 @@ describe("text shaping", () => {
     expect(toText(`<script>alert(1)</script><p>Hello <b>there</b></p>`)).toBe(
       "Hello there",
     );
-  });
-});
-
-describe("redirect guard", () => {
-  let server: Server;
-  let port = 0;
-  beforeAll(async () => {
-    server = createServer((request, response) => {
-      if (request.url === "/start") {
-        response.writeHead(302, { location: `http://127.0.0.1:${port}/secret` });
-        response.end();
-        return;
-      }
-      response.writeHead(200, { "content-type": "text/plain" });
-      response.end("secret");
-    });
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => {
-        const address = server.address();
-        port = typeof address === "object" && address !== null ? address.port : 0;
-        resolve();
-      });
-    });
-  });
-  afterAll(async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
-  it("blocks a redirect into a private host", async () => {
-    const outcome = await Effect.runPromise(
-      Effect.result(fetchUrl(`http://127.0.0.1:${port}/start`)),
-    );
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag === "Failure") {
-      expect(outcome.failure._tag).toBe("BlockedHost");
-      expect((outcome.failure as BlockedHost).host).toBe("127.0.0.1");
-    }
-  });
-
-  it("rejects an invalid url without fetching", async () => {
-    const outcome = await Effect.runPromise(Effect.result(fetchLinks("not a url")));
-    expect(outcome._tag).toBe("Failure");
   });
 });
 
