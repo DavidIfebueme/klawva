@@ -15,7 +15,7 @@ import {
   secretHeader,
   TelegramUpdate,
 } from "./channels/telegram.ts";
-import { defaultModel, layer as agentLayer } from "./agent/runtime.ts";
+import { defaultModel, defaultToolAllowlist, layer as agentLayer } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
 import { escapeHtml, renderTemplate } from "./email/templates.ts";
@@ -650,13 +650,33 @@ const rootGroup = HttpApiBuilder.group(
               : null;
           const listing = yield* db
             .first(
-              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
+              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor, v.tool_allowlist AS toolAllowlist, v.model AS model, v.soul AS soul FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
               [payload.listingId],
             )
             .pipe(Effect.orDie);
           const listingVersion = listing === null ? 1 : Number(listing.version);
           const budgetMinor =
             listing === null ? defaultBudgetMinor : Number(listing.budgetMinor);
+          const storedAllowlist =
+            listing === null
+              ? null
+              : Schema.decodeUnknownOption(
+                  Schema.fromJsonString(Schema.Array(Schema.String)),
+                )(listing.toolAllowlist);
+          const allowlist =
+            storedAllowlist !== null && storedAllowlist._tag === "Some"
+              ? storedAllowlist.value.filter((name) =>
+                  defaultToolAllowlist.includes(name),
+                )
+              : [...defaultToolAllowlist];
+          const model =
+            listing === null || typeof listing.model !== "string"
+              ? defaultModel
+              : listing.model;
+          const soul =
+            listing === null || typeof listing.soul !== "string"
+              ? soulFor(payload.agentId)
+              : listing.soul;
           yield* db.run(
             "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -689,9 +709,11 @@ const rootGroup = HttpApiBuilder.group(
                   body: JSON.stringify({
                     state: "pending",
                     budgetMinor,
-                    soul: soulFor(payload.agentId),
+                    soul,
                     brief: payload.brief,
                     email: customerEmail ?? "",
+                    allowlist,
+                    model,
                   }),
                 },
               ),
