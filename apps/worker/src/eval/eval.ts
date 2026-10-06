@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import {
+  defaultToolAllowlist,
   type AgentRuntimeImpl,
   type ModelError,
   runTurn,
@@ -61,6 +62,8 @@ export const runEval = (params: {
   readonly soul: string;
   readonly brief: Readonly<Record<string, string>>;
   readonly cases: ReadonlyArray<string>;
+  readonly sessionId?: string;
+  readonly allowlist?: ReadonlyArray<string>;
 }): Effect.Effect<EvalResult, ModelError> =>
   Effect.gen(function* () {
     const results: EvalCaseResult[] = [];
@@ -70,6 +73,8 @@ export const runEval = (params: {
         soul: params.soul,
         brief: params.brief,
         history: [{ role: "user", content: input }],
+        sessionId: params.sessionId ?? "eval",
+        allowlist: params.allowlist ?? defaultToolAllowlist,
       });
       results.push({ input, output, score: scoreTranscript(output) });
     }
