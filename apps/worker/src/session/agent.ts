@@ -12,10 +12,10 @@ import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { SessionState } from "../db/schema.ts";
 import {
-  AgentRuntime,
   defaultModel,
-  layer as agentLayer,
+  defaultToolAllowlist,
   makeRuntime,
+  resolveAllowlist,
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase } from "../db/database.ts";
@@ -212,6 +212,8 @@ const init = HttpApiEndpoint.post("init", "/init", {
     soul: Schema.String,
     brief: Brief,
     email: Schema.optionalKey(Schema.String),
+    allowlist: Schema.optionalKey(Schema.Array(Schema.String)),
+    model: Schema.optionalKey(Schema.String),
   }),
   success: StateResponse,
 });
@@ -265,7 +267,6 @@ const sessionGroup = HttpApiBuilder.group(
   "Session",
   Effect.fn(function* (handlers) {
     const store = yield* SessionStore;
-    const runtime = yield* AgentRuntime;
     const sessionEnv = yield* SessionEnv;
     return handlers
       .handle("state", () =>
@@ -282,6 +283,11 @@ const sessionGroup = HttpApiBuilder.group(
           yield* store.set("soul", payload.soul);
           yield* store.set("brief", JSON.stringify(payload.brief));
           yield* store.set("email", payload.email ?? "");
+          yield* store.set(
+            "tool_allowlist",
+            JSON.stringify(payload.allowlist ?? defaultToolAllowlist),
+          );
+          yield* store.set("model", payload.model ?? defaultModel);
           return { state: payload.state };
         }),
       )
@@ -361,8 +367,18 @@ const sessionGroup = HttpApiBuilder.group(
           const brief = Schema.decodeUnknownSync(Brief)(
             JSON.parse((yield* store.get("brief")) ?? "{}"),
           );
+          const allowlist = resolveAllowlist(yield* store.get("tool_allowlist"));
+          const model = (yield* store.get("model")) ?? defaultModel;
+          const sessionRuntime = makeRuntime(sessionEnv.env.AI, model, allowlist);
           const history = yield* store.history();
-          const reply = yield* runTurn({ runtime, soul, brief, history }).pipe(
+          const reply = yield* runTurn({
+            runtime: sessionRuntime,
+            soul,
+            brief,
+            history,
+            sessionId: sessionEnv.sessionId,
+            allowlist,
+          }).pipe(
             Effect.catch(() =>
               Effect.succeed("I could not reach my model just now. Please try again."),
             ),
@@ -387,7 +403,6 @@ const makeLayer = (
           Layer.mergeAll(
             Layer.succeed(SessionStore)(store),
             Layer.succeed(SessionEnv)({ env, sessionId }),
-            agentLayer(env.AI, defaultModel),
           ),
         ),
       ),
