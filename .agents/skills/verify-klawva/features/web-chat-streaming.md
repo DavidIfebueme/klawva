@@ -21,7 +21,7 @@ A customer chats with their AI employee in real time over a WebSocket, with toke
 Preconditions:
 
 - A session exists with a known ID and token (from a previous checkout or seeded).
-- The session is in `active` state.
+- The session is in `ready` or `active` state.
 
 - **Open the chat.** Navigate to `/chat/:sessionId?token=:token`. Take a screenshot. The page should show the chat header, an input field, and a Send button. If prior messages exist, they appear in reverse-chronological bubbles.
 - **Verify connection.** The ARIA snapshot should NOT show a connection error notice. The status dot should be dim (not pulsing).
