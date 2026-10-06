@@ -5,7 +5,9 @@ import {
   defaultToolAllowlist,
   resolveAllowlist,
   resolveToolCall,
+  runTurn,
   specsFor,
+  type AgentRuntimeImpl,
 } from "../src/agent/runtime.ts";
 import {
   extractLinks,
@@ -255,5 +257,25 @@ describe("text shaping", () => {
     expect(toText(`<script>alert(1)</script><p>Hello <b>there</b></p>`)).toBe(
       "Hello there",
     );
+  });
+});
+
+describe("turn wiring", () => {
+  const textRuntime: AgentRuntimeImpl = {
+    complete: () => Effect.succeed({ text: "done", toolCalls: [] }),
+  };
+
+  it("returns plain text through the new params", async () => {
+    const reply = await Effect.runPromise(
+      runTurn({
+        runtime: textRuntime,
+        soul: "soul",
+        brief: {},
+        history: [{ role: "user", content: "hi" }],
+        sessionId: "s1",
+        allowlist: [],
+      }),
+    );
+    expect(reply).toBe("done");
   });
 });
