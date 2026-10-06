@@ -1,3 +1,4 @@
+import { sessionTokenMatches } from "../account/account.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
@@ -56,6 +57,19 @@ const InteractionJson = Schema.fromJsonString(Interaction);
 const decodeInteraction = (rawBody: string) =>
   Schema.decodeUnknownOption(InteractionJson)(rawBody);
 
+const sessionReference = (
+  raw: string,
+): { readonly sessionId: string; readonly token: string | null } => {
+  const slash = raw.lastIndexOf("/");
+  if (slash <= 0) {
+    return { sessionId: raw.trim(), token: null };
+  }
+  return {
+    sessionId: raw.slice(0, slash).trim(),
+    token: raw.slice(slash + 1).trim(),
+  };
+};
+
 export const pongFor = (rawBody: string): string | null => {
   const decoded = decodeInteraction(rawBody);
   if (decoded._tag === "None") {
@@ -96,7 +110,7 @@ const reply = (content: string): string =>
 
 export const handleDiscordInteraction = (
   env: Env,
-  _db: DatabaseImpl,
+  db: DatabaseImpl,
   rawBody: string,
 ): Effect.Effect<string> =>
   Effect.gen(function* () {
@@ -113,10 +127,22 @@ export const handleDiscordInteraction = (
       const found = options.find((option) => option.name === name);
       return found?.value ?? null;
     };
-    const sessionId = find("session");
+    const sessionRef = find("session");
     const message = find("message");
-    if (sessionId === null || message === null) {
-      return reply("Use /ask with a session id and a message.");
+    if (sessionRef === null || message === null) {
+      return reply("Use /ask with a session reference and a message.");
+    }
+    const { sessionId, token } = sessionReference(sessionRef);
+    if (token === null || token.length === 0) {
+      return reply(
+        "Add your session token so I can check the shift is yours, like session:<id>/<token>. The link you were sent has both.",
+      );
+    }
+    const owned = yield* sessionTokenMatches(db, sessionId, token).pipe(
+      Effect.catch(() => Effect.succeed(false)),
+    );
+    if (!owned) {
+      return reply("That token does not match this shift.");
     }
     const answer = yield* askSession(env, sessionId, message);
     return reply(answer);

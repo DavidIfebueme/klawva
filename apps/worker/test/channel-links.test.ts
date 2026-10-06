@@ -30,25 +30,35 @@ const recorder = (): {
 
 describe("channel link", () => {
   it("leaves an existing unlinked row unlinked", async () => {
-    const { db, ran } = recorder();
+    const { db, batched } = recorder();
     await Effect.runPromise(linkChannel(db, "s1", "slack", "team:general"));
-    expect(ran).toHaveLength(1);
-    const [statement] = ran;
-    expect(statement?.sql).toContain("ON CONFLICT(channel, chat_id, session_id)");
-    expect(statement?.sql).toContain("DO UPDATE SET updated_at");
-    expect(statement?.sql).not.toContain("status = 'linked'");
+    const [insertLink] = batched;
+    expect(insertLink?.sql).toContain(
+      "ON CONFLICT(channel, chat_id, session_id)",
+    );
+    expect(insertLink?.sql).toContain("DO UPDATE SET updated_at");
+    expect(insertLink?.sql).not.toContain("status = 'linked'");
   });
 
-  it("writes the link against the right channel", async () => {
-    const { db, ran } = recorder();
+  it("moves a web session onto the channel it was linked to", async () => {
+    const { db, batched } = recorder();
     await Effect.runPromise(linkChannel(db, "s1", "telegram", "-100"));
-    expect(ran[0]?.params).toEqual([
+    expect(batched).toHaveLength(2);
+    const [insertLink, markChannel] = batched;
+    expect(insertLink?.params).toEqual([
       expect.any(String),
       "s1",
       "telegram",
       "-100",
       expect.any(String),
       expect.any(String),
+    ]);
+    expect(markChannel?.sql).toContain("UPDATE sessions SET channel");
+    expect(markChannel?.sql).toContain("channel = 'web'");
+    expect(markChannel?.params).toEqual([
+      "telegram",
+      expect.any(String),
+      "s1",
     ]);
   });
 });

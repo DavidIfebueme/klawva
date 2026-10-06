@@ -137,10 +137,16 @@ export const linkChannel = (
 ): Effect.Effect<void> => {
   const now = new Date().toISOString();
   return db
-    .run(
-      "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET updated_at = excluded.updated_at",
-      [crypto.randomUUID(), sessionId, channel, chatId, now, now],
-    )
+    .batch([
+      {
+        sql: "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET updated_at = excluded.updated_at",
+        params: [crypto.randomUUID(), sessionId, channel, chatId, now, now],
+      },
+      {
+        sql: "UPDATE sessions SET channel = ?, updated_at = ? WHERE id = ? AND channel = 'web'",
+        params: [channel, now, sessionId],
+      },
+    ])
     .pipe(Effect.orDie);
 };
 
