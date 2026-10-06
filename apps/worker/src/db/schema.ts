@@ -23,6 +23,15 @@ export type ListingStatus = typeof ListingStatus.Type;
 export const Channel = Schema.Literals(["telegram", "web", "email"]);
 export type Channel = typeof Channel.Type;
 
+export const LinkChannel = Schema.Literals([
+  "telegram",
+  "web",
+  "email",
+  "slack",
+  "discord",
+]);
+export type LinkChannel = typeof LinkChannel.Type;
+
 export const MessageRole = Schema.Literals(["user", "assistant", "tool", "system"]);
 export type MessageRole = typeof MessageRole.Type;
 
@@ -101,7 +110,7 @@ export class Message extends Schema.Class<Message>("Message")({
 export class ChannelLink extends Schema.Class<ChannelLink>("ChannelLink")({
   id: Schema.String,
   sessionId: Schema.String,
-  channel: Channel,
+  channel: LinkChannel,
   chatId: Schema.String,
   status: Schema.String,
   createdAt: Schema.String,
