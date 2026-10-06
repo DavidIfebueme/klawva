@@ -99,7 +99,7 @@ const isZeroThrough = (groups: ReadonlyArray<number>, end: number): boolean =>
   groups.slice(0, end).every((group) => group === 0);
 
 const isBlockedIpv6 = (groups: ReadonlyArray<number>): boolean => {
-  if (isZeroThrough(groups, 5) && groups[5] === 0xffff) {
+  if (isZeroThrough(groups, 5) && (groups[5] === 0xffff || groups[5] === 0)) {
     return isBlockedIpv4(embeddedIpv4(groups));
   }
   if (groups[0] === 0x0064 && groups[1] === 0xff9b) {
@@ -121,7 +121,7 @@ const isBlockedIpv6 = (groups: ReadonlyArray<number>): boolean => {
 const blockedSuffixes = [".localhost", ".internal", ".local"];
 
 export const isBlockedHost = (rawHost: string): boolean => {
-  const host = rawHost.toLowerCase();
+  const host = rawHost.toLowerCase().replace(/\.+$/, "");
   if (host === "localhost" || blockedSuffixes.some((s) => host.endsWith(s))) {
     return true;
   }
@@ -217,27 +217,66 @@ export const safeFetch = (
     );
   });
 
+const decodeEntities = (text: string): string =>
+  text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/gi, "&");
+
 export const toText = (html: string): string =>
   html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .split(" ")
+    .map(decodeEntities)
+    .join(" ");
+
+const readCapped = (
+  response: Response,
+  cap: number,
+): Effect.Effect<string, FetchError> =>
+  Effect.gen(function* () {
+    if (response.body === null) {
+      return "";
+    }
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (size < cap) {
+      const next = yield* Effect.tryPromise({
+        try: () => reader.read(),
+        catch: (cause) => new FetchError({ url: "", reason: String(cause) }),
+      });
+      if (next.done === true) {
+        break;
+      }
+      chunks.push(next.value);
+      size += next.value.byteLength;
+    }
+    yield* Effect.promise(() => reader.cancel());
+    const joined = new Uint8Array(Math.min(size, cap));
+    let offset = 0;
+    for (const chunk of chunks) {
+      const room = joined.length - offset;
+      if (room <= 0) break;
+      const slice = chunk.byteLength <= room ? chunk : chunk.slice(0, room);
+      joined.set(slice, offset);
+      offset += slice.byteLength;
+    }
+    return new TextDecoder().decode(joined);
+  });
 
 const readBody = (
   response: Response,
   raw: string,
 ): Effect.Effect<string, FetchError> =>
-  Effect.tryPromise({
-    try: () => response.text(),
-    catch: (cause) => new FetchError({ url: raw, reason: String(cause) }),
-  }).pipe(Effect.map((text) => text.slice(0, maxResponseBytes)));
+  readCapped(response, maxResponseBytes);
 
 export const fetchUrl = (
   raw: string,
