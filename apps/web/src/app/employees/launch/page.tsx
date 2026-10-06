@@ -55,7 +55,7 @@ export function Component() {
           <p className="font-mono text-klawva-dim text-xs mt-2">
             For teams:{" "}
             <a
-              href={`/api/slack/install?session=${session}`}
+              href={`/api/slack/install?session=${session}&token=${token}`}
               className="text-klawva-accent underline"
             >
               Connect Slack
