@@ -178,7 +178,7 @@ export type Fetcher = (
   init: { redirect: "manual"; signal: AbortSignal },
 ) => Promise<Response>;
 
-const safeFetch = (
+export const safeFetch = (
   start: URL,
   raw: string,
   fetcher: Fetcher = fetch,
