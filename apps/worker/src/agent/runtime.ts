@@ -2,9 +2,28 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { BlockedHost, FetchError, fetchUrl } from "./tools.ts";
+import { fetchLinks, fetchUrl } from "./tools.ts";
 
 export const defaultModel = "@cf/zai-org/glm-4.7-flash";
+
+export const defaultToolAllowlist: ReadonlyArray<string> = [
+  "fetch_url",
+  "extract_links",
+];
+
+const StoredAllowlist = Schema.fromJsonString(Schema.Array(Schema.String));
+
+export const resolveAllowlist = (
+  raw: string | null,
+): ReadonlyArray<string> => {
+  if (raw === null) {
+    return [...defaultToolAllowlist];
+  }
+  const decoded = Schema.decodeUnknownOption(StoredAllowlist)(raw);
+  return decoded._tag === "Some"
+    ? decoded.value.filter((name) => defaultToolAllowlist.includes(name))
+    : [...defaultToolAllowlist];
+};
 
 export interface ChatMessage {
   readonly role: string;
@@ -26,22 +45,93 @@ export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
   cause: Schema.Defect(),
 }) {}
 
-export const toolSpecs = [
-  {
-    type: "function",
-    function: {
-      name: "fetch_url",
-      description: "Fetch a public URL and return its text content.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: { type: "string", description: "The absolute URL to fetch." },
-        },
-        required: ["url"],
-      },
-    },
+export interface ToolContext {
+  readonly sessionId: string;
+}
+
+export interface ToolDefinition {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Record<string, unknown>;
+  readonly execute: (rawArgs: string, ctx: ToolContext) => Effect.Effect<string>;
+}
+
+const UrlArgs = Schema.Struct({ url: Schema.String });
+
+const decodeUrl = (raw: string): string => {
+  const outcome = Schema.decodeUnknownOption(Schema.fromJsonString(UrlArgs))(raw);
+  return outcome._tag === "Some" ? outcome.value.url : "";
+};
+
+const urlParameters = {
+  type: "object",
+  properties: {
+    url: { type: "string", description: "The absolute URL to fetch." },
   },
+  required: ["url"],
+};
+
+const fetchUrlTool: ToolDefinition = {
+  name: "fetch_url",
+  description: "Fetch a public URL and return its text content.",
+  parameters: urlParameters,
+  execute: (rawArgs, _ctx) =>
+    Effect.gen(function* () {
+      const url = decodeUrl(rawArgs);
+      if (url.length === 0) {
+        return "fetch failed: missing url";
+      }
+      const outcome = yield* Effect.result(fetchUrl(url));
+      if (outcome._tag === "Success") {
+        return outcome.success;
+      }
+      return outcome.failure._tag === "BlockedHost"
+        ? `fetch blocked: ${outcome.failure.host}`
+        : `fetch failed: ${outcome.failure.reason}`;
+    }),
+};
+
+const extractLinksTool: ToolDefinition = {
+  name: "extract_links",
+  description:
+    "Fetch a public page and return its same-site links, one per line.",
+  parameters: urlParameters,
+  execute: (rawArgs, _ctx) =>
+    Effect.gen(function* () {
+      const url = decodeUrl(rawArgs);
+      if (url.length === 0) {
+        return "fetch failed: missing url";
+      }
+      const outcome = yield* Effect.result(fetchLinks(url));
+      if (outcome._tag === "Success") {
+        return outcome.success.length === 0
+          ? "no links found"
+          : outcome.success.join("\n");
+      }
+      return outcome.failure._tag === "BlockedHost"
+        ? `fetch blocked: ${outcome.failure.host}`
+        : `fetch failed: ${outcome.failure.reason}`;
+    }),
+};
+
+export const toolRegistry: ReadonlyArray<ToolDefinition> = [
+  fetchUrlTool,
+  extractLinksTool,
 ];
+
+export const specsFor = (
+  allowlist: ReadonlyArray<string>,
+): ReadonlyArray<Record<string, unknown>> =>
+  toolRegistry
+    .filter((tool) => allowlist.includes(tool.name))
+    .map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      },
+    }));
 
 const ToolCallSchema = Schema.Struct({
   id: Schema.optionalKey(Schema.String),
@@ -99,12 +189,16 @@ export class AgentRuntime extends Context.Service<
   AgentRuntimeImpl
 >()("klawva/agent/AgentRuntime") {}
 
-export const makeRuntime = (ai: Ai, model: string): AgentRuntimeImpl => ({
+export const makeRuntime = (
+  ai: Ai,
+  model: string,
+  allowlist: ReadonlyArray<string> = defaultToolAllowlist,
+): AgentRuntimeImpl => ({
   complete: (messages, withTools) =>
     Effect.tryPromise({
       try: async () => {
         const inputs = withTools
-          ? { messages: [...messages], tools: toolSpecs }
+          ? { messages: [...messages], tools: specsFor(allowlist) }
           : { messages: [...messages] };
         const raw: unknown = await ai.run(model, inputs);
         return decodeModelOutput(raw);
@@ -127,38 +221,27 @@ export const buildMessages = (
 
 const maxToolRounds = 3;
 
-const parseUrlArgument = (raw: string): Effect.Effect<string> =>
-  Effect.gen(function* () {
-    const outcome = yield* Effect.result(
-      Effect.try({
-        try: () => {
-          const parsed: unknown = JSON.parse(raw);
-          return Schema.decodeUnknownSync(
-            Schema.Struct({ url: Schema.String }),
-          )(parsed).url;
-        },
-        catch: (cause) => new FetchError({ url: raw, reason: String(cause) }),
-      }),
-    );
-    return outcome._tag === "Success" ? outcome.success : "";
-  });
+const findTool = (
+  allowlist: ReadonlyArray<string>,
+  name: string,
+): ToolDefinition | null => {
+  const tool = toolRegistry.find(
+    (entry) => entry.name === name && allowlist.includes(name),
+  );
+  return tool ?? null;
+};
 
-const resolveToolCall = (call: ToolCall): Effect.Effect<string> =>
+export const resolveToolCall = (
+  call: ToolCall,
+  ctx: ToolContext,
+  allowlist: ReadonlyArray<string>,
+): Effect.Effect<string> =>
   Effect.gen(function* () {
-    if (call.name !== "fetch_url") {
+    const tool = findTool(allowlist, call.name);
+    if (tool === null) {
       return `tool ${call.name} is not available`;
     }
-    const url = yield* parseUrlArgument(call.arguments);
-    if (url.length === 0) {
-      return "fetch failed: missing url";
-    }
-    const outcome = yield* Effect.result(fetchUrl(url));
-    if (outcome._tag === "Success") {
-      return outcome.success;
-    }
-    return outcome.failure._tag === "BlockedHost"
-      ? `fetch blocked: ${outcome.failure.host}`
-      : `fetch failed: ${outcome.failure.reason}`;
+    return yield* tool.execute(call.arguments, ctx);
   });
 
 export const runTurn = (params: {
@@ -166,8 +249,11 @@ export const runTurn = (params: {
   readonly soul: string;
   readonly brief: Readonly<Record<string, string>>;
   readonly history: ReadonlyArray<ChatMessage>;
+  readonly sessionId: string;
+  readonly allowlist: ReadonlyArray<string>;
 }): Effect.Effect<string, ModelError> =>
   Effect.gen(function* () {
+    const ctx: ToolContext = { sessionId: params.sessionId };
     const messages: ChatMessage[] = [
       ...buildMessages(params.soul, params.brief, params.history),
     ];
@@ -178,7 +264,7 @@ export const runTurn = (params: {
       }
       messages.push({ role: "assistant", content: result.text });
       for (const call of result.toolCalls) {
-        const content = yield* resolveToolCall(call);
+        const content = yield* resolveToolCall(call, ctx, params.allowlist);
         messages.push({ role: "tool", content });
       }
     }
