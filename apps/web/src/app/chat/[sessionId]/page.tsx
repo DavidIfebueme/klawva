@@ -1,10 +1,13 @@
-import React, { useState } from "react";
+import { useMemo, useState } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
+import { useAgent } from "agents/react";
+import { useAgentChat } from "@cloudflare/ai-chat/react";
+import type { UIMessage } from "ai";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/ui/Markdown";
-import { getChatMessages, sendChatMessage } from "@/lib/employees-api";
+import { getChatMessages } from "@/lib/employees-api";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   if (params.sessionId === undefined) {
@@ -19,91 +22,162 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   return { sessionId: params.sessionId, token, messages };
 };
 
-interface Entry {
-  role: string;
-  content: string;
-  createdAt: string;
+interface Row {
+  readonly key: string;
+  readonly role: string;
+  readonly content: string;
 }
 
-export function Component() {
-  const { sessionId, token, messages } = useLoaderData<typeof loader>();
-  const [entries, setEntries] = useState<ReadonlyArray<Entry>>(messages);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+const toText = (message: UIMessage): string =>
+  message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("\n");
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const message = text.trim();
-    if (message.length === 0) return;
-    setText("");
-    setError("");
-    setEntries((prev) => [
-      ...prev,
-      { role: "user", content: message, createdAt: new Date().toISOString() },
-    ]);
-    setBusy(true);
-    try {
-      const result = await sendChatMessage(sessionId, message, token);
-      setEntries((prev) => [
-        ...prev,
-        { role: "assistant", content: result.reply, createdAt: new Date().toISOString() },
-      ]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Message failed");
-    } finally {
-      setBusy(false);
+export function Component() {
+  const { sessionId, token, messages: fallback } = useLoaderData<typeof loader>();
+  const agent = useAgent({
+    agent: "session",
+    name: sessionId,
+    query: { token },
+    ...(import.meta.env.VITE_AGENT_HOST === undefined
+      ? {}
+      : { host: import.meta.env.VITE_AGENT_HOST }),
+  });
+  const {
+    messages,
+    sendMessage,
+    status,
+    stop,
+    error,
+    connectionError,
+    isServerStreaming,
+    isRecovering,
+  } = useAgentChat<unknown, UIMessage>({ agent });
+  const [text, setText] = useState("");
+  const [sendError, setSendError] = useState("");
+
+  const busy =
+    status === "submitted" ||
+    status === "streaming" ||
+    isServerStreaming ||
+    isRecovering;
+
+  const rows = useMemo(() => {
+    const seen = new Set<string>();
+    const merged: Row[] = [];
+    for (const entry of fallback) {
+      const fingerprint = `${entry.role}:${entry.content}`;
+      if (seen.has(fingerprint)) continue;
+      seen.add(fingerprint);
+      merged.push({ key: `seed:${fingerprint}`, ...entry });
     }
+    for (const message of messages) {
+      const content = toText(message);
+      const fingerprint = `${message.role}:${content}`;
+      if (content.length === 0 || seen.has(fingerprint)) continue;
+      seen.add(fingerprint);
+      merged.push({
+        key: `live:${message.id}`,
+        role: message.role,
+        content,
+      });
+    }
+    return merged;
+  }, [fallback, messages]);
+
+  const handleSend = (event: React.FormEvent) => {
+    event.preventDefault();
+    const message = text.trim();
+    if (message.length === 0 || busy) {
+      return;
+    }
+    setText("");
+    setSendError("");
+    sendMessage({ text: message }).catch((cause: unknown) => {
+      setSendError(
+        cause instanceof Error ? cause.message : "Message failed to send.",
+      );
+    });
   };
+
+  const notice =
+    connectionError !== null && connectionError !== undefined
+      ? "Lost the connection to your employee. Reconnecting."
+      : error !== null && error !== undefined
+        ? error.message
+        : sendError;
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
       <Navbar />
       <main className="flex-grow pt-24 pb-32 px-6">
         <div className="max-w-2xl mx-auto">
-          <h1 className="font-syne font-bold text-2xl text-klawva-text mb-6">
-            Chat with your employee
-          </h1>
-          <div className="bg-klawva-surface border border-klawva-border rounded-lg p-6 min-h-[400px] mb-6 space-y-4">
-            {entries.length === 0 ? (
-              <p className="font-mono text-klawva-muted text-sm">
-                Say hello to begin.
-              </p>
-            ) : (
-              entries.map((entry, index) => (
-                <div
-                  key={index}
-                  className={`flex ${entry.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] rounded-lg border px-4 py-3 ${
-                      entry.role === "user"
-                        ? "border-klawva-border bg-klawva-elevated"
-                        : "border-klawva-border bg-klawva-surface"
-                    }`}
-                  >
-                    <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-klawva-dim">
-                      {entry.role}
+          <div className="flex items-center gap-3 mb-6">
+            <h1 className="font-syne font-bold text-2xl text-klawva-text">
+              Chat with your employee
+            </h1>
+            <span
+              className={`h-2 w-2 rounded-full ${busy ? "bg-klawva-accent animate-pulse" : "bg-klawva-dim"}`}
+            />
+          </div>
+          <div className="bg-klawva-surface border border-klawva-border rounded-lg p-6 mb-6">
+            <div className="flex flex-col-reverse gap-4 max-h-[60vh] overflow-y-auto">
+              {busy && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-lg border border-klawva-border bg-klawva-surface px-4 py-3">
+                    <div className="font-mono text-klawva-dim text-xs animate-pulse">
+                      thinking
                     </div>
-                    <Markdown content={entry.content} />
                   </div>
                 </div>
-              ))
-            )}
+              )}
+              {rows.length === 0 ? (
+                <p className="font-mono text-klawva-muted text-sm">
+                  Say hello to begin.
+                </p>
+              ) : (
+                rows.map((row) => (
+                  <div
+                    key={row.key}
+                    className={`flex ${row.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-lg border px-4 py-3 ${
+                        row.role === "user"
+                          ? "border-klawva-border bg-klawva-elevated"
+                          : "border-klawva-border bg-klawva-surface"
+                      }`}
+                    >
+                      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-klawva-dim">
+                        {row.role}
+                      </div>
+                      <Markdown content={row.content} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
           <form onSubmit={handleSend} className="flex gap-3">
             <input
               className="flex-grow h-12 bg-klawva-surface border border-klawva-border rounded px-4 text-sm text-klawva-text placeholder-klawva-dim focus:border-klawva-accent focus:outline-none font-mono"
               placeholder="Type a message"
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(event) => setText(event.target.value)}
             />
-            <Button type="submit" variant="primary" size="md" loading={busy}>
-              Send
-            </Button>
+            {busy ? (
+              <Button type="button" variant="secondary" size="md" onClick={() => stop()}>
+                Stop
+              </Button>
+            ) : (
+              <Button type="submit" variant="primary" size="md">
+                Send
+              </Button>
+            )}
           </form>
-          {error && (
-            <p className="mt-4 text-xs text-klawva-orange font-mono">{error}</p>
+          {notice.length > 0 && (
+            <p className="mt-4 text-xs text-klawva-orange font-mono">{notice}</p>
           )}
         </div>
       </main>
