@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl } from "../db/database.ts";
+import type { LinkChannel } from "../db/schema.ts";
 
 export const listAccountSessions = (
   db: DatabaseImpl,
@@ -127,3 +128,50 @@ export const removeMember = (
       email.trim().toLowerCase(),
     ])
     .pipe(Effect.orDie);
+
+export const linkChannel = (
+  db: DatabaseImpl,
+  sessionId: string,
+  channel: LinkChannel,
+  chatId: string,
+): Effect.Effect<void> => {
+  const now = new Date().toISOString();
+  return db
+    .run(
+      "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET updated_at = excluded.updated_at",
+      [crypto.randomUUID(), sessionId, channel, chatId, now, now],
+    )
+    .pipe(Effect.orDie);
+};
+
+export const listChannelLinks = (
+  db: DatabaseImpl,
+  sessionId: string,
+): Effect.Effect<ReadonlyArray<Readonly<Record<string, unknown>>>> =>
+  db
+    .all(
+      "SELECT channel AS channel, chat_id AS chatId, created_at AS createdAt FROM channel_links WHERE session_id = ? AND status = 'linked' ORDER BY created_at",
+      [sessionId],
+    )
+    .pipe(Effect.orDie);
+
+export const unlinkChannel = (
+  db: DatabaseImpl,
+  sessionId: string,
+  channel: LinkChannel,
+  chatId: string,
+): Effect.Effect<void> => {
+  const now = new Date().toISOString();
+  return db
+    .batch([
+      {
+        sql: "UPDATE channel_links SET status = 'unlinked', updated_at = ? WHERE session_id = ? AND channel = ? AND chat_id = ?",
+        params: [now, sessionId, channel, chatId],
+      },
+      {
+        sql: "DELETE FROM chat_active_session WHERE session_id = ? AND channel = ? AND chat_id = ?",
+        params: [sessionId, channel, chatId],
+      },
+    ])
+    .pipe(Effect.orDie);
+};
