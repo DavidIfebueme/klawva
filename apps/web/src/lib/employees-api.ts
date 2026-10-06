@@ -139,13 +139,14 @@ export async function createHireSession(
 
 export async function initializeHirePayment(
   sessionId: string,
+  token: string,
   email: string,
 ): Promise<{ reference: string; checkoutUrl: string }> {
   return Schema.decodeUnknownSync(checkout)(
     await send("/api/payments/initialize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, amountMinor: 0, email }),
+      body: JSON.stringify({ sessionId, token, amountMinor: 0, email }),
     }),
   );
 }
