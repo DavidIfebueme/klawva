@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
-import { addMember, getAccountSession, listMembers, submitFeedback } from "@/lib/account-api";
+import { addMember, getAccountSession, listChannels, listMembers, submitFeedback, unlinkChannel, type AccountChannelLink } from "@/lib/account-api";
 import { Markdown } from "@/components/ui/Markdown";
 
 const humanize = (value: string): string =>
@@ -39,7 +39,10 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     rethrowAccountAuth,
   );
   const members = await listMembers(session.token, params.id).catch(() => []);
-  return { session, detail, members };
+  const channels = await listChannels(session.token, params.id).catch(
+    rethrowAccountAuth,
+  );
+  return { session, detail, members, channels };
 };
 
 function statusVariant(state: string): "active" | "pending" | "warning" {
@@ -49,7 +52,7 @@ function statusVariant(state: string): "active" | "pending" | "warning" {
 }
 
 export function Component() {
-  const { session, detail, members } = useLoaderData<typeof loader>();
+  const { session, detail, members, channels } = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const brief = parseBrief(detail.session.brief);
   const [rating, setRating] = useState(5);
@@ -60,6 +63,23 @@ export function Component() {
   const [memberEmail, setMemberEmail] = useState("");
   const [memberBusy, setMemberBusy] = useState(false);
   const [memberError, setMemberError] = useState("");
+  const [unlinking, setUnlinking] = useState("");
+  const [channelError, setChannelError] = useState("");
+
+  const handleUnlink = (link: AccountChannelLink) =>
+    unlinkChannel(
+      session.token,
+      detail.session.id,
+      link.channel,
+      link.chatId,
+    )
+      .then(() => revalidator.revalidate())
+      .catch((cause: unknown) => {
+        setChannelError(
+          cause instanceof Error ? cause.message : "Could not unlink.",
+        );
+      })
+      .finally(() => setUnlinking(""));
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,6 +272,45 @@ export function Component() {
             </form>
             {memberError && (
               <p className="text-xs text-klawva-orange font-mono mt-3">{memberError}</p>
+            )}
+          </Card>
+
+          <Card>
+            <h2 className="font-syne font-bold text-lg uppercase text-white mb-4">
+              Channels
+            </h2>
+            {channels.length === 0 ? (
+              <p className="font-mono text-klawva-muted text-sm">
+                No channels linked yet. Link one from the launch page.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {channels.map((entry) => (
+                  <li
+                    key={`${entry.channel}:${entry.chatId}`}
+                    className="flex items-center justify-between gap-3 font-mono text-klawva-text text-sm"
+                  >
+                    <span>
+                      {entry.channel} · {entry.chatId}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={unlinking === `${entry.channel}:${entry.chatId}`}
+                      onClick={() => {
+                        setUnlinking(`${entry.channel}:${entry.chatId}`);
+                        setChannelError("");
+                        return handleUnlink(entry);
+                      }}
+                    >
+                      Unlink
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {channelError && (
+              <p className="text-xs text-klawva-orange font-mono mt-3">{channelError}</p>
             )}
           </Card>
         </div>
