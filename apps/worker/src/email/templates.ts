@@ -21,13 +21,13 @@ export const renderTemplate = ({
 }: TemplateInput): string => {
   const cta =
     ctaLabel !== undefined && ctaHref !== undefined
-      ? `<a href="${ctaHref}" style="display:inline-block;padding:12px 20px;background:#E8FF47;color:#0A0A0A;text-decoration:none;border-radius:8px;font-family:Inter,system-ui,sans-serif;font-weight:700;">${ctaLabel}</a>`
+      ? `<a href="${escapeHtml(ctaHref)}" style="display:inline-block;padding:12px 20px;background:#E8FF47;color:#0A0A0A;text-decoration:none;border-radius:8px;font-family:Inter,system-ui,sans-serif;font-weight:700;">${escapeHtml(ctaLabel)}</a>`
       : "";
   return (
     "<div style=\"background:#0A0A0A;padding:32px;font-family:Inter,system-ui,sans-serif;color:#EDEDED;\">" +
     "<div style=\"max-width:640px;margin:0 auto;background:#121212;border:1px solid #2A2A2A;border-radius:12px;padding:28px;\">" +
     "<div style=\"color:#E8FF47;font-weight:800;letter-spacing:0.16em;font-size:12px;margin-bottom:14px;\">KLAWVA</div>" +
-    `<h1 style="font-size:24px;line-height:1.25;margin:0 0 12px 0;color:#FFFFFF;">${title}</h1>` +
+    `<h1 style="font-size:24px;line-height:1.25;margin:0 0 12px 0;color:#FFFFFF;">${escapeHtml(title)}</h1>` +
     `<div style="font-size:14px;line-height:1.7;color:#BDBDBD;margin-bottom:20px;">${body}</div>` +
     cta +
     "<div style=\"margin-top:24px;font-size:12px;color:#6B6B6B;\">Thanks for hiring a Klawva employee.</div>" +

@@ -56,7 +56,8 @@ const postMessage = (
       );
       return response.ok;
     },
-    catch: (cause) => new TelegramError({ reason: String(cause) }),
+    catch: (cause) =>
+      new TelegramError({ reason: String(cause).split(token).join("[token]") }),
   });
 
 export const sendMessage = (
