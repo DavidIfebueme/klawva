@@ -404,7 +404,10 @@ const report = HttpApiEndpoint.post("report", "/report", {
 });
 
 const appendMessage = HttpApiEndpoint.post("appendMessage", "/messages", {
-  payload: Schema.Struct({ role: Schema.String, content: Schema.String }),
+  payload: Schema.Struct({
+    role: Schema.Literals(["user", "assistant"]),
+    content: Schema.String,
+  }),
   success: Schema.Struct({
     ok: Schema.Boolean,
     reply: Schema.optionalKey(Schema.String),
