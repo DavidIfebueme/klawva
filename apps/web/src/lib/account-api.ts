@@ -133,3 +133,46 @@ export async function submitFeedback(
     }),
   );
 }
+
+export const LinkChannel = Schema.Literals([
+  "telegram",
+  "web",
+  "email",
+  "slack",
+  "discord",
+]);
+export type LinkChannel = typeof LinkChannel.Type;
+
+const channelLink = Schema.Struct({
+  channel: LinkChannel,
+  chatId: Schema.String,
+  createdAt: Schema.String,
+});
+export type AccountChannelLink = typeof channelLink.Type;
+
+export async function listChannels(
+  token: string,
+  id: string,
+): Promise<ReadonlyArray<AccountChannelLink>> {
+  return Schema.decodeUnknownSync(Schema.Array(channelLink))(
+    await get(`/api/account/sessions/${encodeURIComponent(id)}/channels`, token),
+  );
+}
+
+export async function unlinkChannel(
+  token: string,
+  id: string,
+  channel: LinkChannel,
+  chatId: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(
+    `${BASE}/api/account/sessions/${encodeURIComponent(id)}/channels/${encodeURIComponent(channel)}/${encodeURIComponent(chatId)}`,
+    { method: "DELETE", headers: { "x-auth-token": token } },
+  );
+  if (!res.ok) {
+    throw new ApiError(await failureMessage(res), res.status);
+  }
+  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
+    await res.json(),
+  );
+}
