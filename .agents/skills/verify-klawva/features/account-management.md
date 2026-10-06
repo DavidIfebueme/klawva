@@ -22,7 +22,7 @@ A logged-in user views their sessions, reads transcripts and reports, submits fe
 
 Preconditions:
 
-- A user account exists with at least one session (e.g., `davidifebueme@gmail.com`).
+- A user account exists with at least one session (e.g., `the account owner's email`).
 - A valid JWT is obtained (via the magic link flow or by calling `/api/auth/verify` directly).
 
 - **Navigate to account.** Go to `/account`. If redirected to login, the user is not authenticated. Take a screenshot of whatever loads.
@@ -35,7 +35,7 @@ Preconditions:
 
 ## Gotchas
 
-- Magic link emails go through Brevo. In local dev the sender may be invalid (9310f9001@smtp-brevo.com is rejected by Brevo). Use production for the full auth flow.
+- Magic link emails go through Brevo. In local dev the sender may be invalid (the configured Brevo relay sender is rejected by Brevo). Use production for the full auth flow.
 - The JWT is stored in localStorage as `klawva_session`. Clearing it logs the user out.
 - Unlink sends a DELETE to `/api/account/sessions/:id/channels/:channel/:chatId`. If the chatId contains special characters (like `:` in Slack's `team:channel` format), it must be URL-encoded.
 - The report page uses a share token, not the session token. The URL is `/report/:sessionId?shareToken=:token`.

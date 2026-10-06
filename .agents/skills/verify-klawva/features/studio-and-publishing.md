@@ -35,7 +35,7 @@ Preconditions:
 
 ## Gotchas
 
-- Only emails in `ADMIN_EMAILS` can access the cockpit. In production this is `davidifebueme@gmail.com`.
+- Only emails in `ADMIN_EMAILS` can access the cockpit. In production this is `the configured admin email`.
 - The sandbox eval calls Workers AI, which may fail on the free tier if the neuron budget is exhausted. The eval returns a fallback score in that case.
 - Published listings cannot be edited. They must be unpublished first (admin action) to unlock editing.
 - The create form validates slug uniqueness. A duplicate slug returns an error.
