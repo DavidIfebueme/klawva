@@ -207,9 +207,20 @@ const redeem = (
       return;
     }
     const sessionId = String(claim.sessionId);
-    yield* db
-      .run("UPDATE claim_tokens SET used_at = ? WHERE token = ?", [now, code])
+    const claimed = yield* db
+      .changed(
+        "UPDATE claim_tokens SET used_at = ? WHERE token = ? AND used_at IS NULL",
+        [now, code],
+      )
       .pipe(Effect.orDie);
+    if (claimed === 0) {
+      yield* sendMessage(
+        token,
+        chatId,
+        "That launch code has already been used.",
+      );
+      return;
+    }
     yield* linkChannel(db, sessionId, "telegram", String(chatId));
     yield* setActive(db, chatId, sessionId);
     const reply = yield* askSession(

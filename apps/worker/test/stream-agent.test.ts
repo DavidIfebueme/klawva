@@ -122,6 +122,7 @@ describe("turn admission", () => {
         ran.push({ sql, params: params ?? [] });
         return Effect.void;
       },
+      changed: () => Effect.succeed(1),
       batch: () => Effect.void,
     };
     return { store, db, ran };

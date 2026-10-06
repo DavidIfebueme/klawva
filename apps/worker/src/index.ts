@@ -19,6 +19,8 @@ import { handlePaystackWebhook } from "./payments/paystack.ts";
 import { handleBreetWebhook } from "./payments/breet.ts";
 import { routeAgentRequest } from "agents";
 import { authorizeStream } from "./session/agent.ts";
+import { sessionTokenMatches } from "./account/account.ts";
+import { constantTimeEqual } from "./lib/secure.ts";
 import { signToken, verifyToken } from "./auth/tokens.ts";
 
 export { SessionAgent } from "./session/stream-agent.ts";
@@ -29,7 +31,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sweep") {
       const provided = request.headers.get("x-cron-secret") ?? "";
-      if (env.CRON_SECRET.length === 0 || provided !== env.CRON_SECRET) {
+      if (env.CRON_SECRET.length === 0 || !constantTimeEqual(provided, env.CRON_SECRET)) {
         return Response.json({ ok: false }, { status: 401 });
       }
       const exit = await Effect.runPromiseExit(sweep(env));
@@ -80,6 +82,16 @@ export default {
     }
     if (url.pathname === "/api/slack/install") {
       const session = url.searchParams.get("session") ?? "";
+      const owns = await Effect.runPromise(
+        sessionTokenMatches(
+          makeDatabase(env.DB),
+          session,
+          url.searchParams.get("token") ?? "",
+        ),
+      ).catch(() => false);
+      if (!owns) {
+        return Response.json({ ok: false }, { status: 403 });
+      }
       const redirectUri = `${env.FRONTEND_BASE_URL}/api/slack/oauth`;
       const stateExit = await Effect.runPromiseExit(
         signToken(env.AUTH_SECRET, {
