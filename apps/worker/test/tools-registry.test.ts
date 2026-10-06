@@ -15,6 +15,7 @@ import {
   fetchUrl,
   isBlockedHost,
   maxRedirects,
+  maxResponseBytes,
   toText,
   type Fetcher,
 } from "../src/agent/tools.ts";
@@ -68,7 +69,11 @@ describe("stored allowlist", () => {
 
 const blockedHosts = [
   "localhost",
+  "localhost.",
   "api.localhost",
+  "metadata.internal.",
+  "[::7f00:1]",
+  "[::7f00:0001]",
   "metadata.internal",
   "printer.local",
   "127.0.0.1",
@@ -128,6 +133,52 @@ describe("host guard", () => {
 
   it.each(allowedHosts)("allows %s", (host) => {
     expect(isBlockedHost(host)).toBe(false);
+  });
+});
+
+describe("body cap", () => {
+  const streaming = (chunks: ReadonlyArray<string>): Response => {
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        },
+      }),
+      { headers: { "content-type": "text/plain" } },
+    );
+  };
+
+  it("returns no more than the cap when the body keeps coming", async () => {
+    const chunk = "x".repeat(200_000);
+    const sent = Math.ceil(maxResponseBytes / chunk.length) + 3;
+    const fetcher: Fetcher = () =>
+      Promise.resolve(streaming(Array.from({ length: sent }, () => chunk)));
+    const text = await Effect.runPromise(
+      fetchUrl("https://boards.example/big", fetcher),
+    );
+    expect(text.length).toBe(maxResponseBytes);
+    expect(sent * chunk.length).toBeGreaterThan(maxResponseBytes);
+  });
+
+  it("returns a short body whole", async () => {
+    const fetcher: Fetcher = () => Promise.resolve(streaming(["hello"]));
+    const text = await Effect.runPromise(
+      fetchUrl("https://boards.example/small", fetcher),
+    );
+    expect(text).toBe("hello");
+  });
+
+  it("returns empty for a bodyless response", async () => {
+    const fetcher: Fetcher = () =>
+      Promise.resolve(new Response(null, { status: 204 }));
+    const text = await Effect.runPromise(
+      fetchUrl("https://boards.example/empty", fetcher),
+    );
+    expect(text).toBe("");
   });
 });
 
