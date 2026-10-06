@@ -35,6 +35,10 @@ export interface DatabaseImpl {
   readonly batch: (
     statements: ReadonlyArray<Statement>,
   ) => Effect.Effect<void, DatabaseError>;
+  readonly changed: (
+    sql: string,
+    params?: ReadonlyArray<Param>,
+  ) => Effect.Effect<number, DatabaseError>;
 }
 
 export class Database extends Context.Service<Database, DatabaseImpl>()(
@@ -67,6 +71,14 @@ export const make = (d1: D1Database): DatabaseImpl => ({
     Effect.tryPromise({
       try: async () => {
         await bind(d1, sql, params).run();
+      },
+      catch: (cause) => new DatabaseError({ operation: sql, cause }),
+    }),
+  changed: (sql, params) =>
+    Effect.tryPromise({
+      try: async () => {
+        const result = await bind(d1, sql, params).run();
+        return result.meta.changes ?? 0;
       },
       catch: (cause) => new DatabaseError({ operation: sql, cause }),
     }),
