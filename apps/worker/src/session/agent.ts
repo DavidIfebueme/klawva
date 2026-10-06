@@ -11,6 +11,8 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { SessionState } from "../db/schema.ts";
+import { sessionTokenMatches, ownsSession } from "../account/account.ts";
+import { identityFromToken } from "../auth/auth.ts";
 import {
   defaultModel,
   defaultToolAllowlist,
@@ -18,12 +20,13 @@ import {
   resolveAllowlist,
   runTurn,
 } from "../agent/runtime.ts";
-import { make as makeDatabase } from "../db/database.ts";
+import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
 import type { Env } from "../env.ts";
+import type { UIMessage } from "ai";
 
 export class IllegalTransition extends Schema.TaggedError<IllegalTransition>()(
   "IllegalTransition",
@@ -141,6 +144,168 @@ export class SessionEnv extends Context.Service<
   { readonly env: Env; readonly sessionId: string }
 >()("klawva/session/SessionEnv") {}
 
+export interface TurnConfig {
+  readonly soul: string;
+  readonly brief: Readonly<Record<string, string>>;
+  readonly allowlist: ReadonlyArray<string>;
+  readonly model: string;
+}
+
+export const mirrorMessage = (
+  db: DatabaseImpl,
+  sessionId: string,
+  role: string,
+  content: string,
+): Effect.Effect<void> =>
+  db
+    .run(
+      "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+      [crypto.randomUUID(), sessionId, role, content, new Date().toISOString()],
+    )
+    .pipe(Effect.orDie);
+
+export const loadTurnConfig = (
+  store: SessionStoreImpl,
+): Effect.Effect<TurnConfig> =>
+  Effect.gen(function* () {
+    const soul = (yield* store.get("soul")) ?? "";
+    const brief = Schema.decodeUnknownSync(Brief)(
+      JSON.parse((yield* store.get("brief")) ?? "{}"),
+    );
+    return {
+      soul,
+      brief,
+      allowlist: resolveAllowlist(yield* store.get("tool_allowlist")),
+      model: (yield* store.get("model")) ?? defaultModel,
+    };
+  });
+
+export const capacityReply =
+  "Klawva is at capacity for today. Please try again tomorrow.";
+
+export const takeCapacitySlot = (
+  db: DatabaseImpl,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const day = new Date().toISOString().slice(0, 10);
+    const counterKey = `turns:${day}`;
+    const counter = yield* db
+      .first("SELECT value AS value FROM counters WHERE key = ?", [counterKey])
+      .pipe(Effect.orDie);
+    const used = counter === null ? 0 : Number(counter.value);
+    if (used >= 5000) {
+      return false;
+    }
+    yield* db
+      .run(
+        "INSERT INTO counters (key, value, updated_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at",
+        [counterKey, new Date().toISOString()],
+      )
+      .pipe(Effect.orDie);
+    return true;
+  });
+
+export type TurnAdmission =
+  | { readonly _tag: "Rejected"; readonly reply: string }
+  | { readonly _tag: "AtCapacity" }
+  | { readonly _tag: "Admitted"; readonly config: TurnConfig };
+
+export const admitTurn = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  userText: string,
+): Effect.Effect<TurnAdmission, BudgetExhausted> =>
+  Effect.gen(function* () {
+    const config = yield* loadTurnConfig(store);
+    const verdict = screenScope(userText, config.brief);
+    if (verdict !== "in_scope") {
+      const reply = steerReply(verdict);
+      yield* store.append("assistant", reply);
+      yield* mirrorMessage(db, sessionId, "assistant", reply);
+      return { _tag: "Rejected", reply } as const;
+    }
+    if (!(yield* takeCapacitySlot(db))) {
+      yield* store.append("assistant", capacityReply);
+      yield* mirrorMessage(db, sessionId, "assistant", capacityReply);
+      return { _tag: "AtCapacity" } as const;
+    }
+    yield* store.spend(50);
+    yield* mirrorMessage(db, sessionId, "user", userText);
+    return { _tag: "Admitted", config } as const;
+  });
+
+export const budgetReply =
+  "This shift has used up its budget. Top up the wallet to keep the employee working.";
+
+export const sanitized = (
+  messages: ReadonlyArray<UIMessage>,
+): Array<UIMessage> =>
+  messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      ...message,
+      parts: message.parts.filter((part) => part.type === "text"),
+    }));
+
+export const persistAssistant = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  text: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* store.append("assistant", text);
+    yield* mirrorMessage(db, sessionId, "assistant", text);
+  });
+
+export const authorizeStream = (
+  env: Env,
+  db: DatabaseImpl,
+  sessionId: string,
+  token: string | null,
+  authHeader: string | null,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    if (token !== null && token.length > 0) {
+      const matches = yield* sessionTokenMatches(db, sessionId, token);
+      if (matches) {
+        return true;
+      }
+    }
+    if (authHeader === null) {
+      return false;
+    }
+    const clean =
+      authHeader.toLowerCase().startsWith("bearer ") && authHeader.length > 7
+        ? authHeader.slice(7).trim()
+        : authHeader;
+    const identity = yield* identityFromToken(env, db, clean).pipe(
+      Effect.catch(() => Effect.succeed(null)),
+    );
+    if (identity === null) {
+      return false;
+    }
+    const owned = yield* ownsSession(db, identity.userId, identity.email, sessionId);
+    return owned;
+  });
+
+export const messageText = (message: UIMessage): string =>
+  message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("\n");
+
+export const lastUserText = (messages: ReadonlyArray<UIMessage>): string => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message !== undefined && message.role === "user") {
+      return messageText(message);
+    }
+  }
+  return "";
+};
+
 export const completeShift = (
   store: SessionStoreImpl,
   env: Env,
@@ -185,16 +350,16 @@ export const completeShift = (
         html: reportEmailHtml(reportUrl),
       }).pipe(Effect.catch(() => Effect.void));
     }
-    const link = yield* db
-      .first(
-        "SELECT chat_id AS chatId FROM channel_links WHERE session_id = ? AND channel = 'telegram' LIMIT 1",
+    const links = yield* db
+      .all(
+        "SELECT chat_id AS chatId FROM channel_links WHERE session_id = ? AND channel = 'telegram' AND status = 'linked'",
         [sessionId],
       )
       .pipe(Effect.orDie);
-    if (link !== null) {
+    for (const row of links) {
       yield* sendMessage(
         env.TELEGRAM_BOT_TOKEN,
-        Number(link.chatId),
+        Number(row.chatId),
         `Your shift is complete. Here is your report: ${reportUrl}`,
       ).pipe(Effect.catch(() => Effect.void));
     }
@@ -327,65 +492,46 @@ const sessionGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const db = makeDatabase(sessionEnv.env.DB);
           const mirror = (role: string, content: string) =>
-            db
-              .run(
-                "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                [
-                  crypto.randomUUID(),
-                  sessionEnv.sessionId,
-                  role,
-                  content,
-                  new Date().toISOString(),
-                ],
-              )
-              .pipe(Effect.orDie);
+            mirrorMessage(db, sessionEnv.sessionId, role, content);
           yield* store.append(payload.role, payload.content);
           yield* mirror(payload.role, payload.content);
           if (payload.role !== "user") {
             return { ok: true };
           }
-          const brief = Schema.decodeUnknownSync(Brief)(
-            JSON.parse((yield* store.get("brief")) ?? "{}"),
+          const admission = yield* admitTurn(
+            store,
+            db,
+            sessionEnv.sessionId,
+            payload.content,
+          ).pipe(
+            Effect.catch(() =>
+              Effect.succeed({ _tag: "OutOfBudget" } as const),
+            ),
           );
-          const verdict = screenScope(payload.content, brief);
-          if (verdict !== "in_scope") {
-            const steered = steerReply(verdict);
-            yield* store.append("assistant", steered);
-            yield* mirror("assistant", steered);
-            return { ok: true, reply: steered };
+          if (admission._tag === "Rejected") {
+            return { ok: true, reply: admission.reply };
           }
-          const day = new Date().toISOString().slice(0, 10);
-          const counterKey = `turns:${day}`;
-          const counter = yield* db
-            .first("SELECT value AS value FROM counters WHERE key = ?", [counterKey])
-            .pipe(Effect.orDie);
-          const used = counter === null ? 0 : Number(counter.value);
-          if (used >= 5000) {
-            const capacityReply =
-              "Klawva is at capacity for today. Please try again tomorrow.";
-            yield* store.append("assistant", capacityReply);
-            yield* mirror("assistant", capacityReply);
+          if (admission._tag === "AtCapacity") {
             return { ok: true, reply: capacityReply };
           }
-          yield* db
-            .run(
-              "INSERT INTO counters (key, value, updated_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at",
-              [counterKey, new Date().toISOString()],
-            )
-            .pipe(Effect.orDie);
-          yield* store.spend(50);
-          const soul = (yield* store.get("soul")) ?? "";
-          const allowlist = resolveAllowlist(yield* store.get("tool_allowlist"));
-          const model = (yield* store.get("model")) ?? defaultModel;
-          const sessionRuntime = makeRuntime(sessionEnv.env.AI, model, allowlist);
+          if (admission._tag === "OutOfBudget") {
+            yield* store.append("assistant", budgetReply);
+            yield* mirror("assistant", budgetReply);
+            return { ok: true, reply: budgetReply };
+          }
+          const sessionRuntime = makeRuntime(
+            sessionEnv.env.AI,
+            admission.config.model,
+            admission.config.allowlist,
+          );
           const history = yield* store.history();
           const reply = yield* runTurn({
             runtime: sessionRuntime,
-            soul,
-            brief,
+            soul: admission.config.soul,
+            brief: admission.config.brief,
             history,
             sessionId: sessionEnv.sessionId,
-            allowlist,
+            allowlist: admission.config.allowlist,
           }).pipe(
             Effect.catch(() =>
               Effect.succeed("I could not reach my model just now. Please try again."),
@@ -399,7 +545,7 @@ const sessionGroup = HttpApiBuilder.group(
   }),
 );
 
-const makeLayer = (
+export const makeLayer = (
   store: SessionStoreImpl,
   env: Env,
   sessionId: string,
@@ -418,54 +564,30 @@ const makeLayer = (
     Layer.provide(HttpServer.layerServices),
   );
 
-export class SessionAgent {
-  private readonly ctx: DurableObjectState;
-  private readonly env: Env;
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    this.ctx = ctx;
-    this.env = env;
-    this.ctx.storage.sql.exec(
-      "CREATE TABLE IF NOT EXISTS session_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-    );
-    this.ctx.storage.sql.exec(
-      "CREATE TABLE IF NOT EXISTS session_messages (id TEXT PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)",
-    );
+export const serveRestApi = async (
+  request: Request,
+  store: SessionStoreImpl,
+  env: Env,
+  sessionId: string,
+): Promise<Response> => {
+  const layer = makeLayer(store, env, sessionId);
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const handler = yield* HttpRouter.toHttpEffect(layer);
+      return yield* handler.pipe(
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          HttpServerRequest.fromWeb(request),
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
+  if (exit._tag === "Success") {
+    return HttpServerResponse.toWeb(exit.value);
   }
+  const [response] = await Effect.runPromise(
+    HttpServerError.causeResponse(exit.cause),
+  );
+  return HttpServerResponse.toWeb(response);
+};
 
-  async fetch(request: Request): Promise<Response> {
-    const layer = makeLayer(
-      makeStore(this.ctx.storage.sql),
-      this.env,
-      String(this.ctx.id.name ?? ""),
-    );
-    const exit = await Effect.runPromiseExit(
-      Effect.gen(function* () {
-        const handler = yield* HttpRouter.toHttpEffect(layer);
-        return yield* handler.pipe(
-          Effect.provideService(
-            HttpServerRequest.HttpServerRequest,
-            HttpServerRequest.fromWeb(request),
-          ),
-        );
-      }).pipe(Effect.scoped),
-    );
-    if (exit._tag === "Success") {
-      return HttpServerResponse.toWeb(exit.value);
-    }
-    const [response] = await Effect.runPromise(
-      HttpServerError.causeResponse(exit.cause),
-    );
-    return HttpServerResponse.toWeb(response);
-  }
-
-  async alarm(): Promise<void> {
-    await Effect.runPromise(
-      completeShift(
-        makeStore(this.ctx.storage.sql),
-        this.env,
-        String(this.ctx.id.name ?? ""),
-      ),
-    );
-  }
-}
