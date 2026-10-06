@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { defaultModel, type AgentRuntimeImpl } from "../agent/runtime.ts";
+import { defaultModel, defaultToolAllowlist, type AgentRuntimeImpl } from "../agent/runtime.ts";
 import { type DatabaseImpl } from "../db/database.ts";
 import { runEval, type Band } from "../eval/eval.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
@@ -129,7 +129,7 @@ export const createAuthorDraft = (
           hash,
           input.soul,
           JSON.stringify(input.briefFields),
-          JSON.stringify(["fetch_url"]),
+          JSON.stringify(defaultToolAllowlist),
           defaultModel,
           input.budgetMinor,
           now,
