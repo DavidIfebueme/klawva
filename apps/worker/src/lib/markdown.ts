@@ -44,8 +44,25 @@ export const toTelegramHtml = (markdown: string): string => {
     .trim();
 };
 
-export const toEmailHtml = (markdown: string): string =>
+const toPlainText = (markdown: string): string =>
   render(markdown)
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/\son\w+="[^"]*"/gi, "");
+    .replace(/<\/(?:p|div|h[1-6]|li|blockquote|pre|tr)>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<hr[^>]*>/gi, "\n---\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const escapeText = (value: string): string =>
+  value
+    .replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]{1,31}|#\d{1,7}|#[xX][0-9a-fA-F]{1,6});)/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+export const toEmailHtml = (markdown: string): string =>
+  toPlainText(markdown)
+    .split(/\n{2,}/)
+    .map((block) => escapeText(block).replace(/\n/g, "<br>"))
+    .join("\n");
