@@ -122,7 +122,11 @@ export function Component() {
         ),
         customerEmail: email.trim(),
       });
-      const payment = await initializeHirePayment(session.id, email.trim());
+      const payment = await initializeHirePayment(
+        session.id,
+        session.sessionToken,
+        email.trim(),
+      );
       if (payment.checkoutUrl) {
         window.location.href = payment.checkoutUrl;
       } else {
