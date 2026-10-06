@@ -22,6 +22,7 @@ const recorder = (): {
         batched.push(...statements);
         return Effect.void;
       },
+      changed: () => Effect.succeed(1),
     },
     ran,
     batched,
