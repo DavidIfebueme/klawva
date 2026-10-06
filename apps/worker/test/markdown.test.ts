@@ -31,9 +31,32 @@ describe("telegram markdown", () => {
 });
 
 describe("email markdown", () => {
-  it("renders markdown and strips scripts", () => {
-    const html = toEmailHtml("**bold**<script>alert(1)</script>");
-    expect(html).toContain("<strong>bold</strong>");
-    expect(html).not.toContain("<script");
+  it("emits no tag that came from the input", () => {
+    expect(toEmailHtml("**bold**")).toBe("bold");
+  });
+
+  it("keeps structure through line breaks and bullets", () => {
+    const html = toEmailHtml("# Report\n\nFound **7** roles.\n\n- One\n- Two\n\nEnd");
+    expect(html).toBe("Report\nFound 7 roles.\n- One\n- Two\nEnd");
+  });
+
+  it.each([
+    '<img src=x onerror=alert(1)>',
+    '<IMG SRC=x ONERROR=alert(document.domain)>',
+    '<svg onload=alert(1)>',
+    '<body onload=alert(1)>',
+    '<a href="javascript:alert(1)">click</a>',
+    '<script>alert(1',
+    '<iframe src=//evil.tld>',
+  ])("neutralises %s", (payload) => {
+    const html = toEmailHtml(payload);
+    expect(html).not.toMatch(/<[a-z!/]/i);
+    expect(html).not.toContain("onerror");
+    expect(html).not.toContain("onload");
+    expect(html).not.toContain("javascript:");
+  });
+
+  it("escapes the characters that could rebuild a tag", () => {
+    expect(toEmailHtml("5 < 6 & 7 > 6")).toBe("5 &lt; 6 &amp; 7 &gt; 6");
   });
 });
