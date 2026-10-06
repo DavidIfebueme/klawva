@@ -6,6 +6,11 @@ import * as Schema from "effect/Schema";
 export type Param = string | number | null;
 export type Row = Readonly<Record<string, unknown>>;
 
+export interface Statement {
+  readonly sql: string;
+  readonly params?: ReadonlyArray<Param>;
+}
+
 export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
   "DatabaseError",
   {
@@ -26,6 +31,9 @@ export interface DatabaseImpl {
   readonly run: (
     sql: string,
     params?: ReadonlyArray<Param>,
+  ) => Effect.Effect<void, DatabaseError>;
+  readonly batch: (
+    statements: ReadonlyArray<Statement>,
   ) => Effect.Effect<void, DatabaseError>;
 }
 
@@ -61,6 +69,18 @@ export const make = (d1: D1Database): DatabaseImpl => ({
         await bind(d1, sql, params).run();
       },
       catch: (cause) => new DatabaseError({ operation: sql, cause }),
+    }),
+  batch: (statements) =>
+    Effect.tryPromise({
+      try: async () => {
+        await d1.batch(
+          statements.map((statement) => bind(d1, statement.sql, statement.params)),
+        );
+      },
+      catch: (cause) => new DatabaseError({
+        operation: statements.map((statement) => statement.sql).join(" | "),
+        cause,
+      }),
     }),
 });
 
