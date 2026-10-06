@@ -14,10 +14,13 @@ import {
   accountSessionDetail,
   addMember,
   listAccountSessions,
+  listChannelLinks,
   listMembers,
   ownsSession,
   removeMember,
+  unlinkChannel,
 } from "./account.ts";
+import { LinkChannel } from "../db/schema.ts";
 
 const SessionSummary = Schema.Struct({
   id: Schema.String,
@@ -118,12 +121,44 @@ const accountRemoveMember = HttpApiEndpoint.delete(
   },
 );
 
+const ChannelLinkRow = Schema.Struct({
+  channel: Schema.String,
+  chatId: Schema.String,
+  createdAt: Schema.String,
+});
+
+const accountChannels = HttpApiEndpoint.get(
+  "accountChannels",
+  "/api/account/sessions/:id/channels",
+  {
+    params: IdParam,
+    success: Schema.Array(ChannelLinkRow),
+    error: Schema.Union([AuthError, ListingNotFound]),
+  },
+);
+
+const accountUnlinkChannel = HttpApiEndpoint.delete(
+  "accountUnlinkChannel",
+  "/api/account/sessions/:id/channels/:channel/:chatId",
+  {
+    params: Schema.Struct({
+      id: Schema.String,
+      channel: LinkChannel,
+      chatId: Schema.String,
+    }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: Schema.Union([AuthError, ListingNotFound]),
+  },
+);
+
 class AccountGroup extends HttpApiGroup.make("Account")
   .add(accountSessions)
   .add(accountSession)
   .add(accountMembers)
   .add(accountAddMember)
-  .add(accountRemoveMember) {}
+  .add(accountRemoveMember)
+  .add(accountChannels)
+  .add(accountUnlinkChannel) {}
 
 export class AccountApi extends HttpApi.make("AccountApi").add(AccountGroup) {}
 
@@ -221,6 +256,43 @@ export const accountGroup = HttpApiBuilder.group(
             return yield* Effect.fail(new ListingNotFound({}));
           }
           yield* removeMember(db, params.id, params.email);
+          return { ok: true };
+        }),
+      )
+      .handle("accountChannels", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          const owned = yield* ownsSession(
+            db,
+            identity.userId,
+            identity.email,
+            params.id,
+          );
+          if (!owned) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          const rows = yield* listChannelLinks(db, params.id);
+          return rows.map((row) => Schema.decodeUnknownSync(ChannelLinkRow)(row));
+        }),
+      )
+      .handle("accountUnlinkChannel", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          const owned = yield* ownsSession(
+            db,
+            identity.userId,
+            identity.email,
+            params.id,
+          );
+          if (!owned) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          yield* unlinkChannel(
+            db,
+            params.id,
+            params.channel,
+            params.chatId,
+          );
           return { ok: true };
         }),
       );
