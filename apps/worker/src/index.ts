@@ -17,9 +17,11 @@ import {
 } from "./channels/slack.ts";
 import { handlePaystackWebhook } from "./payments/paystack.ts";
 import { handleBreetWebhook } from "./payments/breet.ts";
+import { routeAgentRequest } from "agents";
+import { authorizeStream } from "./session/agent.ts";
 import { signToken, verifyToken } from "./auth/tokens.ts";
 
-export { SessionAgent } from "./session/agent.ts";
+export { SessionAgent } from "./session/stream-agent.ts";
 export { WalletAgent } from "./wallet/wallet.ts";
 
 export default {
@@ -34,6 +36,30 @@ export default {
       return exit._tag === "Success"
         ? Response.json(exit.value)
         : Response.json({ ok: false }, { status: 500 });
+    }
+    if (url.pathname.startsWith("/agents/")) {
+      const segments = url.pathname.split("/").filter((part) => part.length > 0);
+      if (segments[0] !== "agents" || segments[1] !== "session") {
+        return Response.json({ ok: false }, { status: 404 });
+      }
+      const sessionId = segments[2] ?? "";
+      const allowed = await Effect.runPromise(
+        authorizeStream(
+          env,
+          makeDatabase(env.DB),
+          sessionId,
+          url.searchParams.get("token"),
+          request.headers.get("authorization") ??
+            request.headers.get("x-auth-token"),
+        ),
+      ).catch(() => false);
+      if (!allowed) {
+        return Response.json({ ok: false }, { status: 403 });
+      }
+      return (
+        (await routeAgentRequest(request, env)) ??
+        Response.json({ ok: false }, { status: 404 })
+      );
     }
     if (url.pathname === "/api/discord/interactions") {
       const rawBody = await request.text();
