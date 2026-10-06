@@ -122,7 +122,7 @@ const accountRemoveMember = HttpApiEndpoint.delete(
 );
 
 const ChannelLinkRow = Schema.Struct({
-  channel: Schema.String,
+  channel: LinkChannel,
   chatId: Schema.String,
   createdAt: Schema.String,
 });
