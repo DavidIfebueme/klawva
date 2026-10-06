@@ -1,3 +1,4 @@
+import { linkChannel } from "../account/account.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
@@ -209,12 +210,7 @@ const redeem = (
     yield* db
       .run("UPDATE claim_tokens SET used_at = ? WHERE token = ?", [now, code])
       .pipe(Effect.orDie);
-    yield* db
-      .run(
-        "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, 'telegram', ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET status = 'linked', updated_at = excluded.updated_at",
-        [crypto.randomUUID(), sessionId, String(chatId), now, now],
-      )
-      .pipe(Effect.orDie);
+    yield* linkChannel(db, sessionId, "telegram", String(chatId));
     yield* setActive(db, chatId, sessionId);
     const reply = yield* askSession(
       env,

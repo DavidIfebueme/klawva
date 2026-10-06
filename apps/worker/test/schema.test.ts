@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as Schema from "effect/Schema";
-import { Session } from "../src/db/schema.ts";
+import { ChannelLink, Session } from "../src/db/schema.ts";
 
 const row = {
   id: "s1",
@@ -29,6 +29,33 @@ describe("session row decode", () => {
   it("rejects an unknown state", () => {
     expect(() =>
       Schema.decodeUnknownSync(Session)({ ...row, state: "nonsense" }),
+    ).toThrow();
+  });
+});
+
+describe("channel link decode", () => {
+  const link = {
+    id: "c1",
+    sessionId: "s1",
+    channel: "telegram",
+    chatId: "123",
+    status: "linked",
+    createdAt: "2026-10-03T00:00:00.000Z",
+    updatedAt: "2026-10-03T00:00:00.000Z",
+  };
+
+  it.each(["telegram", "web", "email", "slack", "discord"])(
+    "accepts a %s link",
+    (channel) => {
+      expect(
+        Schema.decodeUnknownSync(ChannelLink)({ ...link, channel }).channel,
+      ).toBe(channel);
+    },
+  );
+
+  it("rejects an unknown channel", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(ChannelLink)({ ...link, channel: "sms" }),
     ).toThrow();
   });
 });

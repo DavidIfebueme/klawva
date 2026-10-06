@@ -1,3 +1,4 @@
+import { linkChannel } from "../account/account.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
@@ -235,13 +236,7 @@ export const handleEvent = (
     }
     const sessionId = String(session.id);
     const chatId = `${teamId}:${event.channel}`;
-    const now = new Date().toISOString();
-    yield* db
-      .run(
-        "INSERT INTO channel_links (id, session_id, channel, chat_id, status, created_at, updated_at) VALUES (?, ?, 'slack', ?, 'linked', ?, ?) ON CONFLICT(channel, chat_id, session_id) DO UPDATE SET status = 'linked', updated_at = excluded.updated_at",
-        [crypto.randomUUID(), sessionId, chatId, now, now],
-      )
-      .pipe(Effect.orDie);
+    yield* linkChannel(db, sessionId, "slack", chatId);
     const text = (event.text ?? "").replace(/<@[^>]+>/g, "").trim();
     const reply = yield* askSession(env, sessionId, text.length > 0 ? text : "Hello");
     yield* postMessage(String(connection.token), event.channel, reply);
