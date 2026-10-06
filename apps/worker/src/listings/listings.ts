@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { defaultModel } from "../agent/runtime.ts";
+import { defaultModel, defaultToolAllowlist } from "../agent/runtime.ts";
 import { soulFor } from "../agent/souls.ts";
 import type { DatabaseImpl } from "../db/database.ts";
 import { definitions, type ListingDefinition } from "./definitions.ts";
@@ -64,7 +64,7 @@ export const seedListings = (
             hash,
             soulFor(definition.agentId),
             JSON.stringify(definition.briefFields),
-            JSON.stringify(["fetch_url"]),
+            JSON.stringify(defaultToolAllowlist),
             defaultModel,
             definition.budgetMinor,
             now,
