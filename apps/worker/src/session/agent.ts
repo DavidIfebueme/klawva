@@ -19,6 +19,7 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase } from "../db/database.ts";
+import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
@@ -343,7 +344,16 @@ const sessionGroup = HttpApiBuilder.group(
           if (payload.role !== "user") {
             return { ok: true };
           }
-          yield* store.spend(50);
+          const brief = Schema.decodeUnknownSync(Brief)(
+            JSON.parse((yield* store.get("brief")) ?? "{}"),
+          );
+          const verdict = screenScope(payload.content, brief);
+          if (verdict !== "in_scope") {
+            const steered = steerReply(verdict);
+            yield* store.append("assistant", steered);
+            yield* mirror("assistant", steered);
+            return { ok: true, reply: steered };
+          }
           const day = new Date().toISOString().slice(0, 10);
           const counterKey = `turns:${day}`;
           const counter = yield* db
@@ -363,10 +373,8 @@ const sessionGroup = HttpApiBuilder.group(
               [counterKey, new Date().toISOString()],
             )
             .pipe(Effect.orDie);
+          yield* store.spend(50);
           const soul = (yield* store.get("soul")) ?? "";
-          const brief = Schema.decodeUnknownSync(Brief)(
-            JSON.parse((yield* store.get("brief")) ?? "{}"),
-          );
           const allowlist = resolveAllowlist(yield* store.get("tool_allowlist"));
           const model = (yield* store.get("model")) ?? defaultModel;
           const sessionRuntime = makeRuntime(sessionEnv.env.AI, model, allowlist);
