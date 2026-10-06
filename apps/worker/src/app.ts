@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpServer } from "effect/http";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -82,6 +83,13 @@ import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 import { ListingConflict, ListingNotFound } from "./errors.ts";
 import { rateLimited } from "./lib/guard.ts";
+import { constantTimeEqual } from "./lib/secure.ts";
+
+const clientAddress: Effect.Effect<string, never, HttpServerRequest.HttpServerRequest> =
+  Effect.map(
+    HttpServerRequest.HttpServerRequest,
+    (request) => Option.getOrElse(request.remoteAddress, () => "unknown"),
+  );
 import { screenBrief } from "./moderation/moderation.ts";
 import { connectors } from "./mcp/connectors.ts";
 
@@ -225,6 +233,7 @@ const initializePaymentEndpoint = HttpApiEndpoint.post(
   {
     payload: Schema.Struct({
       sessionId: Schema.String,
+      token: Schema.String,
       amountMinor: Schema.Number,
       email: Schema.String,
     }),
@@ -377,7 +386,18 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("initializePayment", ({ payload }) =>
         Effect.gen(function* () {
-          const allowed = yield* rateLimited(env.PUBLIC_LIMITER, payload.sessionId);
+          const owns = yield* sessionTokenMatches(
+            db,
+            payload.sessionId,
+            payload.token,
+          );
+          if (!owns) {
+            return { reference: "", checkoutUrl: "" };
+          }
+          const allowed = yield* rateLimited(
+            env.PUBLIC_LIMITER,
+            `initialize-payment:${payload.sessionId}:${yield* clientAddress}`,
+          );
           if (!allowed) {
             return { reference: "", checkoutUrl: "" };
           }
@@ -624,7 +644,7 @@ const rootGroup = HttpApiBuilder.group(
           const provided = request.headers[secretHeader];
           if (
             env.TELEGRAM_WEBHOOK_SECRET.length === 0 ||
-            provided !== env.TELEGRAM_WEBHOOK_SECRET
+            !constantTimeEqual(provided, env.TELEGRAM_WEBHOOK_SECRET)
           ) {
             return { ok: false };
           }
@@ -636,6 +656,13 @@ const rootGroup = HttpApiBuilder.group(
       )
       .handle("createSession", ({ payload }) =>
         Effect.gen(function* () {
+          const allowed = yield* rateLimited(
+            env.PUBLIC_LIMITER,
+            `create-session:${yield* clientAddress}`,
+          );
+          if (!allowed) {
+            return yield* Effect.fail(new ListingConflict({ reason: "rate_limited" }));
+          }
           const flagged = screenBrief(payload.brief);
           if (flagged !== null) {
             return yield* Effect.fail(new ListingConflict({ reason: flagged }));
