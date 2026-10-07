@@ -69,12 +69,18 @@ export async function getConfig(): Promise<{ telegramBotUsername: string }> {
 const sessionLaunch = Schema.Struct({
   telegramBotUsername: Schema.String,
   code: Schema.String,
+  channel: Schema.String,
+  agentId: Schema.String,
+  agentName: Schema.String,
+  customerEmail: Schema.String,
+  brief: Schema.Record(Schema.String, Schema.String),
 });
+export type SessionLaunch = typeof sessionLaunch.Type;
 
 export async function getSessionLaunch(
   sessionId: string,
   token: string,
-): Promise<{ telegramBotUsername: string; code: string }> {
+): Promise<SessionLaunch> {
   return Schema.decodeUnknownSync(sessionLaunch)(
     await send(
       `/api/sessions/${encodeURIComponent(sessionId)}/launch?token=${encodeURIComponent(token)}`,

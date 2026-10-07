@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
@@ -7,7 +7,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/ui/Markdown";
-import { getChatMessages } from "@/lib/employees-api";
+import { getChatMessages, getSessionLaunch } from "@/lib/employees-api";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   if (params.sessionId === undefined) {
@@ -18,8 +18,21 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   if (token === null) {
     throw redirect("/employees");
   }
-  const messages = await getChatMessages(params.sessionId, token);
-  return { sessionId: params.sessionId, token, messages };
+  const [messages, meta] = await Promise.all([
+    getChatMessages(params.sessionId, token),
+    getSessionLaunch(params.sessionId, token).catch(() => null),
+  ]);
+  if (meta === null) {
+    throw redirect("/employees");
+  }
+  return {
+    sessionId: params.sessionId,
+    token,
+    messages,
+    brief: meta.brief,
+    customerEmail: meta.customerEmail,
+    agentSlug: meta.agentId,
+  };
 };
 
 interface Row {
@@ -34,8 +47,45 @@ const toText = (message: UIMessage): string =>
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("\n");
 
+const userPart = (
+  brief: Readonly<Record<string, string>>,
+  customerEmail: string,
+): string => {
+  for (const [key, value] of Object.entries(brief)) {
+    const name = value.trim();
+    if (key.toLowerCase().includes("name") && name.length > 0 && name.length <= 60) {
+      return name;
+    }
+  }
+  const at = customerEmail.indexOf("@");
+  if (at > 0) {
+    return customerEmail.slice(0, at);
+  }
+  if (customerEmail.trim().length > 0) {
+    return customerEmail.trim();
+  }
+  return "you";
+};
+
+const slugify = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+
+const employeeLabel = (user: string, agentSlug: string): string =>
+  user === "you" ? `${agentSlug}_employee` : `${slugify(user)}_${agentSlug}_employee`;
+
 export function Component() {
-  const { sessionId, token, messages: fallback } = useLoaderData<typeof loader>();
+  const {
+    sessionId,
+    token,
+    messages: fallback,
+    brief,
+    customerEmail,
+    agentSlug,
+  } = useLoaderData<typeof loader>();
   const agent = useAgent({
     agent: "session",
     name: sessionId,
@@ -56,12 +106,16 @@ export function Component() {
   } = useAgentChat<unknown, UIMessage>({ agent });
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState("");
+  const pin = useRef({ count: -1, busy: false });
 
   const busy =
     status === "submitted" ||
     status === "streaming" ||
     isServerStreaming ||
     isRecovering;
+
+  const who = userPart(brief, customerEmail);
+  const employee = employeeLabel(who, agentSlug);
 
   const rows = useMemo(() => {
     const seen = new Set<string>();
@@ -122,16 +176,7 @@ export function Component() {
             />
           </div>
           <div className="bg-klawva-surface border border-klawva-border rounded-lg p-6 mb-6">
-            <div className="flex flex-col-reverse gap-4 max-h-[60vh] overflow-y-auto">
-              {busy && (
-                <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-lg border border-klawva-border bg-klawva-surface px-4 py-3">
-                    <div className="font-mono text-klawva-dim text-xs animate-pulse">
-                      thinking
-                    </div>
-                  </div>
-                </div>
-              )}
+            <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
               {rows.length === 0 ? (
                 <p className="font-mono text-klawva-muted text-sm">
                   Say hello to begin.
@@ -150,13 +195,36 @@ export function Component() {
                       }`}
                     >
                       <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-klawva-dim">
-                        {row.role}
+                        {row.role === "user" ? who : employee}
                       </div>
                       <Markdown content={row.content} />
                     </div>
                   </div>
                 ))
               )}
+              {busy && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-lg border border-klawva-border bg-klawva-surface px-4 py-3">
+                    <div className="font-mono text-klawva-dim text-xs animate-pulse">
+                      thinking
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div
+                ref={(el) => {
+                  if (el === null) {
+                    return;
+                  }
+                  if (
+                    rows.length !== pin.current.count ||
+                    busy !== pin.current.busy
+                  ) {
+                    pin.current = { count: rows.length, busy };
+                    el.scrollIntoView({ block: "end" });
+                  }
+                }}
+              />
             </div>
           </div>
           <form onSubmit={handleSend} className="flex gap-3">

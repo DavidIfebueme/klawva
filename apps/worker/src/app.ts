@@ -10,6 +10,7 @@ import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { Database, layer as databaseLayer } from "./db/database.ts";
 import { Channel } from "./db/schema.ts";
+import { Brief } from "./db/schema.ts";
 import { soulFor } from "./agent/souls.ts";
 import {
   handleUpdate,
@@ -169,6 +170,11 @@ const sessionLaunchEndpoint = HttpApiEndpoint.get(
     success: Schema.Struct({
       telegramBotUsername: Schema.String,
       code: Schema.String,
+      channel: Schema.String,
+      agentId: Schema.String,
+      agentName: Schema.String,
+      customerEmail: Schema.String,
+      brief: Schema.Record(Schema.String, Schema.String),
     }),
     error: ListingNotFound,
   },
@@ -479,6 +485,21 @@ const rootGroup = HttpApiBuilder.group(
               [params.id],
             )
             .pipe(Effect.orDie);
+          const session = yield* db
+            .first(
+              "SELECT channel AS channel, agent_id AS agentId, listing_id AS listingId, customer_email AS customerEmail, brief AS brief FROM sessions WHERE id = ?",
+              [params.id],
+            )
+            .pipe(Effect.orDie);
+          if (session === null) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          const listing = yield* db
+            .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
+              String(session.listingId),
+            ])
+            .pipe(Effect.orDie);
+          const brief = Schema.decodeUnknownOption(Brief)(session.brief);
           let code = row === null ? null : String(row.code);
           if (code === null) {
             code = crypto.randomUUID().replace(/-/g, "");
@@ -496,7 +517,17 @@ const rootGroup = HttpApiBuilder.group(
               )
               .pipe(Effect.orDie);
           }
-          return { telegramBotUsername: env.TELEGRAM_BOT_USERNAME, code };
+          return {
+            telegramBotUsername: env.TELEGRAM_BOT_USERNAME,
+            code,
+            channel: String(session.channel),
+            agentId: String(session.agentId),
+            agentName:
+              listing === null ? String(session.agentId) : String(listing.name),
+            customerEmail:
+              session.customerEmail === null ? "" : String(session.customerEmail),
+            brief: brief._tag === "Some" ? brief.value : {},
+          };
         }),
       )
       .handle("chatMessages", ({ params, query }) =>
