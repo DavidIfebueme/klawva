@@ -702,6 +702,11 @@ const rootGroup = HttpApiBuilder.group(
           const sessionToken = crypto.randomUUID().replace(/-/g, "");
           const now = new Date().toISOString();
           const customerEmail = payload.customerEmail?.trim().toLowerCase();
+          if (payload.channel === "email" && customerEmail === undefined) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "email_required" }),
+            );
+          }
           const userId =
             customerEmail !== undefined && customerEmail.length > 0
               ? yield* upsertUser(db, customerEmail)

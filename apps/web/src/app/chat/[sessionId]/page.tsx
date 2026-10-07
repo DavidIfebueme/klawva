@@ -8,6 +8,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/ui/Markdown";
 import { getChatMessages, getSessionLaunch } from "@/lib/employees-api";
+import { ApiError } from "@/lib/api-error.ts";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   if (params.sessionId === undefined) {
@@ -20,7 +21,12 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   }
   const [messages, meta] = await Promise.all([
     getChatMessages(params.sessionId, token),
-    getSessionLaunch(params.sessionId, token).catch(() => null),
+    getSessionLaunch(params.sessionId, token).catch((cause: unknown) => {
+      if (cause instanceof ApiError && cause.status === 404) {
+        return null;
+      }
+      throw cause;
+    }),
   ]);
   if (meta === null) {
     throw redirect("/employees");
@@ -47,13 +53,39 @@ const toText = (message: UIMessage): string =>
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("\n");
 
+const customerNameKeys = [
+  "customer_name",
+  "your_name",
+  "full_name",
+  "first_name",
+  "my_name",
+  "name",
+];
+
 const userPart = (
   brief: Readonly<Record<string, string>>,
   customerEmail: string,
 ): string => {
+  const lowered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(brief)) {
+    lowered[key.toLowerCase()] = value;
+  }
+  for (const key of customerNameKeys) {
+    const value = lowered[key];
+    if (value !== undefined) {
+      const name = value.trim();
+      if (name.length > 0 && name.length <= 60) {
+        return name;
+      }
+    }
+  }
   for (const [key, value] of Object.entries(brief)) {
     const name = value.trim();
-    if (key.toLowerCase().includes("name") && name.length > 0 && name.length <= 60) {
+    if (
+      key.toLowerCase().includes("name") &&
+      name.length > 0 &&
+      name.length <= 60
+    ) {
       return name;
     }
   }
@@ -75,7 +107,9 @@ const slugify = (value: string): string =>
     .slice(0, 40);
 
 const employeeLabel = (user: string, agentSlug: string): string =>
-  user === "you" ? `${agentSlug}_employee` : `${slugify(user)}_${agentSlug}_employee`;
+  user === "you"
+    ? `you_${agentSlug}_employee`
+    : `${slugify(user)}_${agentSlug}_employee`;
 
 export function Component() {
   const {
@@ -106,7 +140,7 @@ export function Component() {
   } = useAgentChat<unknown, UIMessage>({ agent });
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState("");
-  const pin = useRef({ count: -1, busy: false });
+  const pin = useRef({ count: -1, busy: false, lastLen: 0 });
 
   const busy =
     status === "submitted" ||
@@ -216,13 +250,30 @@ export function Component() {
                   if (el === null) {
                     return;
                   }
+                  const lastLen =
+                    rows.length === 0 ? 0 : rows[rows.length - 1].content.length;
                   if (
-                    rows.length !== pin.current.count ||
-                    busy !== pin.current.busy
+                    rows.length === pin.current.count &&
+                    busy === pin.current.busy &&
+                    lastLen === pin.current.lastLen
                   ) {
-                    pin.current = { count: rows.length, busy };
-                    el.scrollIntoView({ block: "end" });
+                    return;
                   }
+                  const first = pin.current.count === -1;
+                  pin.current = { count: rows.length, busy, lastLen };
+                  if (!first) {
+                    const scroller = el.parentElement;
+                    if (scroller !== null) {
+                      const gap =
+                        scroller.scrollHeight -
+                        scroller.scrollTop -
+                        scroller.clientHeight;
+                      if (gap > 160) {
+                        return;
+                      }
+                    }
+                  }
+                  el.scrollIntoView({ block: "end" });
                 }}
               />
             </div>
