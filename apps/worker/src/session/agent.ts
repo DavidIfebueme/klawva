@@ -22,7 +22,11 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
-import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
+import {
+  charsToTokens,
+  checkNeuronBudget,
+  recordAiUsage,
+} from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
@@ -223,6 +227,9 @@ export const admitTurn = (
     const verdict = screenScope(userText, config.brief);
     if (verdict !== "in_scope") {
       return { _tag: "Rejected", reply: steerReply(verdict) } as const;
+    }
+    if (!(yield* checkNeuronBudget(db))) {
+      return { _tag: "AtCapacity" } as const;
     }
     if (!(yield* takeCapacitySlot(db))) {
       return { _tag: "AtCapacity" } as const;
