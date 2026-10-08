@@ -2,31 +2,41 @@ import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 import { DatabaseError } from "../src/db/database.ts";
 import type { DatabaseImpl } from "../src/db/database.ts";
-import { estimateNeurons, recordAiUsage } from "../src/agent/meter.ts";
+import {
+  charsToTokens,
+  checkNeuronBudget,
+  dayNeurons,
+  estimateNeurons,
+  recordAiUsage,
+} from "../src/agent/meter.ts";
 
 const glm = "@cf/zai-org/glm-4.7-flash";
+const day = new Date().toISOString().slice(0, 10);
+
+describe("charsToTokens", () => {
+  it("rounds up at four characters per token", () => {
+    expect(charsToTokens(0)).toBe(0);
+    expect(charsToTokens(1)).toBe(1);
+    expect(charsToTokens(4)).toBe(1);
+    expect(charsToTokens(5)).toBe(2);
+  });
+});
 
 describe("estimateNeurons", () => {
   it.each([
-    { inChars: 4000000, outChars: 0, expected: 5500 },
-    { inChars: 0, outChars: 4000000, expected: 36400 },
-    { inChars: 0, outChars: 0, expected: 0 },
+    { inTokens: 1_000_000, outTokens: 0, expected: 5500 },
+    { inTokens: 0, outTokens: 1_000_000, expected: 36400 },
+    { inTokens: 0, outTokens: 0, expected: 0 },
   ])(
-    "estimates $inChars in-chars and $outChars out-chars as $expected neurons",
-    ({ inChars, outChars, expected }) => {
-      expect(estimateNeurons({ model: glm, inChars, outChars })).toBe(expected);
+    "estimates $inTokens in and $outTokens out as $expected neurons",
+    ({ inTokens, outTokens, expected }) => {
+      expect(estimateNeurons({ model: glm, inTokens, outTokens })).toBe(expected);
     },
   );
 
-  it("combines input and output", () => {
-    expect(
-      estimateNeurons({ model: glm, inChars: 4000, outChars: 4000 }),
-    ).toBeCloseTo(41.9);
-  });
-
   it("returns null for an unknown model", () => {
     expect(
-      estimateNeurons({ model: "unknown-model", inChars: 4000, outChars: 4 }),
+      estimateNeurons({ model: "unknown-model", inTokens: 100, outTokens: 4 }),
     ).toBeNull();
   });
 });
@@ -57,42 +67,100 @@ const captureDb = (fail: boolean): {
 };
 
 describe("recordAiUsage", () => {
-  it("increments calls and char counters for the model and day", async () => {
+  it("increments calls and token counters for the model and day", async () => {
     const { db, writes } = captureDb(false);
     await Effect.runPromise(
-      recordAiUsage(db, { model: glm, inChars: 100, outChars: 50, ok: true }),
+      recordAiUsage(db, {
+        model: glm,
+        inTokens: 100,
+        outTokens: 50,
+        ok: true,
+      }),
     );
-    const day = new Date().toISOString().slice(0, 10);
     expect(writes).toContainEqual({ key: `ai:calls:${day}:${glm}`, by: 1 });
     expect(writes).toContainEqual({
-      key: `ai:in-chars:${day}:${glm}`,
+      key: `ai:in-tokens:${day}:${glm}`,
       by: 100,
     });
     expect(writes).toContainEqual({
-      key: `ai:out-chars:${day}:${glm}`,
+      key: `ai:out-tokens:${day}:${glm}`,
       by: 50,
     });
-    expect(
-      writes.some((w) => String(w.key).includes("ai:errors:")),
-    ).toBe(false);
+    expect(writes.some((w) => String(w.key).includes("ai:errors:"))).toBe(false);
   });
 
   it("increments the error counter on failure", async () => {
     const { db, writes } = captureDb(false);
     await Effect.runPromise(
-      recordAiUsage(db, { model: glm, inChars: 100, outChars: 0, ok: false }),
+      recordAiUsage(db, {
+        model: glm,
+        inTokens: 100,
+        outTokens: 0,
+        ok: false,
+      }),
     );
-    const day = new Date().toISOString().slice(0, 10);
-    expect(writes).toContainEqual({
-      key: `ai:errors:${day}:${glm}`,
-      by: 1,
-    });
+    expect(writes).toContainEqual({ key: `ai:errors:${day}:${glm}`, by: 1 });
   });
 
   it("never fails the caller when the database is down", async () => {
     const { db } = captureDb(true);
     await Effect.runPromise(
-      recordAiUsage(db, { model: glm, inChars: 100, outChars: 50, ok: true }),
+      recordAiUsage(db, {
+        model: glm,
+        inTokens: 100,
+        outTokens: 50,
+        ok: true,
+      }),
     );
+  });
+});
+
+const rowsDb = (
+  rows: ReadonlyArray<{ key: string; value: number }>,
+): DatabaseImpl => ({
+  all: () => Effect.succeed(rows),
+  first: () => Effect.succeed(null),
+  run: () => Effect.void,
+  batch: () => Effect.void,
+  changed: () => Effect.succeed(1),
+});
+
+describe("dayNeurons", () => {
+  it("sums estimates across models for the day", async () => {
+    const db = rowsDb([
+      { key: `ai:in-tokens:${day}:${glm}`, value: 1_000_000 },
+      { key: `ai:out-tokens:${day}:${glm}`, value: 0 },
+    ]);
+    expect(await Effect.runPromise(dayNeurons(db, day))).toBe(5500);
+  });
+
+  it("ignores other days, unknown models, and unrelated counters", async () => {
+    const db = rowsDb([
+      { key: `ai:in-tokens:2000-01-01:${glm}`, value: 40_000_000 },
+      { key: `ai:in-tokens:${day}:unknown-model`, value: 40_000_000 },
+      { key: "turns:2026-01-01", value: 5000 },
+    ]);
+    expect(await Effect.runPromise(dayNeurons(db, day))).toBe(0);
+  });
+
+  it("counts every step of a multi step turn", async () => {
+    const db = rowsDb([
+      { key: `ai:in-tokens:${day}:${glm}`, value: 1_000_000 },
+      { key: `ai:out-tokens:${day}:${glm}`, value: 1_000_000 },
+    ]);
+    expect(await Effect.runPromise(dayNeurons(db, day))).toBe(41900);
+  });
+});
+
+describe("checkNeuronBudget", () => {
+  it("admits when usage is under the cap", async () => {
+    expect(await Effect.runPromise(checkNeuronBudget(rowsDb([])))).toBe(true);
+  });
+
+  it("refuses when usage reaches the cap", async () => {
+    const db = rowsDb([
+      { key: `ai:in-tokens:${day}:${glm}`, value: 2_000_000 },
+    ]);
+    expect(await Effect.runPromise(checkNeuronBudget(db))).toBe(false);
   });
 });

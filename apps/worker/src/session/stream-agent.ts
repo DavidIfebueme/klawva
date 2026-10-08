@@ -29,14 +29,20 @@ import {
   sanitized,
   serveRestApi,
 } from "./agent.ts";
-import { recordAiUsage } from "../agent/meter.ts";
+import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
 import { systemText } from "../agent/runtime.ts";
 import { aiToolsFor } from "./stream-tools.ts";
+
+interface TurnUsage {
+  readonly inChars: number;
+  readonly model: string;
+  readonly steps: Array<{ readonly inTokens: number; readonly outTokens: number }>;
+}
 
 export class SessionAgent extends AIChatAgent<Env> {
   maxPersistedMessages = 400;
   private readonly settled = new Set<string>();
-  private readonly admitted = new Set<string>();
+  private readonly turns = new Map<string, TurnUsage>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -111,8 +117,13 @@ export class SessionAgent extends AIChatAgent<Env> {
       });
     }
     const config = admission.config;
-    if (_options?.requestId !== undefined) {
-      this.admitted.add(_options.requestId);
+    const requestId = _options?.requestId;
+    const inChars =
+      systemText(config.soul, config.brief).length +
+      this.messages.map(messageText).join("").length;
+    const usage: TurnUsage = { inChars, model: config.model, steps: [] };
+    if (requestId !== undefined) {
+      this.turns.set(requestId, usage);
     }
     const workersai = createWorkersAI({ binding: this.env.AI });
     const result = streamText({
@@ -122,36 +133,52 @@ export class SessionAgent extends AIChatAgent<Env> {
       tools: aiToolsFor(config.allowlist, sessionId),
       stopWhen: stepCountIs(4),
       abortSignal: _options?.abortSignal,
+      onStepFinish: (step) => {
+        usage.steps.push({
+          inTokens: step.usage.inputTokens ?? 0,
+          outTokens: step.usage.outputTokens ?? 0,
+        });
+      },
     });
     return result.toUIMessageStreamResponse();
   }
 
   async onChatResponse(result: ChatResponseResult): Promise<void> {
     const text = messageText(result.message);
-    if (text.length === 0) {
-      return;
+    const requestId = result.requestId;
+    const usage =
+      requestId === undefined ? undefined : this.turns.get(requestId);
+    if (requestId !== undefined) {
+      this.turns.delete(requestId);
     }
     const store = makeStore(this.ctx.storage.sql);
     const db = makeDatabase(this.env.DB);
-    const admitted =
-      result.requestId !== undefined && this.admitted.delete(result.requestId);
-    const config = await Effect.runPromise(loadTurnConfig(store)).catch(
-      () => null,
-    );
+    if (text.length > 0) {
+      await Effect.runPromise(
+        persistAssistant(store, db, this.name, text),
+      ).catch(() => undefined);
+    }
+    if (usage === undefined) {
+      return;
+    }
+    const ok = result.status === "completed";
+    const records =
+      usage.steps.length > 0
+        ? usage.steps
+        : [
+            {
+              inTokens: charsToTokens(usage.inChars),
+              outTokens: charsToTokens(text.length),
+            },
+          ];
     await Effect.runPromise(
-      persistAssistant(store, db, this.name, text).pipe(
-        Effect.andThen(() =>
-          admitted && config !== null
-            ? recordAiUsage(db, {
-                model: config.model,
-                inChars:
-                  systemText(config.soul, config.brief).length +
-                  this.messages.map(messageText).join("").length,
-                outChars: text.length,
-                ok: true,
-              })
-            : Effect.void,
-        ),
+      Effect.forEach(records, (step) =>
+        recordAiUsage(db, {
+          model: usage.model,
+          inTokens: step.inTokens,
+          outTokens: step.outTokens,
+          ok,
+        }),
       ),
     ).catch(() => undefined);
   }

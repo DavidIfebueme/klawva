@@ -21,7 +21,7 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
-import { recordAiUsage } from "../agent/meter.ts";
+import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
@@ -331,16 +331,16 @@ export const completeShift = (
       Effect.tap((result) =>
         recordAiUsage(db, {
           model: defaultModel,
-          inChars,
-          outChars: result.summary.length,
+          inTokens: charsToTokens(inChars),
+          outTokens: charsToTokens(result.summary.length),
           ok: true,
         }),
       ),
       Effect.catch(() =>
         recordAiUsage(db, {
           model: defaultModel,
-          inChars,
-          outChars: 0,
+          inTokens: charsToTokens(inChars),
+          outTokens: 0,
           ok: false,
         }).pipe(Effect.andThen(() => Effect.succeed(fallbackReport(history)))),
       ),
@@ -569,16 +569,16 @@ const sessionGroup = HttpApiBuilder.group(
             Effect.tap((text) =>
               recordAiUsage(db, {
                 model: admission.config.model,
-                inChars,
-                outChars: text.length,
+                inTokens: charsToTokens(inChars),
+                outTokens: charsToTokens(text.length),
                 ok: true,
               }),
             ),
             Effect.catch(() =>
               recordAiUsage(db, {
                 model: admission.config.model,
-                inChars,
-                outChars: 0,
+                inTokens: charsToTokens(inChars),
+                outTokens: 0,
                 ok: false,
               }).pipe(
                 Effect.andThen(() =>
