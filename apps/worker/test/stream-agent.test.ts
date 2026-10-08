@@ -195,6 +195,35 @@ describe("turn admission", () => {
     expect(spent).toBe(0);
   });
 
+  it("refuses the turn at the neuron cap without spending or taking a slot", async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    const { store, db, ran } = build({ brief }, 0);
+    const guarded: DatabaseImpl = {
+      ...db,
+      all: () =>
+        Effect.succeed([
+          { key: `ai:in-tokens:${day}:@cf/zai-org/glm-4.7-flash`, value: 2000000 },
+        ]),
+    };
+    let spent = 0;
+    const watched: SessionStoreImpl = {
+      ...store,
+      spend: () => {
+        spent += 1;
+        return Effect.void;
+      },
+    };
+    const admission = await Effect.runPromise(
+      admitTurn(watched, guarded, "s1", "shortlist the new backend roles"),
+    );
+    expect(admission._tag).toBe("AtCapacity");
+    expect(spent).toBe(0);
+    const tookSlot = ran.some((entry) =>
+      entry.params.some((param) => String(param).startsWith("turns:")),
+    );
+    expect(tookSlot).toBe(false);
+  });
+
   it("fails closed when the budget is exhausted", async () => {
     const { store, db } = build({ brief }, 0);
     const broke: SessionStoreImpl = {
