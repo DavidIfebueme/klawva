@@ -69,16 +69,17 @@ const claim = (
   sessionId: string,
   target: Target,
   now: number,
-): Effect.Effect<boolean> =>
+): Effect.Effect<string | null> =>
   Effect.gen(function* () {
+    const claimedAt = new Date(now).toISOString();
     const inserted = yield* db
       .changed(
         "INSERT INTO delivery_receipts (session_id, channel, chat_id, created_at, delivered_at) VALUES (?, ?, ?, ?, NULL) ON CONFLICT(session_id, channel, chat_id) DO NOTHING",
-        [sessionId, target.channel, target.chatId, new Date(now).toISOString()],
+        [sessionId, target.channel, target.chatId, claimedAt],
       )
       .pipe(Effect.orDie);
     if (inserted === 1) {
-      return true;
+      return claimedAt;
     }
     const existing = yield* db
       .first(
@@ -87,20 +88,20 @@ const claim = (
       )
       .pipe(Effect.orDie);
     if (existing === null) {
-      return false;
+      return null;
     }
     if (existing.deliveredAt !== null) {
-      return false;
+      return null;
     }
-    const claimedAt = Date.parse(String(existing.createdAt));
-    if (Number.isFinite(claimedAt) && now - claimedAt < claimLeaseMs) {
-      return false;
+    const heldSince = Date.parse(String(existing.createdAt));
+    if (Number.isFinite(heldSince) && now - heldSince < claimLeaseMs) {
+      return null;
     }
     const reclaimed = yield* db
       .changed(
         "UPDATE delivery_receipts SET created_at = ? WHERE session_id = ? AND channel = ? AND chat_id = ? AND delivered_at IS NULL AND created_at = ?",
         [
-          new Date(now).toISOString(),
+          claimedAt,
           sessionId,
           target.channel,
           target.chatId,
@@ -108,7 +109,7 @@ const claim = (
         ],
       )
       .pipe(Effect.orDie);
-    return reclaimed === 1;
+    return reclaimed === 1 ? claimedAt : null;
   });
 
 export const deliverCompletion = (params: {
@@ -137,8 +138,8 @@ export const deliverCompletion = (params: {
     }
     const text = `Your shift is complete. Here is your report: ${params.reportUrl}`;
     for (const target of targets) {
-      const now = Date.now();
-      if (!(yield* claim(params.db, params.sessionId, target, now))) {
+      const owned = yield* claim(params.db, params.sessionId, target, Date.now());
+      if (owned === null) {
         continue;
       }
       const outcome = yield* Effect.result(
@@ -147,12 +148,13 @@ export const deliverCompletion = (params: {
       if (outcome._tag === "Success") {
         yield* params.db
           .run(
-            "UPDATE delivery_receipts SET delivered_at = ? WHERE session_id = ? AND channel = ? AND chat_id = ?",
+            "UPDATE delivery_receipts SET delivered_at = ? WHERE session_id = ? AND channel = ? AND chat_id = ? AND created_at = ? AND delivered_at IS NULL",
             [
               new Date().toISOString(),
               params.sessionId,
               target.channel,
               target.chatId,
+              owned,
             ],
           )
           .pipe(Effect.orDie);
@@ -160,8 +162,8 @@ export const deliverCompletion = (params: {
       }
       yield* params.db
         .run(
-          "DELETE FROM delivery_receipts WHERE session_id = ? AND channel = ? AND chat_id = ?",
-          [params.sessionId, target.channel, target.chatId],
+          "DELETE FROM delivery_receipts WHERE session_id = ? AND channel = ? AND chat_id = ? AND created_at = ? AND delivered_at IS NULL",
+          [params.sessionId, target.channel, target.chatId, owned],
         )
         .pipe(Effect.orDie);
     }
