@@ -31,6 +31,8 @@ import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
+import { postMessage } from "../channels/slack.ts";
+import { deliverCompletion, DeliveryError } from "../channels/delivery.ts";
 import type { Env } from "../env.ts";
 import type { UIMessage } from "ai";
 
@@ -426,29 +428,79 @@ export const completeShift = (
     yield* store.set("state", "completed");
     const reportUrl = `${env.FRONTEND_BASE_URL}/report/${sessionId}?shareToken=${shareToken}`;
     const email = yield* store.get("email");
-    if (email !== null && email.length > 0) {
-      yield* sendEmail({
-        apiKey: env.BREVO_API_KEY,
-        senderEmail: env.BREVO_SENDER_EMAIL,
-        senderName: "Klawva",
-        toEmail: email,
-        subject: "Your Klawva worker shift has ended",
-        html: reportEmailHtml(reportUrl),
-      }).pipe(Effect.catch(() => Effect.void));
-    }
-    const links = yield* db
-      .all(
-        "SELECT chat_id AS chatId FROM channel_links WHERE session_id = ? AND channel = 'telegram' AND status = 'linked'",
-        [sessionId],
-      )
-      .pipe(Effect.orDie);
-    for (const row of links) {
-      yield* sendMessage(
-        env.TELEGRAM_BOT_TOKEN,
-        Number(row.chatId),
-        `Your shift is complete. Here is your report: ${reportUrl}`,
-      ).pipe(Effect.catch(() => Effect.void));
-    }
+    yield* deliverCompletion({
+      db,
+      senders: {
+        telegram: (chatId, text) =>
+          sendMessage(env.TELEGRAM_BOT_TOKEN, Number(chatId), text).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DeliveryError({
+                  channel: "telegram",
+                  reason: cause.reason,
+                }),
+            ),
+          ),
+        slack: (team, channel, text) =>
+          Effect.gen(function* () {
+            const connection = yield* db
+              .first(
+                "SELECT access_token AS token FROM connections WHERE provider = 'slack' AND external_id = ?",
+                [team],
+              )
+              .pipe(Effect.orDie);
+            if (connection === null) {
+              return yield* Effect.fail(
+                new DeliveryError({
+                  channel: "slack",
+                  reason: "no_connection",
+                }),
+              );
+            }
+            yield* postMessage(String(connection.token), channel, text);
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DeliveryError({
+                  channel: "slack",
+                  reason: String(cause),
+                }),
+            ),
+          ),
+        email: (address, url) => {
+          if (
+            env.BREVO_API_KEY.length === 0 ||
+            env.BREVO_SENDER_EMAIL.length === 0
+          ) {
+            return Effect.fail(
+              new DeliveryError({
+                channel: "email",
+                reason: "not_configured",
+              }),
+            );
+          }
+          return sendEmail({
+            apiKey: env.BREVO_API_KEY,
+            senderEmail: env.BREVO_SENDER_EMAIL,
+            senderName: "Klawva",
+            toEmail: address,
+            subject: "Your Klawva worker shift has ended",
+            html: reportEmailHtml(url),
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DeliveryError({
+                  channel: "email",
+                  reason: cause.reason,
+                }),
+            ),
+          );
+        },
+      },
+      sessionId,
+      reportUrl,
+      email,
+    });
   });
 
 const StateResponse = Schema.Struct({ state: Schema.String });
