@@ -68,7 +68,7 @@ export const runEval = (params: {
   Effect.gen(function* () {
     const results: EvalCaseResult[] = [];
     for (const input of params.cases) {
-      const output = yield* runTurn({
+      const turn = yield* runTurn({
         runtime: params.runtime,
         soul: params.soul,
         brief: params.brief,
@@ -76,7 +76,11 @@ export const runEval = (params: {
         sessionId: params.sessionId ?? "eval",
         allowlist: params.allowlist ?? defaultToolAllowlist,
       });
-      results.push({ input, output, score: scoreTranscript(output) });
+      results.push({
+        input,
+        output: turn.text,
+        score: scoreTranscript(turn.text),
+      });
     }
     const score =
       results.length === 0

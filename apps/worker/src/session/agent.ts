@@ -566,13 +566,15 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: admission.config.allowlist,
           }).pipe(
-            Effect.tap((text) =>
-              recordAiUsage(db, {
-                model: admission.config.model,
-                inTokens: charsToTokens(inChars),
-                outTokens: charsToTokens(text.length),
-                ok: true,
-              }),
+            Effect.flatMap((turn) =>
+              Effect.forEach(turn.steps, (step) =>
+                recordAiUsage(db, {
+                  model: admission.config.model,
+                  inTokens: step.inTokens,
+                  outTokens: step.outTokens,
+                  ok: true,
+                }),
+              ).pipe(Effect.as(turn.text)),
             ),
             Effect.catch(() =>
               recordAiUsage(db, {

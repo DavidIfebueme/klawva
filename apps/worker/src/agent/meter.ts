@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import type { DatabaseImpl } from "../db/database.ts";
+import type { DatabaseImpl, Statement } from "../db/database.ts";
 
 interface NeuronRate {
   readonly inPerMillion: number;
@@ -38,31 +38,30 @@ export interface AiUsage {
   readonly ok: boolean;
 }
 
-const bump = (
-  db: DatabaseImpl,
-  key: string,
-  by: number,
-): Effect.Effect<void> =>
-  db
-    .run(
-      "INSERT INTO counters (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?, updated_at = excluded.updated_at",
-      [key, by, new Date().toISOString(), by],
-    )
-    .pipe(Effect.catch(() => Effect.void));
+const counterSql =
+  "INSERT INTO counters (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?, updated_at = excluded.updated_at";
+
+const counter = (key: string, by: number, now: string): Statement => ({
+  sql: counterSql,
+  params: [key, by, now, by],
+});
 
 export const recordAiUsage = (
   db: DatabaseImpl,
   usage: AiUsage,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const day = new Date().toISOString().slice(0, 10);
-    yield* bump(db, `ai:calls:${day}:${usage.model}`, 1);
-    yield* bump(db, `ai:in-tokens:${day}:${usage.model}`, usage.inTokens);
-    yield* bump(db, `ai:out-tokens:${day}:${usage.model}`, usage.outTokens);
-    if (!usage.ok) {
-      yield* bump(db, `ai:errors:${day}:${usage.model}`, 1);
-    }
-  });
+): Effect.Effect<void> => {
+  const day = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+  const statements: Statement[] = [
+    counter(`ai:calls:${day}:${usage.model}`, 1, now),
+    counter(`ai:in-tokens:${day}:${usage.model}`, usage.inTokens, now),
+    counter(`ai:out-tokens:${day}:${usage.model}`, usage.outTokens, now),
+  ];
+  if (!usage.ok) {
+    statements.push(counter(`ai:errors:${day}:${usage.model}`, 1, now));
+  }
+  return db.batch(statements).pipe(Effect.catch(() => Effect.void));
+};
 
 export const NEURON_DAILY_CAP = 9000;
 

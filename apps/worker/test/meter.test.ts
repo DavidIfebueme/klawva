@@ -50,16 +50,21 @@ const captureDb = (fail: boolean): {
     db: {
       all: () => Effect.succeed([]),
       first: () => Effect.succeed(null),
-      run: (_sql, params) => {
+      run: () => Effect.void,
+      batch: (statements) => {
         if (fail) {
           return Effect.fail(
             new DatabaseError({ operation: "test", cause: "boom" }),
           );
         }
-        writes.push({ key: params?.[0], by: params?.[1] });
+        for (const statement of statements) {
+          writes.push({
+            key: statement.params?.[0],
+            by: statement.params?.[1],
+          });
+        }
         return Effect.void;
       },
-      batch: () => Effect.void,
       changed: () => Effect.succeed(1),
     },
     writes,
