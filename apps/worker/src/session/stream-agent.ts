@@ -21,15 +21,15 @@ import {
   budgetReply,
   capacityReply,
   completeShift,
-  failStreamTurn,
   lastUserText,
   loadTurnConfig,
   makeStore,
   messageText,
+  modelRetryReply,
   persistAssistant,
   sanitized,
   serveRestApi,
-  streamOrRecover,
+  turnSucceeded,
 } from "./agent.ts";
 import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
 import { ModelError, systemText } from "../agent/runtime.ts";
@@ -39,6 +39,7 @@ interface TurnUsage {
   readonly inChars: number;
   readonly model: string;
   readonly steps: Array<{ readonly inTokens: number; readonly outTokens: number }>;
+  failed: boolean;
 }
 
 export class SessionAgent extends AIChatAgent<Env> {
@@ -124,14 +125,19 @@ export class SessionAgent extends AIChatAgent<Env> {
     const inChars =
       systemText(config.soul, config.brief).length +
       this.messages.map(messageText).join("").length;
-    const usage: TurnUsage = { inChars, model: config.model, steps: [] };
+    const usage: TurnUsage = {
+      inChars,
+      model: config.model,
+      steps: [],
+      failed: false,
+    };
     if (requestId !== undefined) {
       this.turns.set(requestId, usage);
     }
     const workersai = createWorkersAI({ binding: this.env.AI });
-    return Effect.runPromise(
-      streamOrRecover({
-        setup: Effect.tryPromise({
+    const setup = await Effect.runPromise(
+      Effect.result(
+        Effect.tryPromise({
           try: async () => {
             const history = await convertToModelMessages(
               sanitized(this.messages),
@@ -154,13 +160,15 @@ export class SessionAgent extends AIChatAgent<Env> {
           },
           catch: (cause) => new ModelError({ cause }),
         }),
-        store,
-        db,
-        sessionId,
-        model: config.model,
-        inChars,
-      }),
+      ),
     );
+    if (setup._tag === "Failure") {
+      usage.failed = true;
+      return new Response(modelRetryReply, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+    return setup.success;
   }
 
   async onChatResponse(result: ChatResponseResult): Promise<void> {
@@ -181,7 +189,7 @@ export class SessionAgent extends AIChatAgent<Env> {
     if (usage === undefined) {
       return;
     }
-    const ok = result.status === "completed";
+    const ok = turnSucceeded(result.status, usage.failed);
     const records =
       usage.steps.length > 0
         ? usage.steps
