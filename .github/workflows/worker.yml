@@ -2,12 +2,6 @@ name: Worker
 
 on:
   pull_request:
-    paths:
-      - "apps/worker/**"
-      - "package.json"
-      - "pnpm-workspace.yaml"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/worker.yml"
   workflow_dispatch:
 
 jobs:
