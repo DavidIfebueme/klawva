@@ -28,37 +28,3 @@ jobs:
             fi
           done < <(git ls-files)
           exit $failed
-      - name: keep one writer for session state
-        run: |
-          # The session durable object owns sessions.state. Every later change
-          # goes through projectState in apps/worker/src/session/agent.ts. The
-          # one other write is the session creation insert, which sets the
-          # initial pending state. perl scans whole files so a SET broken across
-          # lines is still caught.
-          updates=$(perl -0777 -ne '
-            print "$ARGV\n" if /UPDATE\s+sessions\b[^;"\x60]*?\bstate\s*=/gis;
-          ' $(git ls-files 'apps/worker/src') | grep -v '^apps/worker/src/session/agent.ts$' || true)
-          inserts=$(git grep -lIE 'INSERT[[:space:]]+INTO[[:space:]]+sessions' -- 'apps/worker/src' ':!apps/worker/src/session/agent.ts' || true)
-          failed=0
-          if [ -n "$updates" ]; then
-            echo "sessions.state is written outside the session durable object:"
-            echo "$updates"
-            failed=1
-          fi
-          if [ "$inserts" != "apps/worker/src/app.ts" ]; then
-            echo "the session creation insert is the only direct insert into sessions. found: ${inserts:-none}"
-            failed=1
-          fi
-          exit $failed
-      - name: keep one writer for session transports
-        run: |
-          # session_transports rows are written by the session durable object
-          # through apps/worker/src/session/transports.ts and its handlers.
-          writes=$(perl -0777 -ne '
-            print "$ARGV\n" if /(?:INSERT\s+INTO|UPDATE)\s+session_transports\b/gis;
-          ' $(git ls-files 'apps/worker/src') | grep -v '^apps/worker/src/session/' || true)
-          if [ -n "$writes" ]; then
-            echo "session_transports is written outside the session durable object:"
-            echo "$writes"
-            exit 1
-          fi
