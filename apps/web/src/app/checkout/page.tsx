@@ -90,6 +90,12 @@ export function Component() {
   const [error, setError] = useState("");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
+  const selected =
+    employee.durations.find((option) => option.days === durationDays) ??
+    employee.durations[0];
+  const totalMinor = selected?.priceMinor ?? employee.priceMinor;
+  const budgetMinor = employee.budgetMinor * durationDays;
+
   const emailOk = emailPattern.test(email.trim());
   const showEmailError = email.trim().length > 0 && !emailOk;
 
@@ -261,10 +267,10 @@ export function Component() {
                         {option.days === 1 ? "24 hours" : `${option.days} days`}
                       </div>
                       <div className="font-mono text-klawva-text text-xs mt-1">
-                        ₦{option.priceMinor.toLocaleString()}
+                        ₦{(option.priceMinor / 100).toLocaleString()}
                       </div>
                       <div className="font-mono text-klawva-dim text-xs">
-                        ₦{Math.round(option.priceMinor / option.days).toLocaleString()} per day
+                        ₦{Math.round(option.priceMinor / 100 / option.days).toLocaleString()} per day
                       </div>
                     </button>
                   ))}
@@ -304,11 +310,14 @@ export function Component() {
               <div className="flex items-center justify-between pt-4 border-t border-klawva-border">
                 <div>
                   <span className="font-syne font-extrabold text-2xl text-klawva-accent">
-                    ₦{(employee.priceMinor / 100).toLocaleString()}
+                    ₦{(totalMinor / 100).toLocaleString()}
                   </span>
                   <p className="font-mono text-klawva-dim text-xs mt-1">
-                    AI budget cap: {employee.budgetMinor} credits, about{" "}
-                    {Math.floor(employee.budgetMinor / 50)} replies. 50 credits per reply.
+                    {durationDays === 1
+                      ? "24-hour shift"
+                      : `${durationDays}-day shift`}
+                    . AI budget cap: {budgetMinor} credits, about{" "}
+                    {Math.floor(budgetMinor / 50)} replies. 50 credits per reply.
                   </p>
                 </div>
                 <Button type="submit" variant="primary" size="lg" loading={loading}>
