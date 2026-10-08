@@ -44,7 +44,7 @@ export const sweep = (env: Env): Effect.Effect<SweepResult> =>
               ),
             catch: (cause) => new Error(String(cause)),
           }).pipe(Effect.catch(() => Effect.void)),
-        { concurrency: "unbounded" },
+        { concurrency: 3 },
       );
       const ids = due.map((row) => String(row.id));
       const placeholders = ids.map(() => "?").join(", ");
