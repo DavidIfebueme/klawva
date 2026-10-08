@@ -21,6 +21,7 @@ import {
   budgetReply,
   capacityReply,
   completeShift,
+  failStreamTurn,
   lastUserText,
   loadTurnConfig,
   makeStore,
@@ -28,9 +29,10 @@ import {
   persistAssistant,
   sanitized,
   serveRestApi,
+  streamOrRecover,
 } from "./agent.ts";
 import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
-import { systemText } from "../agent/runtime.ts";
+import { ModelError, systemText } from "../agent/runtime.ts";
 import { aiToolsFor } from "./stream-tools.ts";
 
 interface TurnUsage {
@@ -91,7 +93,9 @@ export class SessionAgent extends AIChatAgent<Env> {
     const db = makeDatabase(this.env.DB);
     const sessionId = String(this.ctx.id.name ?? "");
     const text = lastUserText(this.messages);
-    const keyed = `${sessionId}:${text}`;
+    const requestId = _options?.requestId;
+    const keyed =
+      requestId === undefined ? `${sessionId}:${text}` : `${sessionId}:${requestId}`;
     if (this.settled.has(keyed)) {
       return undefined;
     }
@@ -117,7 +121,6 @@ export class SessionAgent extends AIChatAgent<Env> {
       });
     }
     const config = admission.config;
-    const requestId = _options?.requestId;
     const inChars =
       systemText(config.soul, config.brief).length +
       this.messages.map(messageText).join("").length;
@@ -126,21 +129,38 @@ export class SessionAgent extends AIChatAgent<Env> {
       this.turns.set(requestId, usage);
     }
     const workersai = createWorkersAI({ binding: this.env.AI });
-    const result = streamText({
-      model: workersai(config.model),
-      system: systemText(config.soul, config.brief),
-      messages: await convertToModelMessages(sanitized(this.messages)),
-      tools: aiToolsFor(config.allowlist, sessionId),
-      stopWhen: stepCountIs(4),
-      abortSignal: _options?.abortSignal,
-      onStepFinish: (step) => {
-        usage.steps.push({
-          inTokens: step.usage.inputTokens ?? 0,
-          outTokens: step.usage.outputTokens ?? 0,
-        });
-      },
-    });
-    return result.toUIMessageStreamResponse();
+    return Effect.runPromise(
+      streamOrRecover({
+        setup: Effect.tryPromise({
+          try: async () => {
+            const history = await convertToModelMessages(
+              sanitized(this.messages),
+            );
+            const result = streamText({
+              model: workersai(config.model),
+              system: systemText(config.soul, config.brief),
+              messages: history,
+              tools: aiToolsFor(config.allowlist, sessionId),
+              stopWhen: stepCountIs(4),
+              abortSignal: _options?.abortSignal,
+              onStepFinish: (step) => {
+                usage.steps.push({
+                  inTokens: step.usage.inputTokens ?? 0,
+                  outTokens: step.usage.outputTokens ?? 0,
+                });
+              },
+            });
+            return result.toUIMessageStreamResponse();
+          },
+          catch: (cause) => new ModelError({ cause }),
+        }),
+        store,
+        db,
+        sessionId,
+        model: config.model,
+        inChars,
+      }),
+    );
   }
 
   async onChatResponse(result: ChatResponseResult): Promise<void> {
