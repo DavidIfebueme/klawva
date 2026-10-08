@@ -4,7 +4,5 @@ reviews:
   high_level_summary: true
   auto_review:
     enabled: true
-    base_branches:
-      - master
 chat:
   auto_reply: true
