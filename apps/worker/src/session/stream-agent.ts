@@ -36,6 +36,7 @@ import { aiToolsFor } from "./stream-tools.ts";
 export class SessionAgent extends AIChatAgent<Env> {
   maxPersistedMessages = 400;
   private readonly settled = new Set<string>();
+  private readonly admitted = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -110,6 +111,9 @@ export class SessionAgent extends AIChatAgent<Env> {
       });
     }
     const config = admission.config;
+    if (_options?.requestId !== undefined) {
+      this.admitted.add(_options.requestId);
+    }
     const workersai = createWorkersAI({ binding: this.env.AI });
     const result = streamText({
       model: workersai(config.model),
@@ -129,22 +133,24 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     const store = makeStore(this.ctx.storage.sql);
     const db = makeDatabase(this.env.DB);
+    const admitted =
+      result.requestId !== undefined && this.admitted.delete(result.requestId);
     const config = await Effect.runPromise(loadTurnConfig(store)).catch(
       () => null,
     );
     await Effect.runPromise(
       persistAssistant(store, db, this.name, text).pipe(
         Effect.andThen(() =>
-          config === null
-            ? Effect.void
-            : recordAiUsage(db, {
+          admitted && config !== null
+            ? recordAiUsage(db, {
                 model: config.model,
                 inChars:
                   systemText(config.soul, config.brief).length +
                   this.messages.map(messageText).join("").length,
                 outChars: text.length,
                 ok: true,
-              }),
+              })
+            : Effect.void,
         ),
       ),
     ).catch(() => undefined);

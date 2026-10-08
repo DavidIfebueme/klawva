@@ -221,19 +221,25 @@ export const admitTurn = (
     const config = yield* loadTurnConfig(store);
     const verdict = screenScope(userText, config.brief);
     if (verdict !== "in_scope") {
-      const reply = steerReply(verdict);
-      yield* store.append("assistant", reply);
-      yield* mirrorMessage(db, sessionId, "assistant", reply);
-      return { _tag: "Rejected", reply } as const;
+      return { _tag: "Rejected", reply: steerReply(verdict) } as const;
     }
     if (!(yield* takeCapacitySlot(db))) {
-      yield* store.append("assistant", capacityReply);
-      yield* mirrorMessage(db, sessionId, "assistant", capacityReply);
       return { _tag: "AtCapacity" } as const;
     }
     yield* store.spend(50);
     yield* mirrorMessage(db, sessionId, "user", userText);
     return { _tag: "Admitted", config } as const;
+  });
+
+export const persistReply = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  reply: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* store.append("assistant", reply);
+    yield* mirrorMessage(db, sessionId, "assistant", reply);
   });
 
 export const budgetReply =
@@ -531,14 +537,15 @@ const sessionGroup = HttpApiBuilder.group(
             ),
           );
           if (admission._tag === "Rejected") {
+            yield* persistReply(store, db, sessionEnv.sessionId, admission.reply);
             return { ok: true, reply: admission.reply };
           }
           if (admission._tag === "AtCapacity") {
+            yield* persistReply(store, db, sessionEnv.sessionId, capacityReply);
             return { ok: true, reply: capacityReply };
           }
           if (admission._tag === "OutOfBudget") {
-            yield* store.append("assistant", budgetReply);
-            yield* mirror("assistant", budgetReply);
+            yield* persistReply(store, db, sessionEnv.sessionId, budgetReply);
             return { ok: true, reply: budgetReply };
           }
           const sessionRuntime = makeRuntime(
