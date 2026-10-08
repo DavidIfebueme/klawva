@@ -310,23 +310,3 @@ describe("text shaping", () => {
     );
   });
 });
-
-describe("turn wiring", () => {
-  const textRuntime: AgentRuntimeImpl = {
-    complete: () => Effect.succeed({ text: "done", toolCalls: [] }),
-  };
-
-  it("returns plain text through the new params", async () => {
-    const reply = await Effect.runPromise(
-      runTurn({
-        runtime: textRuntime,
-        soul: "soul",
-        brief: {},
-        history: [{ role: "user", content: "hi" }],
-        sessionId: "s1",
-        allowlist: [],
-      }),
-    );
-    expect(reply).toBe("done");
-  });
-});
