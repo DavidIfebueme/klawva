@@ -21,6 +21,7 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
+import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
@@ -220,19 +221,25 @@ export const admitTurn = (
     const config = yield* loadTurnConfig(store);
     const verdict = screenScope(userText, config.brief);
     if (verdict !== "in_scope") {
-      const reply = steerReply(verdict);
-      yield* store.append("assistant", reply);
-      yield* mirrorMessage(db, sessionId, "assistant", reply);
-      return { _tag: "Rejected", reply } as const;
+      return { _tag: "Rejected", reply: steerReply(verdict) } as const;
     }
     if (!(yield* takeCapacitySlot(db))) {
-      yield* store.append("assistant", capacityReply);
-      yield* mirrorMessage(db, sessionId, "assistant", capacityReply);
       return { _tag: "AtCapacity" } as const;
     }
     yield* store.spend(50);
     yield* mirrorMessage(db, sessionId, "user", userText);
     return { _tag: "Admitted", config } as const;
+  });
+
+export const persistReply = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  reply: string,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* store.append("assistant", reply);
+    yield* mirrorMessage(db, sessionId, "assistant", reply);
   });
 
 export const budgetReply =
@@ -316,10 +323,28 @@ export const completeShift = (
     const runtime = makeRuntime(env.AI, defaultModel);
     const briefRaw = (yield* store.get("brief")) ?? "{}";
     const brief = Schema.decodeUnknownSync(Brief)(JSON.parse(briefRaw));
-    const report = yield* generateReport({ runtime, history, brief }).pipe(
-      Effect.catch(() => Effect.succeed(fallbackReport(history))),
-    );
     const db = makeDatabase(env.DB);
+    const inChars =
+      history.reduce((n, m) => n + m.content.length, 0) +
+      JSON.stringify(brief).length;
+    const report = yield* generateReport({ runtime, history, brief }).pipe(
+      Effect.tap((result) =>
+        recordAiUsage(db, {
+          model: defaultModel,
+          inTokens: charsToTokens(inChars),
+          outTokens: charsToTokens(result.summary.length),
+          ok: true,
+        }),
+      ),
+      Effect.catch(() =>
+        recordAiUsage(db, {
+          model: defaultModel,
+          inTokens: charsToTokens(inChars),
+          outTokens: 0,
+          ok: false,
+        }).pipe(Effect.andThen(() => Effect.succeed(fallbackReport(history)))),
+      ),
+    );
     const shareToken = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
     yield* db
@@ -512,14 +537,15 @@ const sessionGroup = HttpApiBuilder.group(
             ),
           );
           if (admission._tag === "Rejected") {
+            yield* persistReply(store, db, sessionEnv.sessionId, admission.reply);
             return { ok: true, reply: admission.reply };
           }
           if (admission._tag === "AtCapacity") {
+            yield* persistReply(store, db, sessionEnv.sessionId, capacityReply);
             return { ok: true, reply: capacityReply };
           }
           if (admission._tag === "OutOfBudget") {
-            yield* store.append("assistant", budgetReply);
-            yield* mirror("assistant", budgetReply);
+            yield* persistReply(store, db, sessionEnv.sessionId, budgetReply);
             return { ok: true, reply: budgetReply };
           }
           const sessionRuntime = makeRuntime(
@@ -528,6 +554,10 @@ const sessionGroup = HttpApiBuilder.group(
             admission.config.allowlist,
           );
           const history = yield* store.history();
+          const inChars =
+            admission.config.soul.length +
+            JSON.stringify(admission.config.brief).length +
+            history.reduce((n, m) => n + m.content.length, 0);
           const reply = yield* runTurn({
             runtime: sessionRuntime,
             soul: admission.config.soul,
@@ -536,8 +566,29 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: admission.config.allowlist,
           }).pipe(
+            Effect.flatMap((turn) =>
+              Effect.forEach(turn.steps, (step) =>
+                recordAiUsage(db, {
+                  model: admission.config.model,
+                  inTokens: step.inTokens,
+                  outTokens: step.outTokens,
+                  ok: true,
+                }),
+              ).pipe(Effect.as(turn.text)),
+            ),
             Effect.catch(() =>
-              Effect.succeed("I could not reach my model just now. Please try again."),
+              recordAiUsage(db, {
+                model: admission.config.model,
+                inTokens: charsToTokens(inChars),
+                outTokens: 0,
+                ok: false,
+              }).pipe(
+                Effect.andThen(() =>
+                  Effect.succeed(
+                    "I could not reach my model just now. Please try again.",
+                  ),
+                ),
+              ),
             ),
           );
           yield* store.append("assistant", reply);
