@@ -32,7 +32,7 @@ describe("tool allowlist", () => {
   it("exposes only allowed tools to the model", () => {
     expect(specNames(["fetch_url"])).toEqual(["fetch_url"]);
     expect(specNames([])).toEqual([]);
-    expect(specNames(defaultToolAllowlist).sort()).toEqual(toolRegistry.map((tool) => tool.name).sort());
+    expect(specNames(defaultToolAllowlist).slice().sort()).toEqual(toolRegistry.map((tool) => tool.name).sort());
   });
 
   it("refuses tools outside the allowlist", async () => {
