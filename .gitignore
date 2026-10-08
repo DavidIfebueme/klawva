@@ -18,6 +18,14 @@ node_modules/
 # build output
 dist/
 
+# downloaded archives never belong in the repo
+*.zip
+*.tar
+*.tgz
+*.tar.gz
+*.7z
+*.rar
+
 # worker static assets (populated at deploy)
 apps/worker/assets/*
 !apps/worker/assets/.gitkeep
