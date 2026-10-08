@@ -85,9 +85,16 @@ export function Component() {
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
   const [channel, setChannel] = useState<ChannelChoice>("telegram");
+  const [durationDays, setDurationDays] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const selected =
+    employee.durations.find((option) => option.days === durationDays) ??
+    employee.durations[0];
+  const totalMinor = selected?.priceMinor ?? employee.priceMinor;
+  const budgetMinor = employee.budgetMinor * durationDays;
 
   const emailOk = emailPattern.test(email.trim());
   const showEmailError = email.trim().length > 0 && !emailOk;
@@ -121,6 +128,7 @@ export function Component() {
           fields.map((field) => [field.id, (brief[field.id] ?? "").trim()]),
         ),
         customerEmail: email.trim(),
+        durationDays,
       });
       const payment = await initializeHirePayment(
         session.id,
@@ -241,6 +249,36 @@ export function Component() {
 
               <div className="flex flex-col gap-3">
                 <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
+                  How long should the shift run?
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {employee.durations.map((option) => (
+                    <button
+                      type="button"
+                      key={option.days}
+                      onClick={() => setDurationDays(option.days)}
+                      className={`text-left border rounded p-3 transition-colors ${
+                        durationDays === option.days
+                          ? "border-klawva-accent bg-klawva-accent/5"
+                          : "border-klawva-border hover:border-klawva-muted"
+                      }`}
+                    >
+                      <div className="font-syne font-bold text-sm text-klawva-text">
+                        {option.days === 1 ? "24 hours" : `${option.days} days`}
+                      </div>
+                      <div className="font-mono text-klawva-text text-xs mt-1">
+                        ₦{(option.priceMinor / 100).toLocaleString()}
+                      </div>
+                      <div className="font-mono text-klawva-dim text-xs">
+                        ₦{Math.round(option.priceMinor / 100 / option.days).toLocaleString()} per day
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
                   How should it reach you?
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -272,11 +310,14 @@ export function Component() {
               <div className="flex items-center justify-between pt-4 border-t border-klawva-border">
                 <div>
                   <span className="font-syne font-extrabold text-2xl text-klawva-accent">
-                    ₦{(employee.priceMinor / 100).toLocaleString()}
+                    ₦{(totalMinor / 100).toLocaleString()}
                   </span>
                   <p className="font-mono text-klawva-dim text-xs mt-1">
-                    AI budget cap: {employee.budgetMinor} credits, about{" "}
-                    {Math.floor(employee.budgetMinor / 50)} replies. 50 credits per reply.
+                    {durationDays === 1
+                      ? "24-hour shift"
+                      : `${durationDays}-day shift`}
+                    . AI budget cap: {budgetMinor} credits, about{" "}
+                    {Math.floor(budgetMinor / 50)} replies. 50 credits per reply.
                   </p>
                 </div>
                 <Button type="submit" variant="primary" size="lg" loading={loading}>
