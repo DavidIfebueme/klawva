@@ -1,9 +1,13 @@
 import React, { useState } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
+import mammoth from "mammoth";
+import * as pdfjsLib from "pdfjs-dist";
+import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-error";
+import { getStudioSession } from "@/lib/studio-session";
 import { agents, type AgentId, type BriefField } from "@/lib/agents";
 import {
   createHireSession,
@@ -11,6 +15,42 @@ import {
   initializeHirePayment,
   type EmployeeDetail,
 } from "@/lib/employees-api";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
+const maxUploadBytes = 10 * 1024 * 1024;
+
+const extractPdfText = async (buffer: ArrayBuffer): Promise<string> => {
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const parts: string[] = [];
+  for (let n = 1; n <= doc.numPages; n += 1) {
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    parts.push(
+      content.items
+        .map((item) => ("str" in item ? String(item.str) : ""))
+        .join(" "),
+    );
+  }
+  await doc.cleanup();
+  return parts.join("\n");
+};
+
+const extractFileText = async (file: File): Promise<string> => {
+  const lower = file.name.toLowerCase();
+  if (file.size > maxUploadBytes) {
+    throw new Error("That file is over 10MB. Try a smaller one.");
+  }
+  const buffer = await file.arrayBuffer();
+  if (lower.endsWith(".pdf")) {
+    return extractPdfText(buffer);
+  }
+  if (lower.endsWith(".docx")) {
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return result.value;
+  }
+  throw new Error("Upload a .pdf or .docx file.");
+};
 
 const humanize = (value: string): string =>
   value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -83,12 +123,42 @@ export function Component() {
   const { employee } = useLoaderData<typeof loader>();
   const fields = fieldsFor(employee);
   const [brief, setBrief] = useState<Record<string, string>>({});
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => getStudioSession()?.email ?? "");
   const [channel, setChannel] = useState<ChannelChoice>("telegram");
   const [durationDays, setDurationDays] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [fileNames, setFileNames] = useState<Record<string, string>>({});
+  const [fileBusy, setFileBusy] = useState<Record<string, boolean>>({});
+  const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
+
+  const handleFile = (fieldId: string) => async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (file === undefined) {
+      return;
+    }
+    setFileBusy((prev) => ({ ...prev, [fieldId]: true }));
+    setFileErrors((prev) => ({ ...prev, [fieldId]: "" }));
+    try {
+      const text = (await extractFileText(file)).trim();
+      if (text.length === 0) {
+        throw new Error("No readable text found in that file.");
+      }
+      setBrief((prev) => ({ ...prev, [fieldId]: text }));
+      setFileNames((prev) => ({ ...prev, [fieldId]: file.name }));
+    } catch (cause) {
+      setFileErrors((prev) => ({
+        ...prev,
+        [fieldId]:
+          cause instanceof Error ? cause.message : "Could not read that file.",
+      }));
+    } finally {
+      setFileBusy((prev) => ({ ...prev, [fieldId]: false }));
+    }
+  };
 
   const selected =
     employee.durations.find((option) => option.days === durationDays) ??
@@ -206,6 +276,33 @@ export function Component() {
                         onChange={(e) => set(e.target.value)}
                         onBlur={blur}
                       />
+                    ) : field.type === "file" ? (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="file"
+                          accept=".pdf,.docx"
+                          className={`${inputClass} ${borderClass} file:mr-4 file:rounded file:border-0 file:bg-klawva-elevated file:px-4 file:py-2 file:font-mono file:text-sm file:text-klawva-text`}
+                          onChange={handleFile(field.id)}
+                          onBlur={blur}
+                        />
+                        {fileBusy[field.id] === true && (
+                          <p className="font-mono text-klawva-dim text-xs">
+                            Reading the file…
+                          </p>
+                        )}
+                        {fileNames[field.id] !== undefined &&
+                          fileNames[field.id].length > 0 && (
+                            <p className="font-mono text-klawva-dim text-xs">
+                              {fileNames[field.id]} · {value.length.toLocaleString()} characters extracted
+                            </p>
+                          )}
+                        {fileErrors[field.id] !== undefined &&
+                          fileErrors[field.id].length > 0 && (
+                            <p className="font-mono text-klawva-orange text-xs">
+                              {fileErrors[field.id]}
+                            </p>
+                          )}
+                      </div>
                     ) : (
                       <textarea
                         className={`${inputClass} min-h-[110px] resize-y ${borderClass}`}
