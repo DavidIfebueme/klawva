@@ -22,7 +22,11 @@ import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
 import { escapeHtml, renderTemplate } from "./email/templates.ts";
 import { initializePayment } from "./payments/paystack.ts";
-import { isSupportedDuration, priceForDays } from "./payments/pricing.ts";
+import {
+  durationOptions,
+  isSupportedDuration,
+  priceForDays,
+} from "./payments/pricing.ts";
 import {
   identityFromToken,
   requestMagicLink,
@@ -70,6 +74,18 @@ const ListingRow = Schema.Struct({
   score: Schema.NullOr(Schema.Number),
 });
 
+const PublicListingBase = Schema.Struct({
+  id: Schema.String,
+  slug: Schema.String,
+  name: Schema.String,
+  tagline: Schema.String,
+  category: Schema.String,
+  priceMinor: Schema.Number,
+  budgetMinor: Schema.Number,
+  version: Schema.Number,
+  briefFields: Schema.String,
+});
+
 const PublicListingDetail = Schema.Struct({
   id: Schema.String,
   slug: Schema.String,
@@ -80,6 +96,12 @@ const PublicListingDetail = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
+  durations: Schema.Array(
+    Schema.Struct({
+      days: Schema.Number,
+      priceMinor: Schema.Number,
+    }),
+  ),
 });
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
@@ -475,7 +497,12 @@ const rootGroup = HttpApiBuilder.group(
           if (row === null) {
             return yield* Effect.fail(new ListingNotFound({}));
           }
-          return Schema.decodeUnknownSync(PublicListingDetail)(row);
+          const base = Schema.decodeUnknownSync(PublicListingBase)(row);
+          const durations = durationOptions.flatMap((days) => {
+            const priceMinor = priceForDays(base.priceMinor, days);
+            return priceMinor === null ? [] : [{ days, priceMinor }];
+          });
+          return { ...base, durations };
         }),
       )
       .handle("config", () =>

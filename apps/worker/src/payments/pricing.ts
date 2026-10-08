@@ -24,3 +24,8 @@ export const priceForDays = (
   }
   return Math.round((unitMinor * days * (1 - discountFor(days))) / 100) * 100;
 };
+
+const dayMs = 24 * 60 * 60 * 1000;
+
+export const windowEndFor = (nowMs: number, days: number): string =>
+  new Date(nowMs + Math.max(1, days) * dayMs).toISOString();
