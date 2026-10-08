@@ -272,7 +272,15 @@ describe("stream failure", () => {
           return Effect.void;
         },
         changed: () => Effect.succeed(1),
-        batch: () => Effect.void,
+        batch: (statements) => {
+          for (const statement of statements) {
+            ran.push({
+              sql: statement.sql,
+              params: statement.params ?? [],
+            });
+          }
+          return Effect.void;
+        },
       },
     };
   };
@@ -353,7 +361,12 @@ describe("stream recovery wiring", () => {
           return Effect.void;
         },
         changed: () => Effect.succeed(1),
-        batch: () => Effect.void,
+        batch: (statements) => {
+          for (const statement of statements) {
+            ran.push(statement.params ?? []);
+          }
+          return Effect.void;
+        },
       },
     };
   };
