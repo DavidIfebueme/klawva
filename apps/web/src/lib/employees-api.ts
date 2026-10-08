@@ -18,6 +18,11 @@ const employeeSummary = Schema.Struct({
 });
 export type EmployeeSummary = typeof employeeSummary.Type;
 
+const durationOption = Schema.Struct({
+  days: Schema.Number,
+  priceMinor: Schema.Number,
+});
+
 const employeeDetail = Schema.Struct({
   id: Schema.String,
   slug: Schema.String,
@@ -28,6 +33,7 @@ const employeeDetail = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
+  durations: Schema.Array(durationOption),
 });
 export type EmployeeDetail = typeof employeeDetail.Type;
 
@@ -129,6 +135,7 @@ export interface HireSessionInput {
   channel: "telegram" | "web" | "email";
   brief: Record<string, string>;
   customerEmail: string;
+  durationDays: number;
 }
 
 export async function createHireSession(
