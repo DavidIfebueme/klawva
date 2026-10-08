@@ -32,7 +32,7 @@ import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
 import { postMessage } from "../channels/slack.ts";
-import { deliverCompletion } from "../channels/delivery.ts";
+import { deliverCompletion, DeliveryError } from "../channels/delivery.ts";
 import type { Env } from "../env.ts";
 import type { UIMessage } from "ai";
 
@@ -433,7 +433,13 @@ export const completeShift = (
       senders: {
         telegram: (chatId, text) =>
           sendMessage(env.TELEGRAM_BOT_TOKEN, Number(chatId), text).pipe(
-            Effect.catch(() => Effect.void),
+            Effect.mapError(
+              (cause) =>
+                new DeliveryError({
+                  channel: "telegram",
+                  reason: cause.reason,
+                }),
+            ),
           ),
         slack: (team, channel, text) =>
           Effect.gen(function* () {
@@ -447,7 +453,15 @@ export const completeShift = (
               return;
             }
             yield* postMessage(String(connection.token), channel, text);
-          }).pipe(Effect.catch(() => Effect.void)),
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DeliveryError({
+                  channel: "slack",
+                  reason: String(cause),
+                }),
+            ),
+          ),
         email: (address, url) =>
           sendEmail({
             apiKey: env.BREVO_API_KEY,
@@ -456,7 +470,15 @@ export const completeShift = (
             toEmail: address,
             subject: "Your Klawva worker shift has ended",
             html: reportEmailHtml(url),
-          }).pipe(Effect.catch(() => Effect.void)),
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DeliveryError({
+                  channel: "email",
+                  reason: cause.reason,
+                }),
+            ),
+          ),
       },
       sessionId,
       reportUrl,

@@ -1,20 +1,37 @@
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
 
+export class DeliveryError extends Schema.TaggedError<DeliveryError>()(
+  "DeliveryError",
+  {
+    channel: Schema.String,
+    reason: Schema.String,
+  },
+) {}
+
 export interface CompletionSenders {
-  readonly telegram: (chatId: string, text: string) => Effect.Effect<void>;
+  readonly telegram: (
+    chatId: string,
+    text: string,
+  ) => Effect.Effect<void, DeliveryError>;
   readonly slack: (
     team: string,
     channel: string,
     text: string,
-  ) => Effect.Effect<void>;
-  readonly email: (address: string, reportUrl: string) => Effect.Effect<void>;
+  ) => Effect.Effect<void, DeliveryError>;
+  readonly email: (
+    address: string,
+    reportUrl: string,
+  ) => Effect.Effect<void, DeliveryError>;
 }
 
 interface Target {
   readonly channel: string;
   readonly chatId: string;
 }
+
+const claimLeaseMs = 5 * 60 * 1000;
 
 const splitSlack = (
   chatId: string,
@@ -25,6 +42,74 @@ const splitSlack = (
   }
   return { team: chatId.slice(0, slash), channel: chatId.slice(slash + 1) };
 };
+
+const send = (
+  senders: CompletionSenders,
+  target: Target,
+  text: string,
+  reportUrl: string,
+): Effect.Effect<void, DeliveryError> => {
+  if (target.channel === "telegram") {
+    return senders.telegram(target.chatId, text);
+  }
+  if (target.channel === "slack") {
+    const parts = splitSlack(target.chatId);
+    return parts === null
+      ? Effect.void
+      : senders.slack(parts.team, parts.channel, text);
+  }
+  if (target.channel === "email") {
+    return senders.email(target.chatId, reportUrl);
+  }
+  return Effect.void;
+};
+
+const claim = (
+  db: DatabaseImpl,
+  sessionId: string,
+  target: Target,
+  now: number,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const inserted = yield* db
+      .changed(
+        "INSERT INTO delivery_receipts (session_id, channel, chat_id, created_at, delivered_at) VALUES (?, ?, ?, ?, NULL) ON CONFLICT(session_id, channel, chat_id) DO NOTHING",
+        [sessionId, target.channel, target.chatId, new Date(now).toISOString()],
+      )
+      .pipe(Effect.orDie);
+    if (inserted === 1) {
+      return true;
+    }
+    const existing = yield* db
+      .first(
+        "SELECT delivered_at AS deliveredAt, created_at AS createdAt FROM delivery_receipts WHERE session_id = ? AND channel = ? AND chat_id = ?",
+        [sessionId, target.channel, target.chatId],
+      )
+      .pipe(Effect.orDie);
+    if (existing === null) {
+      return false;
+    }
+    if (existing.deliveredAt !== null) {
+      return false;
+    }
+    const claimedAt = Date.parse(String(existing.createdAt));
+    if (Number.isFinite(claimedAt) && now - claimedAt < claimLeaseMs) {
+      return false;
+    }
+    yield* db
+      .run(
+        "DELETE FROM delivery_receipts WHERE session_id = ? AND channel = ? AND chat_id = ?",
+        [sessionId, target.channel, target.chatId],
+      )
+      .pipe(Effect.orDie);
+    const reclaimed = yield* db
+      .changed(
+        "INSERT INTO delivery_receipts (session_id, channel, chat_id, created_at, delivered_at) VALUES (?, ?, ?, ?, NULL) ON CONFLICT(session_id, channel, chat_id) DO NOTHING",
+        [sessionId, target.channel, target.chatId, new Date(now).toISOString()],
+      )
+      .pipe(Effect.orDie);
+    return reclaimed === 1;
+  });
 
 export const deliverCompletion = (params: {
   readonly db: DatabaseImpl;
@@ -52,29 +137,32 @@ export const deliverCompletion = (params: {
     }
     const text = `Your shift is complete. Here is your report: ${params.reportUrl}`;
     for (const target of targets) {
-      const claimed = yield* params.db
-        .changed(
-          "INSERT INTO delivery_receipts (session_id, channel, chat_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(session_id, channel, chat_id) DO NOTHING",
-          [
-            params.sessionId,
-            target.channel,
-            target.chatId,
-            new Date().toISOString(),
-          ],
-        )
-        .pipe(Effect.orDie);
-      if (claimed === 0) {
+      const now = Date.now();
+      if (!(yield* claim(params.db, params.sessionId, target, now))) {
         continue;
       }
-      if (target.channel === "telegram") {
-        yield* params.senders.telegram(target.chatId, text);
-      } else if (target.channel === "slack") {
-        const parts = splitSlack(target.chatId);
-        if (parts !== null) {
-          yield* params.senders.slack(parts.team, parts.channel, text);
-        }
-      } else if (target.channel === "email") {
-        yield* params.senders.email(target.chatId, params.reportUrl);
+      const outcome = yield* Effect.result(
+        send(params.senders, target, text, params.reportUrl),
+      );
+      if (outcome._tag === "Success") {
+        yield* params.db
+          .run(
+            "UPDATE delivery_receipts SET delivered_at = ? WHERE session_id = ? AND channel = ? AND chat_id = ?",
+            [
+              new Date().toISOString(),
+              params.sessionId,
+              target.channel,
+              target.chatId,
+            ],
+          )
+          .pipe(Effect.orDie);
+        continue;
       }
+      yield* params.db
+        .run(
+          "DELETE FROM delivery_receipts WHERE session_id = ? AND channel = ? AND chat_id = ?",
+          [params.sessionId, target.channel, target.chatId],
+        )
+        .pipe(Effect.orDie);
     }
   });
