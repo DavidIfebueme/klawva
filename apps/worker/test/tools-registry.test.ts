@@ -38,7 +38,7 @@ describe("tool allowlist", () => {
     const result = await Effect.runPromise(
       resolveToolCall(
         { id: "call_0", name: "fetch_url", arguments: "{}" },
-        { sessionId: "s1" },
+        { sessionId: "s1", braveKey: "" },
         [],
       ),
     );

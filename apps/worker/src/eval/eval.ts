@@ -75,6 +75,7 @@ export const runEval = (params: {
         history: [{ role: "user", content: input }],
         sessionId: params.sessionId ?? "eval",
         allowlist: params.allowlist ?? defaultToolAllowlist,
+        braveKey: "",
       });
       results.push({
         input,

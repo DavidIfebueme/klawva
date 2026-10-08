@@ -341,3 +341,91 @@ export const fetchLinks = (
     const body = yield* readBody(response, raw);
     return extractLinks(body, response.url);
   });
+export class SearchError extends Schema.TaggedError<SearchError>()(
+  "SearchError",
+  {
+    reason: Schema.String,
+  },
+) {}
+
+const braveEndpoint = "https://api.search.brave.com/res/v1/web/search";
+
+export const maxSearchResults = 5;
+export const maxSearchChars = 2000;
+export const maxQueryChars = 300;
+
+const BraveResult = Schema.Struct({
+  title: Schema.optionalKey(Schema.String),
+  url: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+});
+
+const BraveResponse = Schema.Struct({
+  web: Schema.optionalKey(
+    Schema.Struct({
+      results: Schema.optionalKey(Schema.Array(BraveResult)),
+    }),
+  ),
+});
+
+export type SearchFetcher = (
+  url: string,
+  init: { headers: Record<string, string>; signal: AbortSignal },
+) => Promise<Response>;
+
+export const webSearch = (
+  query: string,
+  braveKey: string,
+  fetcher?: SearchFetcher,
+): Effect.Effect<string, SearchError> =>
+  Effect.gen(function* () {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      return yield* Effect.fail(new SearchError({ reason: "empty_query" }));
+    }
+    if (trimmed.length > maxQueryChars) {
+      return yield* Effect.fail(new SearchError({ reason: "query_too_long" }));
+    }
+    if (braveKey.length === 0) {
+      return "web search is not configured on this employee. Ask the user for a URL and use fetch_url instead.";
+    }
+    const run: SearchFetcher =
+      fetcher ??
+      ((url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(fetchTimeoutMs) }));
+    const target = `${braveEndpoint}?q=${encodeURIComponent(trimmed)}&count=${maxSearchResults}`;
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        run(target, {
+          headers: {
+            Accept: "application/json",
+            "X-Subscription-Token": braveKey,
+          },
+          signal: AbortSignal.timeout(fetchTimeoutMs),
+        }),
+      catch: (cause) => new SearchError({ reason: String(cause) }),
+    });
+    if (!response.ok) {
+      return yield* Effect.fail(
+        new SearchError({ reason: `search_${response.status}` }),
+      );
+    }
+    const body: unknown = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (cause) => new SearchError({ reason: String(cause) }),
+    });
+    const decoded = Schema.decodeUnknownOption(BraveResponse)(body);
+    if (decoded._tag === "None") {
+      return yield* Effect.fail(new SearchError({ reason: "bad_response" }));
+    }
+    const results = decoded.value.web?.results ?? [];
+    if (results.length === 0) {
+      return "no results found";
+    }
+    const lines = results.slice(0, maxSearchResults).map((result) => {
+      const title = result.title ?? "untitled";
+      const url = result.url ?? "";
+      const description = result.description ?? "";
+      return `${title} — ${url}\n${description}`;
+    });
+    return lines.join("\n\n").slice(0, maxSearchChars);
+  });
