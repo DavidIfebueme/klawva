@@ -13,9 +13,10 @@ import {
   modelRetryReply,
   persistReply,
   sanitized,
+  streamOrRecover,
   type SessionStoreImpl,
 } from "../src/session/agent.ts";
-import { systemText } from "../src/agent/runtime.ts";
+import { ModelError, systemText } from "../src/agent/runtime.ts";
 
 const user = (text: string): UIMessage => ({
   id: "u1",
@@ -316,5 +317,96 @@ describe("stream failure", () => {
     );
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(modelRetryReply);
+  });
+});
+
+describe("stream recovery wiring", () => {
+  const deps = (appendFails: boolean): {
+    readonly store: SessionStoreImpl;
+    readonly db: DatabaseImpl;
+    readonly appended: ReadonlyArray<string>;
+    readonly ran: ReadonlyArray<ReadonlyArray<Param>>;
+  } => {
+    const appended: string[] = [];
+    const ran: ReadonlyArray<Param>[] = [];
+    return {
+      appended,
+      ran,
+      store: {
+        get: () => Effect.succeed(null),
+        set: () => Effect.void,
+        append: (_role, content) => {
+          if (appendFails) {
+            return Effect.die("store down");
+          }
+          appended.push(content);
+          return Effect.void;
+        },
+        history: () => Effect.succeed([]),
+        spend: () => Effect.void,
+      },
+      db: {
+        all: () => Effect.succeed([]),
+        first: () => Effect.succeed(null),
+        run: (_sql, params) => {
+          ran.push(params ?? []);
+          return Effect.void;
+        },
+        changed: () => Effect.succeed(1),
+        batch: () => Effect.void,
+      },
+    };
+  };
+
+  it("returns the retry response when setup fails", async () => {
+    const { store, db } = deps(false);
+    const response = await Effect.runPromise(
+      streamOrRecover({
+        setup: Effect.fail(new ModelError({ cause: "setup exploded" })),
+        store,
+        db,
+        sessionId: "s1",
+        model: "@cf/zai-org/glm-4.7-flash",
+        inChars: 40,
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(modelRetryReply);
+  });
+
+  it("passes a successful setup response through untouched", async () => {
+    const { store, db } = deps(false);
+    const ok = new Response("streamed", { status: 200 });
+    const response = await Effect.runPromise(
+      streamOrRecover({
+        setup: Effect.succeed(ok),
+        store,
+        db,
+        sessionId: "s1",
+        model: "@cf/zai-org/glm-4.7-flash",
+        inChars: 40,
+      }),
+    );
+    expect(response).toBe(ok);
+  });
+
+  it("still meters the error when persistence fails", async () => {
+    const { store, db, ran } = deps(true);
+    const response = await Effect.runPromise(
+      failStreamTurn({
+        store,
+        db,
+        sessionId: "s1",
+        model: "@cf/zai-org/glm-4.7-flash",
+        inChars: 40,
+      }),
+    );
+    expect(await response.text()).toBe(modelRetryReply);
+    const day = new Date().toISOString().slice(0, 10);
+    expect(
+      ran.some((params) =>
+        params.includes(`ai:errors:${day}:@cf/zai-org/glm-4.7-flash`),
+      ),
+    ).toBe(true);
   });
 });
