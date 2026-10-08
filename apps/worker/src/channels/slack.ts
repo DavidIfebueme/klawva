@@ -1,6 +1,10 @@
 import { linkChannel } from "../account/account.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
+export class SlackError extends Schema.TaggedError<SlackError>()("SlackError", {
+  reason: Schema.String,
+}) {}
 import type { DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
@@ -112,10 +116,10 @@ export const postMessage = (
   token: string,
   channel: string,
   text: string,
-): Effect.Effect<void> =>
+): Effect.Effect<void, SlackError> =>
   Effect.tryPromise({
     try: async () => {
-      await fetch("https://slack.com/api/chat.postMessage", {
+      const response = await fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -123,9 +127,19 @@ export const postMessage = (
         },
         body: JSON.stringify({ channel, text: text.slice(0, 4000) }),
       });
+      if (!response.ok) {
+        throw new Error(`slack_${response.status}`);
+      }
+      const body: unknown = await response.json();
+      const decoded = Schema.decodeUnknownOption(
+        Schema.Struct({ ok: Schema.Boolean }),
+      )(body);
+      if (decoded._tag === "Some" && !decoded.value.ok) {
+        throw new Error("slack_not_ok");
+      }
     },
-    catch: (cause) => new Error(String(cause)),
-  }).pipe(Effect.catch(() => Effect.void));
+    catch: (cause) => new SlackError({ reason: String(cause) }),
+  });
 
 const askSession = (
   env: Env,
@@ -239,6 +253,8 @@ export const handleEvent = (
     yield* linkChannel(db, sessionId, "slack", chatId);
     const text = (event.text ?? "").replace(/<@[^>]+>/g, "").trim();
     const reply = yield* askSession(env, sessionId, text.length > 0 ? text : "Hello");
-    yield* postMessage(String(connection.token), event.channel, reply);
+    yield* postMessage(String(connection.token), event.channel, reply).pipe(
+      Effect.catch(() => Effect.void),
+    );
     return "ok";
   });

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
-import { verifySlackSignature } from "../src/channels/slack.ts";
+import { postMessage, verifySlackSignature } from "../src/channels/slack.ts";
 
 const secret = "s3cr3t";
 const body = '{"type":"event_callback"}';
@@ -53,5 +53,31 @@ describe("slack signature", () => {
       verifySlackSignature("", String(now), body, await sign(now, body)),
     );
     expect(valid).toBe(false);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("slack send failures", () => {
+  it("fails when slack reports ok false on a 200", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        Response.json({ ok: false, error: "channel_not_found" }),
+      ),
+    );
+    const outcome = await Effect.runPromise(
+      Effect.result(postMessage("token", "C1", "hello")),
+    );
+    expect(outcome._tag).toBe("Failure");
+  });
+
+  it("succeeds when slack reports ok true", async () => {
+    vi.stubGlobal("fetch", () => Promise.resolve(Response.json({ ok: true })));
+    const outcome = await Effect.runPromise(
+      Effect.result(postMessage("token", "C1", "hello")),
+    );
+    expect(outcome._tag).toBe("Success");
   });
 });

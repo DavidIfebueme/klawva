@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { renderTemplate } from "./templates.ts";
 
 export class EmailError extends Schema.TaggedError<EmailError>()("EmailError", {
   reason: Schema.String,
@@ -40,4 +41,9 @@ export const sendEmail = (params: {
 };
 
 export const reportEmailHtml = (reportUrl: string): string =>
-  `<div style="font-family:Inter,system-ui,sans-serif"><h2>Your Klawva worker shift has ended</h2><p><a href="${reportUrl}">View your mission report</a></p></div>`;
+  renderTemplate({
+    title: "Your Klawva worker shift has ended",
+    body: "Your employee has finished its 24-hour shift. Your mission report is ready with everything it did, found, and delivered.",
+    ctaLabel: "View your mission report",
+    ctaHref: reportUrl,
+  });
