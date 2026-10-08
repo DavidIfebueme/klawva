@@ -7,6 +7,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/ui/Markdown";
+import { toolActivity } from "@/lib/chat-activity";
 import { getChatMessages, getSessionLaunch } from "@/lib/employees-api";
 import { ApiError } from "@/lib/api-error.ts";
 
@@ -45,6 +46,7 @@ interface Row {
   readonly key: string;
   readonly role: string;
   readonly content: string;
+  readonly tools: ReadonlyArray<string>;
 }
 
 const toText = (message: UIMessage): string =>
@@ -52,6 +54,20 @@ const toText = (message: UIMessage): string =>
     .filter((part) => part.type === "text")
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("\n");
+
+const toolInputDetail = (input: unknown): string => {
+  if (typeof input !== "object" || input === null) {
+    return "";
+  }
+  if ("query" in input && typeof input.query === "string" && input.query.length > 0) {
+    return input.query;
+  }
+  if ("url" in input && typeof input.url === "string" && input.url.length > 0) {
+    const parsed = URL.parse(input.url);
+    return parsed === null ? input.url : parsed.hostname;
+  }
+  return "";
+};
 
 const customerNameKeys = [
   "customer_name",
@@ -158,17 +174,20 @@ export function Component() {
       const fingerprint = `${entry.role}:${entry.content}`;
       if (seen.has(fingerprint)) continue;
       seen.add(fingerprint);
-      merged.push({ key: `seed:${fingerprint}`, ...entry });
+      merged.push({ key: `seed:${fingerprint}`, ...entry, tools: [] });
     }
     for (const message of messages) {
       const content = toText(message);
-      const fingerprint = `${message.role}:${content}`;
-      if (content.length === 0 || seen.has(fingerprint)) continue;
+      const tools = toolActivity(message);
+      const fingerprint = `${message.role}:${content}:${tools.join("|")}`;
+      if (content.length === 0 && tools.length === 0) continue;
+      if (seen.has(fingerprint)) continue;
       seen.add(fingerprint);
       merged.push({
         key: `live:${message.id}`,
         role: message.role,
         content,
+        tools,
       });
     }
     return merged;
@@ -231,6 +250,18 @@ export function Component() {
                       <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-klawva-dim">
                         {row.role === "user" ? who : employee}
                       </div>
+                      {row.tools.length > 0 && (
+                        <div className="mb-2 flex flex-col gap-1">
+                          {row.tools.map((line, index) => (
+                            <div
+                              key={`${row.key}-tool-${index}`}
+                              className="font-mono text-[11px] text-klawva-dim"
+                            >
+                              ▸ {line}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <Markdown content={row.content} />
                     </div>
                   </div>
