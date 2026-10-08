@@ -67,19 +67,24 @@ export const sendMessage = (
 ): Effect.Effect<void, TelegramError> =>
   Effect.gen(function* () {
     const html = toTelegramHtml(text);
-    const sent = yield* postMessage(token, {
+    const formatted = yield* postMessage(token, {
       chat_id: chatId,
       text: html.slice(0, 4096),
       parse_mode: "HTML",
       disable_web_page_preview: true,
     }).pipe(Effect.catch(() => Effect.succeed(false)));
-    if (sent) {
+    if (formatted) {
       return;
     }
-    yield* postMessage(token, {
+    const plain = yield* postMessage(token, {
       chat_id: chatId,
       text: text.slice(0, 4096),
-    }).pipe(Effect.ignore);
+    });
+    if (!plain) {
+      return yield* Effect.fail(
+        new TelegramError({ reason: "telegram_rejected" }),
+      );
+    }
   });
 
 const SessionReply = Schema.Struct({ reply: Schema.optionalKey(Schema.String) });
