@@ -136,7 +136,7 @@ describe("turn admission", () => {
   const brief = JSON.stringify({ task: "shortlist candidates" });
 
   it("spends nothing and mirrors nothing when a turn is refused", async () => {
-    const { store, db, ran } = build({ brief }, 0);
+    const { store, db, ran } = build({ brief, state: "active" }, 0);
     let spent = 0;
     const watched: SessionStoreImpl = {
       ...store,
@@ -154,7 +154,7 @@ describe("turn admission", () => {
   });
 
   it("spends once, mirrors the user turn, and admits the turn", async () => {
-    const { store, db, ran } = build({ brief }, 0);
+    const { store, db, ran } = build({ brief, state: "active" }, 0);
     let spent = 0;
     const watched: SessionStoreImpl = {
       ...store,
@@ -179,7 +179,7 @@ describe("turn admission", () => {
   });
 
   it("refuses to spend once the daily cap is reached", async () => {
-    const { store, db } = build({ brief }, 5000);
+    const { store, db } = build({ brief, state: "active" }, 5000);
     let spent = 0;
     const watched: SessionStoreImpl = {
       ...store,
@@ -197,7 +197,7 @@ describe("turn admission", () => {
 
   it("refuses the turn at the neuron cap without spending or taking a slot", async () => {
     const day = new Date().toISOString().slice(0, 10);
-    const { store, db, ran } = build({ brief }, 0);
+    const { store, db, ran } = build({ brief, state: "active" }, 0);
     const guarded: DatabaseImpl = {
       ...db,
       all: () =>
@@ -225,7 +225,7 @@ describe("turn admission", () => {
   });
 
   it("fails closed when the budget is exhausted", async () => {
-    const { store, db } = build({ brief }, 0);
+    const { store, db } = build({ brief, state: "active" }, 0);
     const broke: SessionStoreImpl = {
       ...store,
       spend: () =>
@@ -265,4 +265,56 @@ describe("retry text", () => {
       expect(retryTextFor(status, textLength)).toBe(expected);
     },
   );
+});
+
+describe("paid state gate", () => {
+  const attempt = (meta: Readonly<Record<string, string>>) =>
+    Effect.runPromise(
+      admitTurn(
+        {
+          get: (key) => Effect.succeed(meta[key] ?? null),
+          set: () => Effect.void,
+          append: () => Effect.void,
+          history: () => Effect.succeed([]),
+          spend: () => Effect.succeed(undefined),
+        } as SessionStoreImpl,
+        {
+          all: () => Effect.succeed([]),
+          first: () => Effect.succeed(null),
+          run: () => Effect.void,
+          changed: () => Effect.succeed(1),
+          batch: () => Effect.void,
+        },
+        "s1",
+        "hello",
+      ),
+    );
+
+  it("asks for payment on pending and missing state", async () => {
+    const brief = JSON.stringify({ task: "x" });
+    const metas: ReadonlyArray<Readonly<Record<string, string>>> = [
+      { brief, state: "pending" },
+      { brief },
+    ];
+    for (const meta of metas) {
+      const admission = await attempt(meta);
+      expect(admission._tag).toBe("AwaitingPayment");
+    }
+  });
+
+  it("ends the conversation on terminal states", async () => {
+    const brief = JSON.stringify({ task: "x" });
+    for (const state of ["completed", "failed"]) {
+      const admission = await attempt({ brief, state });
+      expect(admission._tag).toBe("ShiftOver");
+    }
+  });
+
+  it("admits provisioning, active, hibernating, and recovering states", async () => {
+    const brief = JSON.stringify({ task: "x" });
+    for (const state of ["provisioning", "active", "hibernating", "recovering"]) {
+      const admission = await attempt({ brief, state });
+      expect(admission._tag).toBe("Admitted");
+    }
+  });
 });

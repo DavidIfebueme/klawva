@@ -216,6 +216,8 @@ export const takeCapacitySlot = (
 export type TurnAdmission =
   | { readonly _tag: "Rejected"; readonly reply: string }
   | { readonly _tag: "AtCapacity" }
+  | { readonly _tag: "AwaitingPayment"; readonly reply: string }
+  | { readonly _tag: "ShiftOver"; readonly reply: string }
   | { readonly _tag: "Admitted"; readonly config: TurnConfig };
 
 export const admitTurn = (
@@ -225,6 +227,20 @@ export const admitTurn = (
   userText: string,
 ): Effect.Effect<TurnAdmission, BudgetExhausted> =>
   Effect.gen(function* () {
+    const state = (yield* store.get("state")) ?? "pending";
+    if (state === "pending") {
+      return {
+        _tag: "AwaitingPayment",
+        reply:
+          "This shift hasn't started yet. If you just paid, give it a minute and try again.",
+      } as const;
+    }
+    if (state === "completed" || state === "failed") {
+      return {
+        _tag: "ShiftOver",
+        reply: "This shift has ended. Check your email for the report.",
+      } as const;
+    }
     const config = yield* loadTurnConfig(store);
     const verdict = screenScope(userText, config.brief);
     if (verdict !== "in_scope") {
@@ -611,6 +627,10 @@ const sessionGroup = HttpApiBuilder.group(
             ),
           );
           if (admission._tag === "Rejected") {
+            yield* persistReply(store, db, sessionEnv.sessionId, admission.reply);
+            return { ok: true, reply: admission.reply };
+          }
+          if (admission._tag === "AwaitingPayment" || admission._tag === "ShiftOver") {
             yield* persistReply(store, db, sessionEnv.sessionId, admission.reply);
             return { ok: true, reply: admission.reply };
           }
