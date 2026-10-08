@@ -96,16 +96,16 @@ const claim = (
     if (Number.isFinite(claimedAt) && now - claimedAt < claimLeaseMs) {
       return false;
     }
-    yield* db
-      .run(
-        "DELETE FROM delivery_receipts WHERE session_id = ? AND channel = ? AND chat_id = ?",
-        [sessionId, target.channel, target.chatId],
-      )
-      .pipe(Effect.orDie);
     const reclaimed = yield* db
       .changed(
-        "INSERT INTO delivery_receipts (session_id, channel, chat_id, created_at, delivered_at) VALUES (?, ?, ?, ?, NULL) ON CONFLICT(session_id, channel, chat_id) DO NOTHING",
-        [sessionId, target.channel, target.chatId, new Date(now).toISOString()],
+        "UPDATE delivery_receipts SET created_at = ? WHERE session_id = ? AND channel = ? AND chat_id = ? AND delivered_at IS NULL AND created_at = ?",
+        [
+          new Date(now).toISOString(),
+          sessionId,
+          target.channel,
+          target.chatId,
+          String(existing.createdAt),
+        ],
       )
       .pipe(Effect.orDie);
     return reclaimed === 1;

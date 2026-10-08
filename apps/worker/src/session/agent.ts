@@ -450,7 +450,12 @@ export const completeShift = (
               )
               .pipe(Effect.orDie);
             if (connection === null) {
-              return;
+              return yield* Effect.fail(
+                new DeliveryError({
+                  channel: "slack",
+                  reason: "no_connection",
+                }),
+              );
             }
             yield* postMessage(String(connection.token), channel, text);
           }).pipe(
@@ -462,8 +467,19 @@ export const completeShift = (
                 }),
             ),
           ),
-        email: (address, url) =>
-          sendEmail({
+        email: (address, url) => {
+          if (
+            env.BREVO_API_KEY.length === 0 ||
+            env.BREVO_SENDER_EMAIL.length === 0
+          ) {
+            return Effect.fail(
+              new DeliveryError({
+                channel: "email",
+                reason: "not_configured",
+              }),
+            );
+          }
+          return sendEmail({
             apiKey: env.BREVO_API_KEY,
             senderEmail: env.BREVO_SENDER_EMAIL,
             senderName: "Klawva",
@@ -478,7 +494,8 @@ export const completeShift = (
                   reason: cause.reason,
                 }),
             ),
-          ),
+          );
+        },
       },
       sessionId,
       reportUrl,

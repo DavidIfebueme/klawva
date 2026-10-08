@@ -130,6 +130,13 @@ export const postMessage = (
       if (!response.ok) {
         throw new Error(`slack_${response.status}`);
       }
+      const body: unknown = await response.json();
+      const decoded = Schema.decodeUnknownOption(
+        Schema.Struct({ ok: Schema.Boolean }),
+      )(body);
+      if (decoded._tag === "Some" && !decoded.value.ok) {
+        throw new Error("slack_not_ok");
+      }
     },
     catch: (cause) => new SlackError({ reason: String(cause) }),
   });

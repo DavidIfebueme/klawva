@@ -175,3 +175,46 @@ describe("deliverCompletion", () => {
     expect(rows.every((row) => row.deliveredAt !== null)).toBe(true);
   });
 });
+
+describe("claim lease", () => {
+  it("lets exactly one of two racing runs reclaim a stale claim", async () => {
+    const stale = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const rows = [
+      { deliveredAt: null, createdAt: stale },
+    ];
+    let updates = 0;
+    const db: DatabaseImpl = {
+      all: () =>
+        Effect.succeed([{ channel: "telegram", chatId: "-100" }]),
+      first: () => Effect.succeed(rows[0]),
+      run: () => Effect.void,
+      batch: () => Effect.void,
+      changed: (sql) => {
+        if (!sql.startsWith("UPDATE")) {
+          return Effect.succeed(0);
+        }
+        updates += 1;
+        return Effect.succeed(updates === 1 ? 1 : 0);
+      },
+    };
+    const sent: string[] = [];
+    const senders: CompletionSenders = {
+      telegram: (chatId) => {
+        sent.push(chatId);
+        return Effect.void;
+      },
+      slack: () => Effect.void,
+      email: () => Effect.void,
+    };
+    await Effect.runPromise(
+      deliverCompletion({
+        db,
+        senders,
+        sessionId: "s1",
+        reportUrl: "https://x/y",
+        email: null,
+      }),
+    );
+    expect(sent).toEqual(["-100"]);
+  });
+});
