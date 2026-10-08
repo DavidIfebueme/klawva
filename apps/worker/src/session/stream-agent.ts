@@ -22,12 +22,14 @@ import {
   capacityReply,
   completeShift,
   lastUserText,
+  loadTurnConfig,
   makeStore,
   messageText,
   persistAssistant,
   sanitized,
   serveRestApi,
 } from "./agent.ts";
+import { recordAiUsage } from "../agent/meter.ts";
 import { systemText } from "../agent/runtime.ts";
 import { aiToolsFor } from "./stream-tools.ts";
 
@@ -125,12 +127,25 @@ export class SessionAgent extends AIChatAgent<Env> {
     if (text.length === 0) {
       return;
     }
+    const store = makeStore(this.ctx.storage.sql);
+    const db = makeDatabase(this.env.DB);
+    const config = await Effect.runPromise(loadTurnConfig(store)).catch(
+      () => null,
+    );
     await Effect.runPromise(
-      persistAssistant(
-        makeStore(this.ctx.storage.sql),
-        makeDatabase(this.env.DB),
-        this.name,
-        text,
+      persistAssistant(store, db, this.name, text).pipe(
+        Effect.andThen(() =>
+          config === null
+            ? Effect.void
+            : recordAiUsage(db, {
+                model: config.model,
+                inChars:
+                  systemText(config.soul, config.brief).length +
+                  this.messages.map(messageText).join("").length,
+                outChars: text.length,
+                ok: true,
+              }),
+        ),
       ),
     ).catch(() => undefined);
   }

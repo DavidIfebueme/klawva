@@ -21,6 +21,7 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
+import { recordAiUsage } from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
@@ -316,10 +317,28 @@ export const completeShift = (
     const runtime = makeRuntime(env.AI, defaultModel);
     const briefRaw = (yield* store.get("brief")) ?? "{}";
     const brief = Schema.decodeUnknownSync(Brief)(JSON.parse(briefRaw));
-    const report = yield* generateReport({ runtime, history, brief }).pipe(
-      Effect.catch(() => Effect.succeed(fallbackReport(history))),
-    );
     const db = makeDatabase(env.DB);
+    const inChars =
+      history.reduce((n, m) => n + m.content.length, 0) +
+      JSON.stringify(brief).length;
+    const report = yield* generateReport({ runtime, history, brief }).pipe(
+      Effect.tap((result) =>
+        recordAiUsage(db, {
+          model: defaultModel,
+          inChars,
+          outChars: result.summary.length,
+          ok: true,
+        }),
+      ),
+      Effect.catch(() =>
+        recordAiUsage(db, {
+          model: defaultModel,
+          inChars,
+          outChars: 0,
+          ok: false,
+        }).pipe(Effect.andThen(() => Effect.succeed(fallbackReport(history)))),
+      ),
+    );
     const shareToken = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
     yield* db
@@ -528,6 +547,10 @@ const sessionGroup = HttpApiBuilder.group(
             admission.config.allowlist,
           );
           const history = yield* store.history();
+          const inChars =
+            admission.config.soul.length +
+            JSON.stringify(admission.config.brief).length +
+            history.reduce((n, m) => n + m.content.length, 0);
           const reply = yield* runTurn({
             runtime: sessionRuntime,
             soul: admission.config.soul,
@@ -536,8 +559,27 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: admission.config.allowlist,
           }).pipe(
+            Effect.tap((text) =>
+              recordAiUsage(db, {
+                model: admission.config.model,
+                inChars,
+                outChars: text.length,
+                ok: true,
+              }),
+            ),
             Effect.catch(() =>
-              Effect.succeed("I could not reach my model just now. Please try again."),
+              recordAiUsage(db, {
+                model: admission.config.model,
+                inChars,
+                outChars: 0,
+                ok: false,
+              }).pipe(
+                Effect.andThen(() =>
+                  Effect.succeed(
+                    "I could not reach my model just now. Please try again.",
+                  ),
+                ),
+              ),
             ),
           );
           yield* store.append("assistant", reply);
