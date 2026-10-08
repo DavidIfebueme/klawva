@@ -36,9 +36,15 @@ export interface ToolCall {
   readonly arguments: string;
 }
 
+export interface StepUsage {
+  readonly inTokens: number;
+  readonly outTokens: number;
+}
+
 export interface ModelResult {
   readonly text: string;
   readonly toolCalls: ReadonlyArray<ToolCall>;
+  readonly usage: StepUsage;
 }
 
 export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
@@ -143,7 +149,15 @@ const ToolCallSchema = Schema.Struct({
   ),
 });
 
+const UsageBlock = Schema.Struct({
+  prompt_tokens: Schema.optionalKey(Schema.Number),
+  completion_tokens: Schema.optionalKey(Schema.Number),
+  input_tokens: Schema.optionalKey(Schema.Number),
+  output_tokens: Schema.optionalKey(Schema.Number),
+});
+
 const ChatOutput = Schema.Struct({
+  usage: Schema.optionalKey(UsageBlock),
   choices: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -163,6 +177,7 @@ export const decodeModelOutput = (raw: unknown): ModelResult => {
     return {
       text: typeof raw === "string" ? raw : JSON.stringify(raw ?? ""),
       toolCalls: [],
+      usage: { inTokens: 0, outTokens: 0 },
     };
   }
   const message = decoded.value.choices?.[0]?.message;
@@ -174,7 +189,15 @@ export const decodeModelOutput = (raw: unknown): ModelResult => {
       arguments: call.function?.arguments ?? "{}",
     }))
     .filter((call) => call.name.length > 0);
-  return { text, toolCalls };
+  const usage = decoded.value.usage;
+  return {
+    text,
+    toolCalls,
+    usage: {
+      inTokens: usage?.prompt_tokens ?? usage?.input_tokens ?? 0,
+      outTokens: usage?.completion_tokens ?? usage?.output_tokens ?? 0,
+    },
+  };
 };
 
 export interface AgentRuntimeImpl {
@@ -251,6 +274,11 @@ export const resolveToolCall = (
     return yield* tool.execute(call.arguments, ctx);
   });
 
+export interface TurnResult {
+  readonly text: string;
+  readonly steps: ReadonlyArray<StepUsage>;
+}
+
 export const runTurn = (params: {
   readonly runtime: AgentRuntimeImpl;
   readonly soul: string;
@@ -258,16 +286,18 @@ export const runTurn = (params: {
   readonly history: ReadonlyArray<ChatMessage>;
   readonly sessionId: string;
   readonly allowlist: ReadonlyArray<string>;
-}): Effect.Effect<string, ModelError> =>
+}): Effect.Effect<TurnResult, ModelError> =>
   Effect.gen(function* () {
     const ctx: ToolContext = { sessionId: params.sessionId };
     const messages: ChatMessage[] = [
       ...buildMessages(params.soul, params.brief, params.history),
     ];
+    const steps: StepUsage[] = [];
     for (let round = 0; round <= maxToolRounds; round++) {
       const result = yield* params.runtime.complete(messages, true);
+      steps.push(result.usage);
       if (result.toolCalls.length === 0) {
-        return result.text;
+        return { text: result.text, steps };
       }
       messages.push({ role: "assistant", content: result.text });
       for (const call of result.toolCalls) {
@@ -275,7 +305,7 @@ export const runTurn = (params: {
         messages.push({ role: "tool", content });
       }
     }
-    return "";
+    return { text: "", steps };
   });
 
 export const layer = (ai: Ai, model: string): Layer.Layer<AgentRuntime> =>
