@@ -78,13 +78,17 @@ export const requestMagicLink = (
     const safeNext =
       next.startsWith("/") && !next.startsWith("//") ? next : "/studio";
     const link = `${env.FRONTEND_BASE_URL}/studio/auth/verify?token=${token}&next=${encodeURIComponent(safeNext)}`;
+    const context = safeNext === "/account" ? "account" : "studio";
     yield* sendEmail({
       apiKey: env.BREVO_API_KEY,
       senderEmail: env.BREVO_SENDER_EMAIL,
       senderName: "Klawva",
       toEmail: normalized,
-      subject: "Your Klawva studio login link",
-      html: magicLinkEmail(link),
+      subject:
+        context === "account"
+          ? "Your Klawva account login link"
+          : "Your Klawva studio login link",
+      html: magicLinkEmail(link, context),
     }).pipe(Effect.orDie);
   });
 

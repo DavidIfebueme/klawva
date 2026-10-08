@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isEmployeeRecipient, replyAddress } from "../src/channels/email.ts";
 import { reportEmailHtml } from "../src/email/brevo.ts";
+import { magicLinkEmail } from "../src/email/templates.ts";
 
 describe("email routing address", () => {
   it("accepts only the employee reply address", () => {
@@ -17,5 +18,20 @@ describe("shift-ended email", () => {
     expect(html).toContain("KLAWVA");
     expect(html).toContain("https://www.klawva.xyz/report/abc?shareToken=xyz");
     expect(html).toContain("View your mission report");
+  });
+});
+
+describe("magic link email", () => {
+  it("never claims a studio login hired anyone", () => {
+    const html = magicLinkEmail("https://www.klawva.xyz/x", "studio");
+    expect(html).toContain("Klawva Studio");
+    expect(html).not.toContain("hiring a Klawva employee");
+  });
+
+  it("addresses account logins to the account, not the studio", () => {
+    const html = magicLinkEmail("https://www.klawva.xyz/x", "account");
+    expect(html).toContain("your Klawva account");
+    expect(html).not.toContain("Studio");
+    expect(html).not.toContain("hiring a Klawva employee");
   });
 });
