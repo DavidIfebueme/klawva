@@ -258,55 +258,10 @@ export const budgetReply =
 export const modelRetryReply =
   "My model dropped that turn. Send your message again and I'll pick it up.";
 
-export const failStreamTurn = (params: {
-  readonly store: SessionStoreImpl;
-  readonly db: DatabaseImpl;
-  readonly sessionId: string;
-  readonly model: string;
-  readonly inChars: number;
-}): Effect.Effect<Response> => {
-  const response = new Response(modelRetryReply, {
-    headers: { "Content-Type": "text/plain" },
-  });
-  return Effect.gen(function* () {
-    yield* params.store
-      .append("assistant", modelRetryReply)
-      .pipe(Effect.catchCause(() => Effect.void));
-    yield* mirrorMessage(
-      params.db,
-      params.sessionId,
-      "assistant",
-      modelRetryReply,
-    ).pipe(Effect.catchCause(() => Effect.void));
-    yield* recordAiUsage(params.db, {
-      model: params.model,
-      inTokens: charsToTokens(params.inChars),
-      outTokens: 0,
-      ok: false,
-    }).pipe(Effect.catchCause(() => Effect.void));
-    return response;
-  });
-};
-
-export const streamOrRecover = (params: {
-  readonly setup: Effect.Effect<Response, ModelError>;
-  readonly store: SessionStoreImpl;
-  readonly db: DatabaseImpl;
-  readonly sessionId: string;
-  readonly model: string;
-  readonly inChars: number;
-}): Effect.Effect<Response> =>
-  params.setup.pipe(
-    Effect.catch(() =>
-      failStreamTurn({
-        store: params.store,
-        db: params.db,
-        sessionId: params.sessionId,
-        model: params.model,
-        inChars: params.inChars,
-      }),
-    ),
-  );
+export const turnSucceeded = (
+  status: string,
+  failed: boolean,
+): boolean => status === "completed" && !failed;
 
 export const sanitized = (
   messages: ReadonlyArray<UIMessage>,
