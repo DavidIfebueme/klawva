@@ -22,6 +22,7 @@ import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
 import { escapeHtml, renderTemplate } from "./email/templates.ts";
 import { initializePayment } from "./payments/paystack.ts";
+import { isSupportedDuration, priceForDays } from "./payments/pricing.ts";
 import {
   identityFromToken,
   requestMagicLink,
@@ -110,6 +111,7 @@ const CreateSession = Schema.Struct({
   channel: Channel,
   brief: Schema.Record(Schema.String, Schema.String),
   customerEmail: Schema.optionalKey(Schema.String),
+  durationDays: Schema.optionalKey(Schema.Number),
 });
 
 const health = HttpApiEndpoint.get("health", "/health", {
@@ -409,14 +411,21 @@ const rootGroup = HttpApiBuilder.group(
           }
           const session = yield* db
             .first(
-              "SELECT l.price_minor AS priceMinor, s.session_token AS sessionToken FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
+              "SELECT l.price_minor AS priceMinor, s.session_token AS sessionToken, s.duration_days AS durationDays FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
               [payload.sessionId],
             )
             .pipe(Effect.orDie);
           if (session === null) {
             return yield* Effect.die("session_not_found");
           }
-          const amountMinor = Number(session.priceMinor);
+          const total = priceForDays(
+            Number(session.priceMinor),
+            Number(session.durationDays ?? 1),
+          );
+          if (total === null) {
+            return yield* Effect.die("bad_duration");
+          }
+          const amountMinor = total;
           const sessionToken = String(session.sessionToken ?? "");
           const result = yield* initializePayment({
             secret: env.PAYSTACK_SECRET_KEY,
@@ -701,6 +710,12 @@ const rootGroup = HttpApiBuilder.group(
           const id = crypto.randomUUID();
           const sessionToken = crypto.randomUUID().replace(/-/g, "");
           const now = new Date().toISOString();
+          const durationDays = payload.durationDays ?? 1;
+          if (!isSupportedDuration(durationDays)) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "bad_duration" }),
+            );
+          }
           const customerEmail = payload.customerEmail?.trim().toLowerCase();
           if (
             payload.channel === "email" &&
@@ -722,7 +737,8 @@ const rootGroup = HttpApiBuilder.group(
             .pipe(Effect.orDie);
           const listingVersion = listing === null ? 1 : Number(listing.version);
           const budgetMinor =
-            listing === null ? defaultBudgetMinor : Number(listing.budgetMinor);
+            (listing === null ? defaultBudgetMinor : Number(listing.budgetMinor)) *
+            durationDays;
           const storedAllowlist =
             listing === null
               ? null
@@ -744,7 +760,7 @@ const rootGroup = HttpApiBuilder.group(
               ? soulFor(payload.agentId)
               : listing.soul;
           yield* db.run(
-            "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, duration_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
               id,
               userId,
@@ -760,6 +776,7 @@ const rootGroup = HttpApiBuilder.group(
               null,
               budgetMinor,
               0,
+              durationDays,
               now,
               now,
             ],

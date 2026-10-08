@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN duration_days INTEGER NOT NULL DEFAULT 1;
