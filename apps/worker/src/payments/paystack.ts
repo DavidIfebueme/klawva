@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { windowEndFor } from "./pricing.ts";
 import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { shiftStartedEmail } from "../email/templates.ts";
@@ -59,6 +60,7 @@ const PaystackEvent = Schema.Struct({
 
 const PaymentRow = Schema.Struct({
   session_id: Schema.String,
+  duration_days: Schema.optionalKey(Schema.Number),
   amount_minor: Schema.Number,
   status: Schema.String,
 });
@@ -98,7 +100,7 @@ export const handlePaystackWebhook = (
     }
     const payment = yield* db
       .first(
-        "SELECT session_id AS session_id, amount_minor AS amount_minor, status AS status FROM payments WHERE provider_reference = ?",
+        "SELECT p.session_id AS session_id, p.amount_minor AS amount_minor, p.status AS status, s.duration_days AS duration_days FROM payments p JOIN sessions s ON s.id = p.session_id WHERE p.provider_reference = ?",
         [reference],
       )
       .pipe(Effect.orDie);
@@ -110,7 +112,7 @@ export const handlePaystackWebhook = (
       return Response.json({ ok: true });
     }
     const now = new Date().toISOString();
-    const endIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const endIso = windowEndFor(Date.now(), Number(decoded.duration_days ?? 1));
     const confirmed = yield* db
       .first(
         "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending' RETURNING id AS id",
