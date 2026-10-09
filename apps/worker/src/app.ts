@@ -115,6 +115,7 @@ const clientAddress: Effect.Effect<string, never, HttpServerRequest.HttpServerRe
     (request) => Option.getOrElse(request.remoteAddress, () => "unknown"),
   );
 import { briefTooLong, screenBrief } from "./moderation/moderation.ts";
+import { briefVerdict, screenBriefSemantic } from "./moderation/clef.ts";
 import { connectors } from "./mcp/connectors.ts";
 
 const HealthResponse = Schema.Struct({
@@ -737,6 +738,18 @@ const rootGroup = HttpApiBuilder.group(
           if (briefTooLong(payload.brief)) {
             return yield* Effect.fail(
               new ListingConflict({ reason: "brief_too_long" }),
+            );
+          }
+          const briefVerdictResult = yield* screenBriefSemantic(
+            env.AI,
+            payload.brief,
+          ).pipe(Effect.option);
+          if (
+            briefVerdictResult._tag === "Some" &&
+            briefVerdict(briefVerdictResult.value) !== "legit"
+          ) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "brief_flagged" }),
             );
           }
           const id = crypto.randomUUID();
