@@ -6,6 +6,7 @@ import {
   resolveAllowlist,
   resolveToolCall,
   runTurn,
+  toolRegistry,
   specsFor,
   type AgentRuntimeImpl,
 } from "../src/agent/runtime.ts";
@@ -31,14 +32,14 @@ describe("tool allowlist", () => {
   it("exposes only allowed tools to the model", () => {
     expect(specNames(["fetch_url"])).toEqual(["fetch_url"]);
     expect(specNames([])).toEqual([]);
-    expect(specNames(defaultToolAllowlist).length).toBe(2);
+    expect(specNames(defaultToolAllowlist).slice().sort()).toEqual(toolRegistry.map((tool) => tool.name).sort());
   });
 
   it("refuses tools outside the allowlist", async () => {
     const result = await Effect.runPromise(
       resolveToolCall(
         { id: "call_0", name: "fetch_url", arguments: "{}" },
-        { sessionId: "s1" },
+        { sessionId: "s1", braveKey: "" },
         [],
       ),
     );

@@ -24,10 +24,10 @@ const user = (text: string): UIMessage => ({
 
 describe("stream tools", () => {
   it("sends only allowed tools to the model", () => {
-    expect(Object.keys(aiToolsFor(["fetch_url"], "s1"))).toEqual(["fetch_url"]);
-    expect(Object.keys(aiToolsFor([], "s1"))).toEqual([]);
-    expect(Object.keys(aiToolsFor(["fetch_url", "extract_links"], "s1")).sort()).toEqual(
-      ["extract_links", "fetch_url"],
+    expect(Object.keys(aiToolsFor(["fetch_url"], "s1", ""))).toEqual(["fetch_url"]);
+    expect(Object.keys(aiToolsFor([], "s1", ""))).toEqual([]);
+    expect(Object.keys(aiToolsFor(["fetch_url", "extract_links", "web_search"], "s1", "")).sort()).toEqual(
+      ["extract_links", "fetch_url", "web_search"],
     );
   });
 });
