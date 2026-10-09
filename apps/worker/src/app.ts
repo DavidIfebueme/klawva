@@ -114,7 +114,7 @@ const clientAddress: Effect.Effect<string, never, HttpServerRequest.HttpServerRe
     HttpServerRequest.HttpServerRequest,
     (request) => Option.getOrElse(request.remoteAddress, () => "unknown"),
   );
-import { screenBrief } from "./moderation/moderation.ts";
+import { briefTooLong, screenBrief } from "./moderation/moderation.ts";
 import { connectors } from "./mcp/connectors.ts";
 
 const HealthResponse = Schema.Struct({
@@ -733,6 +733,11 @@ const rootGroup = HttpApiBuilder.group(
           const flagged = screenBrief(payload.brief);
           if (flagged !== null) {
             return yield* Effect.fail(new ListingConflict({ reason: flagged }));
+          }
+          if (briefTooLong(payload.brief)) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "brief_too_long" }),
+            );
           }
           const id = crypto.randomUUID();
           const sessionToken = crypto.randomUUID().replace(/-/g, "");
