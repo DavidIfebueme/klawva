@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
@@ -132,6 +132,7 @@ export function Component() {
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
   const [fileBusy, setFileBusy] = useState<Record<string, boolean>>({});
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
+  const fileSelection = useRef<Record<string, number>>({});
 
   const handleFile = (fieldId: string) => async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -140,23 +141,35 @@ export function Component() {
     if (file === undefined) {
       return;
     }
+    const selection = (fileSelection.current[fieldId] ?? 0) + 1;
+    fileSelection.current[fieldId] = selection;
     setFileBusy((prev) => ({ ...prev, [fieldId]: true }));
     setFileErrors((prev) => ({ ...prev, [fieldId]: "" }));
+    setBrief((prev) => ({ ...prev, [fieldId]: "" }));
+    setFileNames((prev) => ({ ...prev, [fieldId]: "" }));
     try {
       const text = (await extractFileText(file)).trim();
       if (text.length === 0) {
         throw new Error("No readable text found in that file.");
       }
+      if (fileSelection.current[fieldId] !== selection) {
+        return;
+      }
       setBrief((prev) => ({ ...prev, [fieldId]: text }));
       setFileNames((prev) => ({ ...prev, [fieldId]: file.name }));
     } catch (cause) {
+      if (fileSelection.current[fieldId] !== selection) {
+        return;
+      }
       setFileErrors((prev) => ({
         ...prev,
         [fieldId]:
           cause instanceof Error ? cause.message : "Could not read that file.",
       }));
     } finally {
-      setFileBusy((prev) => ({ ...prev, [fieldId]: false }));
+      if (fileSelection.current[fieldId] === selection) {
+        setFileBusy((prev) => ({ ...prev, [fieldId]: false }));
+      }
     }
   };
 
@@ -171,6 +184,10 @@ export function Component() {
 
   const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (Object.values(fileBusy).some(Boolean)) {
+      setError("Still reading your file. Give it a second and try again.");
+      return;
+    }
     const missing = fields.filter(
       (field) => field.required && !(brief[field.id] ?? "").trim(),
     );

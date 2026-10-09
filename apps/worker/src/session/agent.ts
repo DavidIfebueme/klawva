@@ -235,10 +235,16 @@ export const admitTurn = (
           "This shift hasn't started yet. If you just paid, give it a minute and try again.",
       } as const;
     }
-    if (state === "completed" || state === "failed") {
+    if (state === "completed") {
       return {
         _tag: "ShiftOver",
         reply: "This shift has ended. Check your email for the report.",
+      } as const;
+    }
+    if (state === "failed") {
+      return {
+        _tag: "ShiftOver",
+        reply: "This shift hit a problem and had to stop. Check your email for what happened.",
       } as const;
     }
     const config = yield* loadTurnConfig(store);
@@ -488,7 +494,7 @@ const Brief = Schema.Record(Schema.String, Schema.String);
 
 const init = HttpApiEndpoint.post("init", "/init", {
   payload: Schema.Struct({
-    state: Schema.String,
+    state: SessionState,
     budgetMinor: Schema.Number,
     soul: Schema.String,
     brief: Brief,
