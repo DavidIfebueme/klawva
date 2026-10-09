@@ -28,7 +28,7 @@ import {
   recordAiUsage,
 } from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
-import { decideScope, isInScope } from "../moderation/clef.ts";
+import { decideScope, isInScope, scoreShift, shiftScore } from "../moderation/clef.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
@@ -401,6 +401,19 @@ export const completeShift = (
         }).pipe(Effect.andThen(() => Effect.succeed(fallbackReport(history)))),
       ),
     );
+    const scoreResult = yield* scoreShift(env.AI, brief, history).pipe(
+      Effect.option,
+    );
+    const stats =
+      scoreResult._tag === "Some"
+        ? [
+            ...report.stats,
+            {
+              label: "Quality score",
+              value: shiftScore(scoreResult.value).toFixed(2),
+            },
+          ]
+        : report.stats;
     const shareToken = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
     yield* db
@@ -410,7 +423,7 @@ export const completeShift = (
           crypto.randomUUID(),
           sessionId,
           report.summary,
-          JSON.stringify(report.stats),
+          JSON.stringify(stats),
           shareToken,
           now,
           now,
