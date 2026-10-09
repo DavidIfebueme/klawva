@@ -4,7 +4,9 @@ import {
   briefVerdict,
   decideScope,
   isInScope,
+  scoreShift,
   screenBriefSemantic,
+  shiftScore,
 } from "../src/moderation/clef.ts";
 import { admitTurn } from "../src/session/agent.ts";
 import type { SessionStoreImpl } from "../src/session/agent.ts";
@@ -105,6 +107,35 @@ describe("clef brief moderation", () => {
     const exit = await Effect.runPromiseExit(
       screenBriefSemantic(briefAi("unknown_verdict"), { task: "x" }),
     );
+    expect(exit._tag).toBe("Failure");
+  });
+});
+
+describe("clef shift-quality scoring", () => {
+  const scoreAi = (score: number): Ai =>
+    ({
+      run: () =>
+        Promise.resolve({
+          answers: { quality: { type: "score", score } },
+        }),
+    }) as unknown as Ai;
+
+  const brief = { task: "find iphone duo prices" };
+  const history = [
+    { role: "user", content: "find iphone duo prices" },
+    { role: "assistant", content: "Computer Village lists it around 1500000 naira." },
+  ];
+
+  it("decodes the weighted quality score", async () => {
+    const out = await Effect.runPromise(scoreShift(scoreAi(0.83), brief, history));
+    expect(shiftScore(out)).toBe(0.83);
+  });
+
+  it("fails with ClefError when the score shape is wrong", async () => {
+    const bad = {
+      run: () => Promise.resolve({ answers: { quality: { type: "score" } } }),
+    } as unknown as Ai;
+    const exit = await Effect.runPromiseExit(scoreShift(bad, brief, history));
     expect(exit._tag).toBe("Failure");
   });
 });
