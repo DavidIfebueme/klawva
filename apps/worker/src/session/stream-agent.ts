@@ -112,6 +112,17 @@ export class SessionAgent extends AIChatAgent<Env> {
         headers: { "Content-Type": "text/plain" },
       });
     }
+    if (admission._tag === "AwaitingPayment") {
+      this.settled.delete(keyed);
+      return new Response(admission.reply, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+    if (admission._tag === "ShiftOver") {
+      return new Response(admission.reply, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
     if (admission._tag === "AtCapacity") {
       return new Response(capacityReply, {
         headers: { "Content-Type": "text/plain" },
