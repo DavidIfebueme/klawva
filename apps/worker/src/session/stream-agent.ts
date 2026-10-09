@@ -103,7 +103,7 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     this.settled.add(keyed);
     const admission = await Effect.runPromise(
-      admitTurn(store, db, sessionId, text).pipe(
+      admitTurn(store, db, sessionId, text, this.env.AI).pipe(
         Effect.catch(() => Effect.succeed({ _tag: "OutOfBudget" } as const)),
       ),
     );
