@@ -3,7 +3,10 @@ export interface TemplateInput {
   readonly body: string;
   readonly ctaLabel?: string;
   readonly ctaHref?: string;
+  readonly footer?: string;
 }
+
+const defaultFooter = "Thanks for hiring a Klawva employee.";
 
 export const escapeHtml = (value: string): string =>
   value
@@ -18,6 +21,7 @@ export const renderTemplate = ({
   body,
   ctaLabel,
   ctaHref,
+  footer,
 }: TemplateInput): string => {
   const cta =
     ctaLabel !== undefined && ctaHref !== undefined
@@ -30,18 +34,32 @@ export const renderTemplate = ({
     `<h1 style="font-size:24px;line-height:1.25;margin:0 0 12px 0;color:#FFFFFF;">${escapeHtml(title)}</h1>` +
     `<div style="font-size:14px;line-height:1.7;color:#BDBDBD;margin-bottom:20px;">${body}</div>` +
     cta +
-    "<div style=\"margin-top:24px;font-size:12px;color:#6B6B6B;\">Thanks for hiring a Klawva employee.</div>" +
+    `<div style="margin-top:24px;font-size:12px;color:#6B6B6B;">${escapeHtml(footer ?? defaultFooter)}</div>` +
     "</div></div>"
   );
 };
 
-export const magicLinkEmail = (link: string): string =>
-  renderTemplate({
-    title: "Sign in to Klawva Studio",
-    body: "Click the button below to open your studio. This link expires in 15 minutes. If you did not request it, ignore this email.",
-    ctaLabel: "Open Klawva Studio",
-    ctaHref: link,
-  });
+export type MagicLinkContext = "studio" | "account";
+
+export const magicLinkEmail = (
+  link: string,
+  context: MagicLinkContext = "studio",
+): string =>
+  context === "account"
+    ? renderTemplate({
+        title: "Sign in to your Klawva account",
+        body: "Click the button below to open your account. This link expires in 15 minutes. If you did not request it, ignore this email.",
+        ctaLabel: "Open your account",
+        ctaHref: link,
+        footer: "View your shifts, reports, and spend.",
+      })
+    : renderTemplate({
+        title: "Sign in to Klawva Studio",
+        body: "Click the button below to open your studio. This link expires in 15 minutes. If you did not request it, ignore this email.",
+        ctaLabel: "Open Klawva Studio",
+        ctaHref: link,
+        footer: "Publish listings, run sandbox evals, and track your employees.",
+      });
 
 export const listingApprovedEmail = (name: string): string =>
   renderTemplate({
