@@ -633,6 +633,7 @@ const sessionGroup = HttpApiBuilder.group(
             history,
             sessionId: sessionEnv.sessionId,
             allowlist: admission.config.allowlist,
+            braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
           }).pipe(
             Effect.flatMap((turn) =>
               Effect.forEach(turn.steps, (step) =>
