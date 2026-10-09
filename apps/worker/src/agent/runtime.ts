@@ -2,13 +2,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { fetchLinks, fetchUrl } from "./tools.ts";
+import { fetchLinks, fetchUrl, webSearch } from "./tools.ts";
 
 export const defaultModel = "@cf/zai-org/glm-4.7-flash";
 
 export const defaultToolAllowlist: ReadonlyArray<string> = [
   "fetch_url",
   "extract_links",
+  "web_search",
 ];
 
 const StoredAllowlist = Schema.fromJsonString(Schema.Array(Schema.String));
@@ -53,6 +54,7 @@ export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
 
 export interface ToolContext {
   readonly sessionId: string;
+  readonly braveKey: string;
 }
 
 export interface ToolDefinition {
@@ -120,9 +122,49 @@ const extractLinksTool: ToolDefinition = {
     }),
 };
 
+const decodeQuery = (raw: string): string => {
+  const outcome = Schema.decodeUnknownOption(
+    Schema.fromJsonString(Schema.Struct({ query: Schema.String })),
+  )(raw);
+  return outcome._tag === "Some" ? outcome.value.query : "";
+};
+
+const queryParameters = {
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+      description: "The search query. Be specific: include product names, sites, or topics.",
+    },
+  },
+  required: ["query"],
+};
+
+const webSearchTool: ToolDefinition = {
+  name: "web_search",
+  description:
+    "Search the web for pages about a topic. Use this when the user describes what they want but gives no URL. Returns titles, URLs, and descriptions; then use fetch_url on the promising URLs.",
+  parameters: queryParameters,
+  execute: (rawArgs, ctx) =>
+    Effect.gen(function* () {
+      const query = decodeQuery(rawArgs);
+      if (query.length === 0) {
+        return "search failed: missing query";
+      }
+      const outcome = yield* Effect.result(
+        webSearch(query, ctx.braveKey ?? ""),
+      );
+      if (outcome._tag === "Success") {
+        return outcome.success;
+      }
+      return `search failed: ${outcome.failure.reason}`;
+    }),
+};
+
 export const toolRegistry: ReadonlyArray<ToolDefinition> = [
   fetchUrlTool,
   extractLinksTool,
+  webSearchTool,
 ];
 
 export const specsFor = (
@@ -286,9 +328,13 @@ export const runTurn = (params: {
   readonly history: ReadonlyArray<ChatMessage>;
   readonly sessionId: string;
   readonly allowlist: ReadonlyArray<string>;
+  readonly braveKey: string;
 }): Effect.Effect<TurnResult, ModelError> =>
   Effect.gen(function* () {
-    const ctx: ToolContext = { sessionId: params.sessionId };
+    const ctx: ToolContext = {
+      sessionId: params.sessionId,
+      braveKey: params.braveKey,
+    };
     const messages: ChatMessage[] = [
       ...buildMessages(params.soul, params.brief, params.history),
     ];
