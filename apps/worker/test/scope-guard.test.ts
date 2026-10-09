@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  briefTooLong,
   screenBrief,
   screenScope,
   screenSoul,
@@ -109,5 +110,16 @@ describe("steer replies", () => {
   it("gives a distinct line per rejection reason", () => {
     expect(steerReply("injection")).toContain("override");
     expect(steerReply("off_brief")).toContain("outside");
+  });
+});
+describe("briefTooLong", () => {
+  it("accepts values at the cap and rejects above it", () => {
+    expect(briefTooLong({ cv: "x".repeat(12288) })).toBe(false);
+    expect(briefTooLong({ cv: "x".repeat(12289) })).toBe(true);
+  });
+
+  it("checks every value", () => {
+    expect(briefTooLong({ a: "ok", b: "x".repeat(20000) })).toBe(true);
+    expect(briefTooLong({})).toBe(false);
   });
 });
