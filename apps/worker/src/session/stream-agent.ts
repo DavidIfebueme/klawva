@@ -146,7 +146,7 @@ export class SessionAgent extends AIChatAgent<Env> {
               model: workersai(config.model),
               system: systemText(config.soul, config.brief),
               messages: history,
-              tools: aiToolsFor(config.allowlist, sessionId),
+              tools: aiToolsFor(config.allowlist, sessionId, this.env.BRAVE_API_KEY ?? ""),
               stopWhen: stepCountIs(4),
               abortSignal: _options?.abortSignal,
               onStepFinish: (step) => {
