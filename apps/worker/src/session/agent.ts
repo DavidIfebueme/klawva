@@ -263,6 +263,12 @@ export const turnSucceeded = (
   failed: boolean,
 ): boolean => status === "completed" && !failed;
 
+export const retryTextFor = (
+  status: string,
+  textLength: number,
+): string | null =>
+  status === "error" && textLength === 0 ? modelRetryReply : null;
+
 export const sanitized = (
   messages: ReadonlyArray<UIMessage>,
 ): Array<UIMessage> =>
