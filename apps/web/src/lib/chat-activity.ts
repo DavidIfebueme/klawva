@@ -19,8 +19,11 @@ export const toolInputDetail = (input: unknown): string => {
     typeof input.url === "string" &&
     input.url.length > 0
   ) {
-    const parsed = URL.parse(input.url);
-    return parsed === null ? input.url : parsed.hostname;
+    try {
+      return new URL(input.url).hostname;
+    } catch {
+      return input.url;
+    }
   }
   return "";
 };

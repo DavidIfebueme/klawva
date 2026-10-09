@@ -156,7 +156,7 @@ export function Component() {
   } = useAgentChat<unknown, UIMessage>({ agent });
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState("");
-  const pin = useRef({ count: -1, busy: false, lastLen: 0 });
+  const pin = useRef({ count: -1, busy: false, lastLen: 0, tools: "" });
 
   const busy =
     status === "submitted" ||
@@ -179,7 +179,7 @@ export function Component() {
     for (const message of messages) {
       const content = toText(message);
       const tools = toolActivity(message);
-      const fingerprint = `${message.role}:${content}:${tools.join("|")}`;
+      const fingerprint = `${message.role}:${content}`;
       if (content.length === 0 && tools.length === 0) continue;
       if (seen.has(fingerprint)) continue;
       seen.add(fingerprint);
@@ -192,6 +192,10 @@ export function Component() {
     }
     return merged;
   }, [fallback, messages]);
+
+  const lastRow = rows.length === 0 ? null : rows[rows.length - 1];
+  const lastHasTools = lastRow !== null && lastRow.tools.length > 0;
+  const lastToolsKey = lastRow === null ? "" : lastRow.tools.join("|");
 
   const handleSend = (event: React.FormEvent) => {
     event.preventDefault();
@@ -267,7 +271,7 @@ export function Component() {
                   </div>
                 ))
               )}
-              {busy && (
+              {busy && !lastHasTools && (
                 <div className="flex justify-start">
                   <div className="max-w-[85%] rounded-lg border border-klawva-border bg-klawva-surface px-4 py-3">
                     <div className="font-mono text-klawva-dim text-xs animate-pulse">
@@ -286,12 +290,13 @@ export function Component() {
                   if (
                     rows.length === pin.current.count &&
                     busy === pin.current.busy &&
-                    lastLen === pin.current.lastLen
+                    lastLen === pin.current.lastLen &&
+                    lastToolsKey === pin.current.tools
                   ) {
                     return;
                   }
                   const first = pin.current.count === -1;
-                  pin.current = { count: rows.length, busy, lastLen };
+                  pin.current = { count: rows.length, busy, lastLen, tools: lastToolsKey };
                   if (!first) {
                     const scroller = el.parentElement;
                     if (scroller !== null) {
