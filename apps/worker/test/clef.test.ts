@@ -71,6 +71,22 @@ describe("clef scope decoding", () => {
     );
     expect(exit._tag).toBe("Failure");
   });
+
+  it("fails with ClefError on a NaN noul so the regex fallback runs", async () => {
+    const exit = await Effect.runPromiseExit(
+      decideScope(fakeAi(NaN), { task: "x" }, "hi"),
+    );
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("fails with ClefError on an out-of-range noul", async () => {
+    for (const bad of [1.7, -0.2]) {
+      const exit = await Effect.runPromiseExit(
+        decideScope(fakeAi(bad), { task: "x" }, "hi"),
+      );
+      expect(exit._tag).toBe("Failure");
+    }
+  });
 });
 
 describe("clef brief moderation", () => {
