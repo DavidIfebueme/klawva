@@ -9,7 +9,9 @@ import {
   BudgetExhausted,
   lastUserText,
   messageText,
+  modelRetryReply,
   persistReply,
+  retryTextFor,
   sanitized,
   turnSucceeded,
   type SessionStoreImpl,
@@ -249,4 +251,18 @@ describe("turn outcome", () => {
     expect(turnSucceeded("aborted", false)).toBe(false);
     expect(turnSucceeded("completed", true)).toBe(false);
   });
+});
+
+describe("retry text", () => {
+  it.each([
+    { status: "error", textLength: 0, expected: modelRetryReply },
+    { status: "error", textLength: 42, expected: null },
+    { status: "completed", textLength: 0, expected: null },
+    { status: "aborted", textLength: 0, expected: null },
+  ])(
+    "returns the retry message only for an empty error turn ($status, $textLength)",
+    ({ status, textLength, expected }) => {
+      expect(retryTextFor(status, textLength)).toBe(expected);
+    },
+  );
 });
