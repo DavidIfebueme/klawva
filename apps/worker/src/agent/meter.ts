@@ -8,6 +8,7 @@ interface NeuronRate {
 
 const neuronRates: Record<string, NeuronRate> = {
   "@cf/zai-org/glm-4.7-flash": { inPerMillion: 5500, outPerMillion: 36400 },
+  "@cf/cloudflare/clef-flash": { inPerMillion: 3455, outPerMillion: 0 },
 };
 
 const charsPerToken = 4;
