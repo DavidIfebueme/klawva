@@ -28,6 +28,7 @@ import {
   recordAiUsage,
 } from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
+import { decideScope, isInScope } from "../moderation/clef.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
@@ -225,6 +226,7 @@ export const admitTurn = (
   db: DatabaseImpl,
   sessionId: string,
   userText: string,
+  ai?: Ai,
 ): Effect.Effect<TurnAdmission, BudgetExhausted> =>
   Effect.gen(function* () {
     const state = (yield* store.get("state")) ?? "pending";
@@ -251,6 +253,14 @@ export const admitTurn = (
     const verdict = screenScope(userText, config.brief);
     if (verdict !== "in_scope") {
       return { _tag: "Rejected", reply: steerReply(verdict) } as const;
+    }
+    if (ai !== undefined) {
+      const scope = yield* decideScope(ai, config.brief, userText).pipe(
+        Effect.option,
+      );
+      if (scope._tag === "Some" && !isInScope(scope.value)) {
+        return { _tag: "Rejected", reply: steerReply("off_brief") } as const;
+      }
     }
     if (!(yield* checkNeuronBudget(db))) {
       return { _tag: "AtCapacity" } as const;
@@ -627,6 +637,7 @@ const sessionGroup = HttpApiBuilder.group(
             db,
             sessionEnv.sessionId,
             payload.content,
+            sessionEnv.env.AI,
           ).pipe(
             Effect.catch(() =>
               Effect.succeed({ _tag: "OutOfBudget" } as const),
