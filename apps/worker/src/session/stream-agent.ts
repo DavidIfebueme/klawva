@@ -27,6 +27,7 @@ import {
   messageText,
   modelRetryReply,
   persistAssistant,
+  retryTextFor,
   sanitized,
   serveRestApi,
   turnSucceeded,
@@ -181,7 +182,12 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     const store = makeStore(this.ctx.storage.sql);
     const db = makeDatabase(this.env.DB);
-    if (text.length > 0) {
+    const retry = retryTextFor(result.status, text.length);
+    if (retry !== null) {
+      await Effect.runPromise(
+        persistAssistant(store, db, this.name, retry),
+      ).catch(() => undefined);
+    } else if (text.length > 0) {
       await Effect.runPromise(
         persistAssistant(store, db, this.name, text),
       ).catch(() => undefined);
