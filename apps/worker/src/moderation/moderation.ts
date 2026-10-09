@@ -24,6 +24,12 @@ const matchesAny = (
   return patterns.some((pattern) => pattern.test(haystack));
 };
 
+export const maxBriefValueChars = 12288;
+
+export const briefTooLong = (
+  brief: Readonly<Record<string, string>>,
+): boolean => Object.values(brief).some((value) => value.length > maxBriefValueChars);
+
 export const screenSoul = (soul: string): string | null =>
   matchesAny(injectionPatterns, soul) ? "soul_flagged" : null;
 
