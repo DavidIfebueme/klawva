@@ -28,7 +28,13 @@ import {
   recordAiUsage,
 } from "../agent/meter.ts";
 import { screenScope, steerReply } from "../moderation/moderation.ts";
-import { decideScope, isInScope, scoreShift, shiftScore } from "../moderation/clef.ts";
+import {
+  clefFlashModel,
+  decideScope,
+  isInScope,
+  scoreShift,
+  shiftScore,
+} from "../moderation/clef.ts";
 import { fallbackReport, generateReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
@@ -256,6 +262,22 @@ export const admitTurn = (
     }
     if (ai !== undefined) {
       const scope = yield* decideScope(ai, config.brief, userText).pipe(
+        Effect.tap((output) =>
+          recordAiUsage(db, {
+            model: clefFlashModel,
+            inTokens: output.usage?.input_tokens ?? 0,
+            outTokens: 0,
+            ok: true,
+          }),
+        ),
+        Effect.tapError(() =>
+          recordAiUsage(db, {
+            model: clefFlashModel,
+            inTokens: 0,
+            outTokens: 0,
+            ok: false,
+          }),
+        ),
         Effect.option,
       );
       if (scope._tag === "Some" && !isInScope(scope.value)) {
@@ -402,15 +424,18 @@ export const completeShift = (
       ),
     );
     const scoreResult = yield* scoreShift(env.AI, brief, history).pipe(
+      Effect.timeoutOption("10 seconds"),
       Effect.option,
     );
+    const scoreValue =
+      scoreResult._tag === "Some" ? scoreResult.value : undefined;
     const stats =
-      scoreResult._tag === "Some"
+      scoreValue !== undefined && scoreValue._tag === "Some"
         ? [
             ...report.stats,
             {
-              label: "Quality score",
-              value: shiftScore(scoreResult.value).toFixed(2),
+              label: "Quality score (0-3)",
+              value: shiftScore(scoreValue.value).toFixed(2),
             },
           ]
         : report.stats;
