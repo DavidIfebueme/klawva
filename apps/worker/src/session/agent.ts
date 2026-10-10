@@ -640,6 +640,9 @@ const sessionGroup = HttpApiBuilder.group(
       .handle("activate", ({ payload }) =>
         Effect.gen(function* () {
           const from = yield* currentState(store);
+          if (from === "completed" || from === "failed") {
+            return yield* Effect.fail(new IllegalTransition({ from, to: "active" }));
+          }
           if (from === "active") {
             const existing = yield* store.get("window_end");
             if (existing === null || payload.windowEnd > existing) {
@@ -647,13 +650,12 @@ const sessionGroup = HttpApiBuilder.group(
             }
             return { state: "active" };
           }
-          const via = from === "pending" ? "provisioning" : from;
-          if (canTransition(via, "active")) {
-            yield* store.set("state", "active");
+          yield* store.set("state", "active");
+          const existing = yield* store.get("window_end");
+          if (existing === null || payload.windowEnd > existing) {
             yield* store.set("window_end", payload.windowEnd);
-            return { state: "active" as const };
           }
-          return yield* Effect.fail(new IllegalTransition({ from, to: "active" }));
+          return { state: "active" as const };
         }),
       )
       .handle("complete", () =>
