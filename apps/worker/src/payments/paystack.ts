@@ -4,6 +4,7 @@ import { windowEndFor } from "./pricing.ts";
 import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { shiftStartedEmail } from "../email/templates.ts";
+import { sessionReplyAddress } from "../channels/email.ts";
 import type { Env } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 
@@ -174,7 +175,7 @@ export const handlePaystackWebhook = (
     });
     const sessionRow = yield* db
       .first(
-        "SELECT customer_email AS email, listing_id AS listingId, channel AS channel FROM sessions WHERE id = ?",
+        "SELECT customer_email AS email, listing_id AS listingId, channel AS channel, session_token AS token FROM sessions WHERE id = ?",
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
@@ -218,6 +219,10 @@ export const handlePaystackWebhook = (
           isEmailChannel && openingReply.length > 0 ? openingReply : undefined,
           isEmailChannel,
         ),
+        replyToEmail:
+          sessionRow.token !== null && String(sessionRow.token).length > 0
+            ? sessionReplyAddress(String(sessionRow.token))
+            : undefined,
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => console.error("shift_email_failed", error)),
