@@ -21,15 +21,19 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     channel: launch.channel,
     agentName: launch.agentName,
     customerEmail: launch.customerEmail,
+    brief: launch.brief,
   };
 };
 
 export function Component() {
-  const { session, token, botUsername, code, channel, agentName, customerEmail } =
+  const { session, token, botUsername, code, channel, agentName, customerEmail, brief } =
     useLoaderData<typeof loader>();
   const link = `https://t.me/${botUsername}?start=${code}`;
   const chatLink = `/chat/${session}?token=${token}`;
   const slackLink = `/api/slack/install?session=${session}&token=${token}`;
+  const briefEntries = Object.entries(brief).filter(
+    ([, value]) => value.trim().length > 0,
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -39,38 +43,54 @@ export function Component() {
           <span className="font-mono text-klawva-accent text-xs uppercase tracking-[0.2em] block mb-3">
             Payment complete
           </span>
+          {briefEntries.length > 0 && (
+            <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4 mb-10">
+              <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
+                Your brief
+              </p>
+              <dl className="flex flex-col gap-2">
+                {briefEntries.map(([key, value]) => (
+                  <div key={key}>
+                    <dt className="font-mono text-klawva-dim text-xs capitalize">
+                      {key.replace(/_/g, " ")}
+                    </dt>
+                    <dd className="font-mono text-klawva-text text-sm whitespace-pre-wrap">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
           {channel === "web" ? (
             <>
               <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
-                Your employee is ready
+                Your employee is on it
               </h1>
               <p className="font-mono text-klawva-muted text-sm mb-10">
-                {agentName} is on shift for the next 24 hours. Open the chat
-                to give it the brief.
+                {agentName} has your brief and is on shift for the next 24
+                hours. Open the chat to watch it work or redirect it.
               </p>
               <div>
                 <Button variant="primary" size="lg" href={chatLink}>
-                  Open web chat
+                  Watch it work
                 </Button>
               </div>
             </>
           ) : channel === "email" ? (
             <>
               <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
-                Your employee is ready
+                Your employee is on it
               </h1>
               <p className="font-mono text-klawva-muted text-sm mb-10">
-                Email your brief to employees@klawva.xyz from{" "}
-                {customerEmail.length > 0 ? customerEmail : "the address you paid with"}.
-                {agentName} replies from the same thread.
+                {agentName} has your brief above and is already working. It will
+                email you at{" "}
+                {customerEmail.length > 0 ? customerEmail : "your address"} as it
+                makes progress. Reply to that thread anytime to redirect it.
               </p>
               <div>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  href="mailto:employees@klawva.xyz"
-                >
-                  Compose email
+                <Button variant="primary" size="lg" href={chatLink}>
+                  Watch it work
                 </Button>
               </div>
             </>
@@ -115,7 +135,8 @@ export function Component() {
           )}
           {channel !== "email" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
-              Or email employees@klawva.xyz from the address you paid with
+              Prefer email? Your employee will email you. Reply to that thread
+              from the address you paid with.
             </p>
           )}
           <p className="font-mono text-klawva-dim text-xs mt-2">
