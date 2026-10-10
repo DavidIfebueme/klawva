@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { isEmployeeRecipient, replyAddress } from "../src/channels/email.ts";
+import {
+  isEmployeeRecipient,
+  replyAddress,
+  sessionReplyAddress,
+} from "../src/channels/email.ts";
 import { reportEmailHtml } from "../src/email/brevo.ts";
 import { magicLinkEmail } from "../src/email/templates.ts";
 
 describe("email routing address", () => {
-  it("accepts only the employee reply address", () => {
+  it("accepts the shared reply address and tokenized session addresses", () => {
     expect(isEmployeeRecipient(replyAddress())).toBe(true);
     expect(isEmployeeRecipient(" Employees@Klawva.xyz ")).toBe(true);
+    expect(isEmployeeRecipient(sessionReplyAddress("tok123"))).toBe(true);
     expect(isEmployeeRecipient("other@klawva.xyz")).toBe(false);
     expect(isEmployeeRecipient("employee-abc@mail.klawva.xyz")).toBe(false);
+  });
+
+  it("builds a session-bound tokenized reply address", () => {
+    expect(sessionReplyAddress("abc123")).toBe("employees+abc123@klawva.xyz");
   });
 });
 
