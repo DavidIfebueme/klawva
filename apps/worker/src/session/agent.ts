@@ -572,6 +572,13 @@ const report = HttpApiEndpoint.post("report", "/report", {
   success: Schema.Struct({ ok: Schema.Boolean }),
 });
 
+const kickoff = HttpApiEndpoint.post("kickoff", "/kickoff", {
+  success: Schema.Struct({
+    ok: Schema.Boolean,
+    reply: Schema.optionalKey(Schema.String),
+  }),
+});
+
 const appendMessage = HttpApiEndpoint.post("appendMessage", "/messages", {
   payload: Schema.Struct({
     role: Schema.Literals(["user", "assistant"]),
@@ -590,6 +597,7 @@ class SessionGroup extends HttpApiGroup.make("Session")
   .add(complete)
   .add(history)
   .add(report)
+  .add(kickoff)
   .add(appendMessage) {}
 
 class SessionApi extends HttpApi.make("SessionApi").add(SessionGroup) {}
@@ -648,6 +656,61 @@ const sessionGroup = HttpApiBuilder.group(
           yield* store.set("state", next);
           return { state: next };
         }),
+      )
+      .handle("kickoff", () =>
+        Effect.gen(function* () {
+          const db = makeDatabase(sessionEnv.env.DB);
+          const mirror = (role: string, content: string) =>
+            mirrorMessage(db, sessionEnv.sessionId, role, content);
+          const state = yield* currentState(store);
+          if (state !== "active") {
+            return { ok: true, reply: undefined };
+          }
+          if (!(yield* checkNeuronBudget(db))) {
+            return { ok: true, reply: undefined };
+          }
+          if (!(yield* takeCapacitySlot(db))) {
+            return { ok: true, reply: undefined };
+          }
+          yield* store.spend(50);
+          const config = yield* loadTurnConfig(store);
+          const kickoffText = `Begin the shift. Restate the task from the brief in one line, state your immediate plan in two or three steps, then take the first action now.`;
+          const sessionRuntime = makeRuntime(
+            sessionEnv.env.AI,
+            config.model,
+            config.allowlist,
+          );
+          const history = yield* store.history();
+          const reply = yield* runTurn({
+            runtime: sessionRuntime,
+            soul: config.soul,
+            brief: config.brief,
+            history: [
+              ...history,
+              { role: "user", content: kickoffText },
+            ],
+            sessionId: sessionEnv.sessionId,
+            allowlist: config.allowlist,
+            braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
+          }).pipe(
+            Effect.flatMap((turn) =>
+              Effect.forEach(turn.steps, (step) =>
+                recordAiUsage(db, {
+                  model: config.model,
+                  inTokens: step.inTokens,
+                  outTokens: step.outTokens,
+                  ok: true,
+                }),
+              ).pipe(Effect.as(turn.text)),
+            ),
+            Effect.catch(() => Effect.succeed("")),
+          );
+          if (reply.length > 0) {
+            yield* store.append("assistant", reply);
+            yield* mirror("assistant", reply);
+          }
+          return { ok: true, reply: reply.length > 0 ? reply : undefined };
+        }).pipe(Effect.orDie),
       )
       .handle("history", () =>
         Effect.gen(function* () {
