@@ -74,7 +74,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
     const db = makeDatabase(env.DB);
     const session = yield* db
       .first(
-        "SELECT id AS id FROM sessions WHERE customer_email = ? AND state IN ('ready', 'active') ORDER BY created_at DESC LIMIT 1",
+        "SELECT id AS id, state AS state FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'hibernating' THEN 1 WHEN 'recovering' THEN 2 WHEN 'provisioning' THEN 3 ELSE 4 END, created_at DESC LIMIT 1",
         [sender],
       )
       .pipe(Effect.orDie);
@@ -83,6 +83,21 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       return;
     }
     const sessionId = String(session.id);
+    const sessionState = String(session.state);
+    if (sessionState === "pending" || sessionState === "provisioning") {
+      yield* sendEmail({
+        apiKey: env.BREVO_API_KEY,
+        senderEmail: env.BREVO_SENDER_EMAIL,
+        senderName: "Klawva",
+        toEmail: sender,
+        subject: "Your Klawva employee is spinning up",
+        html: renderTemplate({
+          title: "Almost ready",
+          body: "<p>Your employee is still getting set up. Reply to this thread in a few minutes and it will be with you.</p>",
+        }),
+      }).pipe(Effect.catch(() => Effect.void));
+      return;
+    }
     const plain = (parsed?.text ?? "").trim();
     const fromHtml = (parsed?.html ?? "")
       .replace(/<[^>]*>/g, " ")
