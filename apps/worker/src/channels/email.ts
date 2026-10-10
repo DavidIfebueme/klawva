@@ -86,8 +86,8 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       catch: (cause) => new Error(String(cause)),
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     const headerSender = parsed?.from?.address?.trim().toLowerCase() ?? "";
-    const sender =
-      headerSender.length > 0 ? headerSender : message.from.trim().toLowerCase();
+    const envelopeSender = message.from.trim().toLowerCase();
+    const sender = envelopeSender.length > 0 ? envelopeSender : headerSender;
     const db = makeDatabase(env.DB);
     const recipientToken = tokenFromRecipient(message.to);
     const session =
