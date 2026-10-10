@@ -108,18 +108,25 @@ export const handlePaystackWebhook = (
       return Response.json({ ok: true });
     }
     const decoded = Schema.decodeUnknownSync(PaymentRow)(payment);
-    if (decoded.status === "confirmed") {
-      return Response.json({ ok: true });
-    }
     const now = new Date().toISOString();
     const endIso = windowEndFor(Date.now(), Number(decoded.duration_days ?? 1));
-    const confirmed = yield* db
-      .first(
-        "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending' RETURNING id AS id",
-        [now, reference],
-      )
+    if (decoded.status !== "confirmed") {
+      const confirmed = yield* db
+        .first(
+          "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending' RETURNING id AS id",
+          [now, reference],
+        )
+        .pipe(Effect.orDie);
+      if (confirmed === null) {
+        return Response.json({ ok: true });
+      }
+    }
+    const sessionState = yield* db
+      .first("SELECT state AS state FROM sessions WHERE id = ?", [
+        decoded.session_id,
+      ])
       .pipe(Effect.orDie);
-    if (confirmed === null) {
+    if (sessionState !== null && String(sessionState.state) === "active") {
       return Response.json({ ok: true });
     }
     yield* db
@@ -129,18 +136,19 @@ export const handlePaystackWebhook = (
       )
       .pipe(Effect.orDie);
     const activated = yield* Effect.tryPromise({
-      try: () =>
-        env.SESSION.get(env.SESSION.idFromName(decoded.session_id)).fetch(
-          "https://session/activate",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ windowEnd: endIso }),
-          },
-        ),
+      try: async () => {
+        const response = await env.SESSION.get(
+          env.SESSION.idFromName(decoded.session_id),
+        ).fetch("https://session/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ windowEnd: endIso }),
+        });
+        return response.ok;
+      },
       catch: (cause) => new PaystackError({ reason: String(cause) }),
-    }).pipe(Effect.catch(() => Effect.void));
-    if (activated !== undefined) {
+    }).pipe(Effect.catch(() => Effect.succeed(false)));
+    if (activated) {
       yield* db
         .run(
           "UPDATE sessions SET state = 'active', updated_at = ? WHERE id = ?",

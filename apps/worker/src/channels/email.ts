@@ -74,7 +74,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
     const db = makeDatabase(env.DB);
     const session = yield* db
       .first(
-        "SELECT id AS id, state AS state FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') ORDER BY created_at DESC LIMIT 1",
+        "SELECT id AS id, state AS state FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'hibernating' THEN 1 WHEN 'recovering' THEN 2 WHEN 'provisioning' THEN 3 ELSE 4 END, created_at DESC LIMIT 1",
         [sender],
       )
       .pipe(Effect.orDie);
