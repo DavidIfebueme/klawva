@@ -124,11 +124,11 @@ export const handlePaystackWebhook = (
     }
     yield* db
       .run(
-        "UPDATE sessions SET state = 'ready', window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
+        "UPDATE sessions SET state = 'provisioning', window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
         [now, endIso, now, decoded.session_id],
       )
       .pipe(Effect.orDie);
-    yield* Effect.tryPromise({
+    const activated = yield* Effect.tryPromise({
       try: () =>
         env.SESSION.get(env.SESSION.idFromName(decoded.session_id)).fetch(
           "https://session/activate",
@@ -140,6 +140,14 @@ export const handlePaystackWebhook = (
         ),
       catch: (cause) => new PaystackError({ reason: String(cause) }),
     }).pipe(Effect.catch(() => Effect.void));
+    if (activated !== undefined) {
+      yield* db
+        .run(
+          "UPDATE sessions SET state = 'active', updated_at = ? WHERE id = ?",
+          [new Date().toISOString(), decoded.session_id],
+        )
+        .pipe(Effect.orDie);
+    }
     yield* Effect.tryPromise({
       try: () =>
         env.WALLET.get(env.WALLET.idFromName(decoded.session_id)).fetch(
