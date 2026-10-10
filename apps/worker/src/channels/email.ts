@@ -94,18 +94,23 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       recipientToken !== null
         ? yield* db
             .first(
-              "SELECT id AS id, state AS state, session_token AS token FROM sessions WHERE session_token = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') LIMIT 1",
+              "SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE session_token = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') LIMIT 1",
               [recipientToken],
             )
             .pipe(Effect.orDie)
         : yield* db
             .first(
-              "SELECT id AS id, state AS state, session_token AS token FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'provisioning' THEN 1 ELSE 2 END, created_at DESC LIMIT 1",
+              "SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'provisioning' THEN 1 ELSE 2 END, created_at DESC LIMIT 1",
               [sender],
             )
             .pipe(Effect.orDie);
     if (session === null) {
       message.setReject("No active employee for this sender");
+      return;
+    }
+    const ownerEmail = String(session.customerEmail ?? "").trim().toLowerCase();
+    if (ownerEmail.length === 0 || ownerEmail !== sender) {
+      message.setReject("Sender is not the session owner");
       return;
     }
     const sessionId = String(session.id);
