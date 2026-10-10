@@ -639,15 +639,21 @@ const sessionGroup = HttpApiBuilder.group(
       )
       .handle("activate", ({ payload }) =>
         Effect.gen(function* () {
-          let from = yield* currentState(store);
-          if (from === "pending") {
-            from = yield* transition(from, "provisioning");
-            yield* store.set("state", from);
+          const from = yield* currentState(store);
+          if (from === "active") {
+            const existing = yield* store.get("window_end");
+            if (existing === null || payload.windowEnd > existing) {
+              yield* store.set("window_end", payload.windowEnd);
+            }
+            return { state: "active" };
           }
-          const next = yield* transition(from, "active");
-          yield* store.set("state", next);
-          yield* store.set("window_end", payload.windowEnd);
-          return { state: next };
+          const via = from === "pending" ? "provisioning" : from;
+          if (canTransition(via, "active")) {
+            yield* store.set("state", "active");
+            yield* store.set("window_end", payload.windowEnd);
+            return { state: "active" as const };
+          }
+          return yield* Effect.fail(new IllegalTransition({ from, to: "active" }));
         }),
       )
       .handle("complete", () =>
