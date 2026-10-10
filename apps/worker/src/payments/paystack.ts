@@ -178,19 +178,21 @@ export const handlePaystackWebhook = (
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
-    const kickoffReply = yield* Effect.tryPromise({
-      try: async () => {
-        const response = await env.SESSION.get(
-          env.SESSION.idFromName(decoded.session_id),
-        ).fetch("https://session/kickoff", { method: "POST" });
-        const body: unknown = await response.json();
-        const decodedBody = Schema.decodeUnknownOption(
-          Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
-        )(body);
-        return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
-      },
-      catch: (cause) => new PaystackError({ reason: String(cause) }),
-    }).pipe(Effect.catch(() => Effect.succeed("")));
+    const kickoffReply = !activated
+      ? ""
+      : yield* Effect.tryPromise({
+          try: async () => {
+            const response = await env.SESSION.get(
+              env.SESSION.idFromName(decoded.session_id),
+            ).fetch("https://session/kickoff", { method: "POST" });
+            const body: unknown = await response.json();
+            const decodedBody = Schema.decodeUnknownOption(
+              Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
+            )(body);
+            return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
+          },
+          catch: (cause) => new PaystackError({ reason: String(cause) }),
+        }).pipe(Effect.catch(() => Effect.succeed("")));
     if (sessionRow !== null && sessionRow.email !== null) {
       const listingRow = yield* db
         .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
@@ -209,10 +211,13 @@ export const handlePaystackWebhook = (
         subject: isEmailChannel
           ? `${employeeName} has started your shift`
           : "Your Klawva employee is now active",
-        html:
-          isEmailChannel && openingReply.length > 0
-            ? shiftStartedEmail(employeeName, now, endIso, openingReply)
-            : shiftStartedEmail(employeeName, now, endIso),
+        html: shiftStartedEmail(
+          employeeName,
+          now,
+          endIso,
+          isEmailChannel && openingReply.length > 0 ? openingReply : undefined,
+          isEmailChannel,
+        ),
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => console.error("shift_email_failed", error)),

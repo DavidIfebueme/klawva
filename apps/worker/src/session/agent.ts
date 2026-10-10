@@ -662,6 +662,17 @@ const sessionGroup = HttpApiBuilder.group(
           const db = makeDatabase(sessionEnv.env.DB);
           const mirror = (role: string, content: string) =>
             mirrorMessage(db, sessionEnv.sessionId, role, content);
+          const state = yield* currentState(store);
+          if (state !== "active") {
+            return { ok: true, reply: undefined };
+          }
+          if (!(yield* checkNeuronBudget(db))) {
+            return { ok: true, reply: undefined };
+          }
+          if (!(yield* takeCapacitySlot(db))) {
+            return { ok: true, reply: undefined };
+          }
+          yield* store.spend(50);
           const config = yield* loadTurnConfig(store);
           const kickoffText = `Begin the shift. Restate the task from the brief in one line, state your immediate plan in two or three steps, then take the first action now.`;
           const sessionRuntime = makeRuntime(
