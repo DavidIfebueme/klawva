@@ -174,10 +174,25 @@ export const handlePaystackWebhook = (
     });
     const sessionRow = yield* db
       .first(
-        "SELECT customer_email AS email, listing_id AS listingId FROM sessions WHERE id = ?",
+        "SELECT customer_email AS email, listing_id AS listingId, channel AS channel FROM sessions WHERE id = ?",
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
+    const kickoffReply = !activated
+      ? ""
+      : yield* Effect.tryPromise({
+          try: async () => {
+            const response = await env.SESSION.get(
+              env.SESSION.idFromName(decoded.session_id),
+            ).fetch("https://session/kickoff", { method: "POST" });
+            const body: unknown = await response.json();
+            const decodedBody = Schema.decodeUnknownOption(
+              Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
+            )(body);
+            return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
+          },
+          catch: (cause) => new PaystackError({ reason: String(cause) }),
+        }).pipe(Effect.catch(() => Effect.succeed("")));
     if (sessionRow !== null && sessionRow.email !== null) {
       const listingRow = yield* db
         .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
@@ -186,13 +201,23 @@ export const handlePaystackWebhook = (
         .pipe(Effect.orDie);
       const employeeName =
         listingRow !== null ? String(listingRow.name) : "Your Klawva employee";
+      const isEmailChannel = String(sessionRow.channel) === "email";
+      const openingReply = kickoffReply.trim();
       yield* sendEmail({
         apiKey: env.BREVO_API_KEY,
         senderEmail: env.BREVO_SENDER_EMAIL,
-        senderName: "Klawva",
+        senderName: employeeName,
         toEmail: String(sessionRow.email),
-        subject: "Your Klawva employee is now active",
-        html: shiftStartedEmail(employeeName, now, endIso),
+        subject: isEmailChannel
+          ? `${employeeName} has started your shift`
+          : "Your Klawva employee is now active",
+        html: shiftStartedEmail(
+          employeeName,
+          now,
+          endIso,
+          isEmailChannel && openingReply.length > 0 ? openingReply : undefined,
+          isEmailChannel,
+        ),
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => console.error("shift_email_failed", error)),
