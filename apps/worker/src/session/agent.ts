@@ -641,7 +641,10 @@ const sessionGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const from = yield* currentState(store);
           if (from === "active") {
-            yield* store.set("window_end", payload.windowEnd);
+            const existing = yield* store.get("window_end");
+            if (existing === null || payload.windowEnd > existing) {
+              yield* store.set("window_end", payload.windowEnd);
+            }
             return { state: "active" };
           }
           const via = from === "pending" ? "provisioning" : from;
