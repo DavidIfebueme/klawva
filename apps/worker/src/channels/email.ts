@@ -16,12 +16,29 @@ export interface InboundEmail {
 }
 
 const replyAddressValue = "employees@klawva.xyz";
+const replyAddressPrefix = "employees+";
 const maxBytes = 1_000_000;
 
 export const replyAddress = (): string => replyAddressValue;
 
+export const sessionReplyAddress = (sessionToken: string): string =>
+  `employees+${sessionToken}@klawva.xyz`;
+
+const tokenFromRecipient = (to: string): string | null => {
+  const normalized = to.trim().toLowerCase();
+  if (!normalized.startsWith(replyAddressPrefix) || !normalized.endsWith("@klawva.xyz")) {
+    return null;
+  }
+  const token = normalized.slice(
+    replyAddressPrefix.length,
+    normalized.length - "@klawva.xyz".length,
+  );
+  return token.length > 0 ? token : null;
+};
+
 export const isEmployeeRecipient = (to: string): boolean =>
-  to.trim().toLowerCase() === replyAddressValue;
+  to.trim().toLowerCase() === replyAddressValue ||
+  tokenFromRecipient(to) !== null;
 
 const askSession = (
   env: Env,
@@ -72,18 +89,30 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
     const sender =
       headerSender.length > 0 ? headerSender : message.from.trim().toLowerCase();
     const db = makeDatabase(env.DB);
-    const session = yield* db
-      .first(
-        "SELECT id AS id, state AS state FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'hibernating' THEN 1 WHEN 'recovering' THEN 2 WHEN 'provisioning' THEN 3 ELSE 4 END, created_at DESC LIMIT 1",
-        [sender],
-      )
-      .pipe(Effect.orDie);
+    const recipientToken = tokenFromRecipient(message.to);
+    const session =
+      recipientToken !== null
+        ? yield* db
+            .first(
+              "SELECT id AS id, state AS state, session_token AS token FROM sessions WHERE session_token = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') LIMIT 1",
+              [recipientToken],
+            )
+            .pipe(Effect.orDie)
+        : yield* db
+            .first(
+              "SELECT id AS id, state AS state, session_token AS token FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'provisioning' THEN 1 ELSE 2 END, created_at DESC LIMIT 1",
+              [sender],
+            )
+            .pipe(Effect.orDie);
     if (session === null) {
       message.setReject("No active employee for this sender");
       return;
     }
     const sessionId = String(session.id);
     const sessionState = String(session.state);
+    const sessionToken = String(session.token ?? "");
+    const replyTo =
+      sessionToken.length > 0 ? sessionReplyAddress(sessionToken) : undefined;
     if (sessionState === "pending" || sessionState === "provisioning") {
       yield* sendEmail({
         apiKey: env.BREVO_API_KEY,
@@ -95,6 +124,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
           title: "Almost ready",
           body: "<p>Your employee is still getting set up. Reply to this thread in a few minutes and it will be with you.</p>",
         }),
+        replyToEmail: replyTo,
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
@@ -118,5 +148,6 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
         title: "Your employee replied",
         body: toEmailHtml(reply),
       }),
+      replyToEmail: replyTo,
     }).pipe(Effect.catch(() => Effect.void));
   });
