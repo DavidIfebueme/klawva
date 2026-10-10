@@ -651,7 +651,10 @@ const sessionGroup = HttpApiBuilder.group(
             return { state: "active" };
           }
           yield* store.set("state", "active");
-          yield* store.set("window_end", payload.windowEnd);
+          const existing = yield* store.get("window_end");
+          if (existing === null || payload.windowEnd > existing) {
+            yield* store.set("window_end", payload.windowEnd);
+          }
           return { state: "active" as const };
         }),
       )
