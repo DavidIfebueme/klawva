@@ -85,9 +85,11 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       try: () => PostalMime.parse(raw),
       catch: (cause) => new Error(String(cause)),
     }).pipe(Effect.catch(() => Effect.succeed(null)));
-    const headerSender = parsed?.from?.address?.trim().toLowerCase() ?? "";
-    const envelopeSender = message.from.trim().toLowerCase();
-    const sender = envelopeSender.length > 0 ? envelopeSender : headerSender;
+    const sender = message.from.trim().toLowerCase();
+    if (sender.length === 0) {
+      message.setReject("Missing envelope sender");
+      return;
+    }
     const db = makeDatabase(env.DB);
     const recipientToken = tokenFromRecipient(message.to);
     const session =
