@@ -13,6 +13,7 @@ export const sendEmail = (params: {
   readonly toEmail: string;
   readonly subject: string;
   readonly html: string;
+  readonly replyToEmail?: string;
 }): Effect.Effect<void, EmailError> => {
   if (params.apiKey.length === 0 || params.senderEmail.length === 0) {
     return Effect.void;
@@ -30,6 +31,9 @@ export const sendEmail = (params: {
           to: [{ email: params.toEmail }],
           subject: params.subject,
           htmlContent: params.html,
+          ...(params.replyToEmail !== undefined && params.replyToEmail.length > 0
+            ? { replyTo: { email: params.replyToEmail } }
+            : {}),
         }),
       });
       if (!response.ok) {
