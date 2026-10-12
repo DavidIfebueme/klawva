@@ -49,24 +49,31 @@ export function Component() {
     agent: "session",
     name: session,
     query: { token },
-    ...(import.meta.env.VITE_AGENT_HOST === undefined
-      ? {}
-      : { host: import.meta.env.VITE_AGENT_HOST }),
+    host:
+      import.meta.env.VITE_AGENT_HOST ??
+      "https://klawva.klawva.workers.dev",
   });
-  const { messages } = useAgentChat<unknown, UIMessage>({ agent });
+  const { messages, connectionError } = useAgentChat<unknown, UIMessage>({ agent });
   const activity = useMemo(() => {
     const lines: Array<{ key: string; kind: "tool" | "text"; text: string }> = [];
     for (const message of messages) {
-      for (const line of toolActivity(message)) {
-        lines.push({ key: `${message.id}-t-${lines.length}`, kind: "tool", text: line });
-      }
-      const text = messageText(message).trim();
-      if (text.length > 0 && message.role === "assistant") {
-        lines.push({ key: `${message.id}-x-${lines.length}`, kind: "text", text });
+      for (const part of message.parts) {
+        if (part.type === "text" && message.role === "assistant") {
+          const text = part.text.trim();
+          if (text.length > 0) {
+            lines.push({ key: `${message.id}-${lines.length}`, kind: "text", text });
+          }
+        } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
+          const line = toolActivity({ ...message, parts: [part] })[0];
+          if (line !== undefined) {
+            lines.push({ key: `${message.id}-${lines.length}`, kind: "tool", text: line });
+          }
+        }
       }
     }
     return lines.slice(-8);
   }, [messages]);
+  const isLive = connectionError === null || connectionError === undefined;
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -98,7 +105,7 @@ export function Component() {
           {activity.length > 0 && (
             <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4 mb-10">
               <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
-                Live now
+                {isLive ? "Live now" : "Recent activity"}
               </p>
               <div className="flex flex-col gap-1.5">
                 {activity.map((line) =>
