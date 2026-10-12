@@ -43,9 +43,9 @@ export function Component() {
     agent: "session",
     name: session,
     query: { token },
-    host:
-      import.meta.env.VITE_AGENT_HOST ??
-      "https://klawva.klawva.workers.dev",
+    ...(import.meta.env.VITE_AGENT_HOST === undefined
+      ? {}
+      : { host: import.meta.env.VITE_AGENT_HOST }),
   });
   const { messages, connectionError } = useAgentChat<unknown, UIMessage>({ agent });
   const activity = useMemo(() => {
