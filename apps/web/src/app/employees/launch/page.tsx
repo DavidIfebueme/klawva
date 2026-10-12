@@ -10,12 +10,6 @@ import { Button } from "@/components/ui/Button";
 import { getSessionLaunch } from "@/lib/employees-api";
 import { toolActivity } from "@/lib/chat-activity";
 
-const messageText = (message: UIMessage): string =>
-  message.parts
-    .filter((part) => part.type === "text")
-    .map((part) => (part.type === "text" ? part.text : ""))
-    .join("\n");
-
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const session = params.session ?? url.searchParams.get("session");
