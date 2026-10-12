@@ -355,10 +355,29 @@ describe("self-check gate", () => {
   });
 
   it("revises once when the first reply fails the bar", async () => {
+    const draft = "weak draft without sources. ".repeat(12).trim();
+    const revised = "revised, cited, complete. ".repeat(12).trim();
     const out = await Effect.runPromise(
-      runTurn(params(["weak draft", "revised, cited, complete"], aiWith(false))),
+      runTurn(params([draft, revised], aiWith(false))),
     );
-    expect(out.text).toBe("revised, cited, complete");
+    expect(out.text).toBe(revised);
+  });
+
+  it("skips the gate for a trivial short reply", async () => {
+    let clefCalled = false;
+    const tracking = {
+      run: () => {
+        clefCalled = true;
+        return Promise.resolve({
+          answers: { meets_bar: { type: "noul", noul: 0.1 } },
+        });
+      },
+    } as unknown as Ai;
+    const out = await Effect.runPromise(
+      runTurn(params(["ok"], tracking)),
+    );
+    expect(out.text).toBe("ok");
+    expect(clefCalled).toBe(false);
   });
 
   it("passes the reply through when the quality check fails", async () => {

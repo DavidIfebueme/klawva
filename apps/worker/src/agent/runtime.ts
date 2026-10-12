@@ -294,6 +294,8 @@ export const buildMessages = (
 
 const maxToolRounds = 3;
 
+const minQualityGateChars = 200;
+
 const findTool = (
   allowlist: ReadonlyArray<string>,
   name: string,
@@ -349,7 +351,7 @@ export const runTurn = (params: {
         if (
           params.ai !== undefined &&
           !revised &&
-          result.text.trim().length > 0
+          result.text.trim().length >= minQualityGateChars
         ) {
           const quality = yield* checkReplyQuality(
             params.ai,
