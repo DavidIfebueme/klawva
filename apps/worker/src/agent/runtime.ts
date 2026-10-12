@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { fetchLinks, fetchUrl, webSearch } from "./tools.ts";
+import { checkReplyQuality, meetsQualityBar } from "../moderation/clef.ts";
 
 export const defaultModel = "@cf/zai-org/glm-4.7-flash";
 
@@ -293,6 +294,8 @@ export const buildMessages = (
 
 const maxToolRounds = 3;
 
+const minQualityGateChars = 200;
+
 const findTool = (
   allowlist: ReadonlyArray<string>,
   name: string,
@@ -329,6 +332,7 @@ export const runTurn = (params: {
   readonly sessionId: string;
   readonly allowlist: ReadonlyArray<string>;
   readonly braveKey: string;
+  readonly ai?: Ai;
 }): Effect.Effect<TurnResult, ModelError> =>
   Effect.gen(function* () {
     const ctx: ToolContext = {
@@ -339,10 +343,39 @@ export const runTurn = (params: {
       ...buildMessages(params.soul, params.brief, params.history),
     ];
     const steps: StepUsage[] = [];
+    let revised = false;
     for (let round = 0; round <= maxToolRounds; round++) {
       const result = yield* params.runtime.complete(messages, true);
       steps.push(result.usage);
       if (result.toolCalls.length === 0) {
+        if (
+          params.ai !== undefined &&
+          !revised &&
+          round < maxToolRounds &&
+          result.text.trim().length >= minQualityGateChars
+        ) {
+          const quality = yield* checkReplyQuality(
+            params.ai,
+            params.brief,
+            params.soul,
+            result.text,
+          ).pipe(Effect.timeoutOption("5 seconds"), Effect.option);
+          const verdict =
+            quality._tag === "Some" ? quality.value : undefined;
+          const checked = verdict !== undefined && verdict._tag === "Some"
+            ? verdict.value
+            : undefined;
+          if (checked !== undefined && !meetsQualityBar(checked)) {
+            revised = true;
+            messages.push({ role: "assistant", content: result.text });
+            messages.push({
+              role: "user",
+              content:
+                "That draft did not meet the bar. Revise it to fully satisfy your role and the brief: cite a source for every factual claim, follow the required output format, and do not fabricate.",
+            });
+            continue;
+          }
+        }
         return { text: result.text, steps };
       }
       messages.push({ role: "assistant", content: result.text });
