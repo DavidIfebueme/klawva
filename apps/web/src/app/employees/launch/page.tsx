@@ -1,9 +1,14 @@
+import { useMemo } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
+import { useAgent } from "agents/react";
+import { useAgentChat } from "@cloudflare/ai-chat/react";
+import type { UIMessage } from "ai";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { getSessionLaunch } from "@/lib/employees-api";
+import { toolActivity } from "@/lib/chat-activity";
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -34,6 +39,35 @@ export function Component() {
   const briefEntries = Object.entries(brief).filter(
     ([, value]) => value.trim().length > 0,
   );
+  const agent = useAgent({
+    agent: "session",
+    name: session,
+    query: { token },
+    host:
+      import.meta.env.VITE_AGENT_HOST ??
+      "https://klawva.klawva.workers.dev",
+  });
+  const { messages, connectionError } = useAgentChat<unknown, UIMessage>({ agent });
+  const activity = useMemo(() => {
+    const lines: Array<{ key: string; kind: "tool" | "text"; text: string }> = [];
+    for (const message of messages) {
+      for (const part of message.parts) {
+        if (part.type === "text" && message.role === "assistant") {
+          const text = part.text.trim();
+          if (text.length > 0) {
+            lines.push({ key: `${message.id}-${lines.length}`, kind: "text", text });
+          }
+        } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
+          const line = toolActivity({ ...message, parts: [part] })[0];
+          if (line !== undefined) {
+            lines.push({ key: `${message.id}-${lines.length}`, kind: "tool", text: line });
+          }
+        }
+      }
+    }
+    return lines.slice(-8);
+  }, [messages]);
+  const isLive = connectionError === null || connectionError === undefined;
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -44,7 +78,7 @@ export function Component() {
             Payment complete
           </span>
           {briefEntries.length > 0 && (
-            <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4 mb-10">
+            <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4 mb-6">
               <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
                 Your brief
               </p>
@@ -60,6 +94,32 @@ export function Component() {
                   </div>
                 ))}
               </dl>
+            </div>
+          )}
+          {activity.length > 0 && (
+            <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4 mb-10">
+              <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
+                {isLive ? "Live now" : "Recent activity"}
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {activity.map((line) =>
+                  line.kind === "tool" ? (
+                    <div
+                      key={line.key}
+                      className="font-mono text-[11px] text-klawva-dim"
+                    >
+                      ▸ {line.text}
+                    </div>
+                  ) : (
+                    <div
+                      key={line.key}
+                      className="font-mono text-sm text-klawva-text whitespace-pre-wrap"
+                    >
+                      {line.text}
+                    </div>
+                  ),
+                )}
+              </div>
             </div>
           )}
           {channel === "web" ? (
