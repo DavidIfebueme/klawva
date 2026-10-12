@@ -351,6 +351,7 @@ export const runTurn = (params: {
         if (
           params.ai !== undefined &&
           !revised &&
+          round < maxToolRounds &&
           result.text.trim().length >= minQualityGateChars
         ) {
           const quality = yield* checkReplyQuality(
@@ -358,8 +359,13 @@ export const runTurn = (params: {
             params.brief,
             params.soul,
             result.text,
-          ).pipe(Effect.option);
-          if (quality._tag === "Some" && !meetsQualityBar(quality.value)) {
+          ).pipe(Effect.timeoutOption("5 seconds"), Effect.option);
+          const verdict =
+            quality._tag === "Some" ? quality.value : undefined;
+          const checked = verdict !== undefined && verdict._tag === "Some"
+            ? verdict.value
+            : undefined;
+          if (checked !== undefined && !meetsQualityBar(checked)) {
             revised = true;
             messages.push({ role: "assistant", content: result.text });
             messages.push({
