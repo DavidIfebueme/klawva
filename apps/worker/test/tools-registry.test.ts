@@ -311,3 +311,67 @@ describe("text shaping", () => {
     );
   });
 });
+
+describe("self-check gate", () => {
+  const runtimeWith = (texts: string[]): AgentRuntimeImpl => {
+    let call = 0;
+    return {
+      complete: () => {
+        const text = texts[Math.min(call, texts.length - 1)];
+        call += 1;
+        return Effect.succeed({
+          text,
+          toolCalls: [],
+          usage: { model: "m", inTokens: 1, outTokens: 1, ok: true },
+        });
+      },
+    };
+  };
+
+  const aiWith = (meetsBar: boolean): Ai =>
+    ({
+      run: () =>
+        Promise.resolve({
+          answers: { meets_bar: { type: "noul", noul: meetsBar ? 0.9 : 0.1 } },
+        }),
+    }) as unknown as Ai;
+
+  const params = (texts: string[], ai: Ai) => ({
+    runtime: runtimeWith(texts),
+    soul: "You are a test agent.",
+    brief: { task: "do the thing" },
+    history: [],
+    sessionId: "s1",
+    allowlist: [],
+    braveKey: "",
+    ai,
+  });
+
+  it("returns a passing reply unchanged", async () => {
+    const out = await Effect.runPromise(
+      runTurn(params(["solid answer with source"], aiWith(true))),
+    );
+    expect(out.text).toBe("solid answer with source");
+  });
+
+  it("revises once when the first reply fails the bar", async () => {
+    const out = await Effect.runPromise(
+      runTurn(params(["weak draft", "revised, cited, complete"], aiWith(false))),
+    );
+    expect(out.text).toBe("revised, cited, complete");
+  });
+
+  it("passes the reply through when the quality check fails", async () => {
+    const down = { run: () => Promise.reject(new Error("clef down")) } as unknown as Ai;
+    const out = await Effect.runPromise(
+      runTurn(params(["some answer"], down)),
+    );
+    expect(out.text).toBe("some answer");
+  });
+
+  it("does not gate when no ai binding is provided", async () => {
+    const { ai: _ai, ...noAi } = params(["plain answer"], aiWith(true));
+    const out = await Effect.runPromise(runTurn(noAi));
+    expect(out.text).toBe("plain answer");
+  });
+});
