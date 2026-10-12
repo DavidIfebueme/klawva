@@ -700,6 +700,7 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: config.allowlist,
             braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
+            ai: sessionEnv.env.AI,
           }).pipe(
             Effect.flatMap((turn) =>
               Effect.forEach(turn.steps, (step) =>
@@ -786,6 +787,7 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: admission.config.allowlist,
             braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
+            ai: sessionEnv.env.AI,
           }).pipe(
             Effect.flatMap((turn) =>
               Effect.forEach(turn.steps, (step) =>
