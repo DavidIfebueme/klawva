@@ -202,22 +202,28 @@ export const handlePaystackWebhook = (
         .pipe(Effect.orDie);
       const employeeName =
         listingRow !== null ? String(listingRow.name) : "Your Klawva employee";
-      const isEmailChannel = String(sessionRow.channel) === "email";
+      const channel = String(sessionRow.channel);
       const openingReply = kickoffReply.trim();
+      const webChatHref =
+        channel === "web" && sessionRow.token !== null
+          ? `https://klawva.xyz/chat/${decoded.session_id}?token=${String(sessionRow.token)}`
+          : undefined;
       yield* sendEmail({
         apiKey: env.BREVO_API_KEY,
         senderEmail: env.BREVO_SENDER_EMAIL,
         senderName: employeeName,
         toEmail: String(sessionRow.email),
-        subject: isEmailChannel
-          ? `${employeeName} has started your shift`
-          : "Your Klawva employee is now active",
+        subject:
+          channel === "email"
+            ? `${employeeName} has started your shift`
+            : "Your Klawva employee is now active",
         html: shiftStartedEmail(
           employeeName,
           now,
           endIso,
-          isEmailChannel && openingReply.length > 0 ? openingReply : undefined,
-          isEmailChannel,
+          channel === "email" && openingReply.length > 0 ? openingReply : undefined,
+          channel,
+          webChatHref,
         ),
         replyToEmail:
           sessionRow.token !== null && String(sessionRow.token).length > 0
