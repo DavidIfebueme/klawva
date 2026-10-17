@@ -168,21 +168,26 @@ export function Component() {
   const employee = employeeLabel(who, agentSlug);
 
   const rows = useMemo(() => {
-    const seen = new Set<string>();
+    const liveContent = new Set<string>();
+    for (const message of messages) {
+      liveContent.add(`${message.role}:${toText(message)}`);
+    }
+    const seenSeed = new Set<string>();
     const merged: Row[] = [];
     for (const entry of fallback) {
       const fingerprint = `${entry.role}:${entry.content}`;
-      if (seen.has(fingerprint)) continue;
-      seen.add(fingerprint);
+      if (liveContent.has(fingerprint)) continue;
+      if (seenSeed.has(fingerprint)) continue;
+      seenSeed.add(fingerprint);
       merged.push({ key: `seed:${fingerprint}`, ...entry, tools: [] });
     }
+    const seenLive = new Set<string>();
     for (const message of messages) {
       const content = toText(message);
       const tools = toolActivity(message);
-      const fingerprint = `${message.role}:${content}`;
       if (content.length === 0 && tools.length === 0) continue;
-      if (seen.has(fingerprint)) continue;
-      seen.add(fingerprint);
+      if (seenLive.has(message.id)) continue;
+      seenLive.add(message.id);
       merged.push({
         key: `live:${message.id}`,
         role: message.role,
