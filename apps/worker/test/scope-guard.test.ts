@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   briefTooLong,
+  isConversational,
   screenBrief,
   screenScope,
   screenSoul,
@@ -85,6 +86,41 @@ describe("turn scope", () => {
     for (const text of inBrief) {
       expect(screenScope(text, hiringBrief)).not.toBe("off_brief");
     }
+  });
+});
+
+describe("conversational messages", () => {
+  const conversational = [
+    "hi",
+    "yo",
+    "wagwan",
+    "hello there",
+    "good morning",
+    "thanks, looks good",
+    "ok",
+    "how are you",
+    "what is the work you were hired for",
+    "what are you working on",
+    "how is the shift going",
+    "give me an update",
+  ];
+  const notConversational = [
+    "what is the weather in paris",
+    "find the cheapest iphone duo listing",
+    "write a 500 word market analysis of fintech startups",
+    "plan a birthday party for my mom this weekend",
+    "hi, plan a birthday party for my mom this weekend",
+    "hello, write me a market analysis",
+    "thanks, now write me a poem",
+    "what is the work, and also find me a recipe",
+  ];
+
+  it.each(conversational)("reads %s as conversation, not a work request", (text) => {
+    expect(isConversational(text)).toBe(true);
+  });
+
+  it.each(notConversational)("reads %s as a real request", (text) => {
+    expect(isConversational(text)).toBe(false);
   });
 });
 
