@@ -184,4 +184,28 @@ describe("clef scope gate in admitTurn", () => {
     );
     expect(admission._tag).toBe("Admitted");
   });
+
+  it.each(["hi", "wagwan", "how are you"])(
+    "admits the greeting %s without spending a clef call",
+    async (text) => {
+      const admission = await Effect.runPromise(
+        admitTurn(store(activeMeta), db, "s1", text, fakeAi(0.0)),
+      );
+      expect(admission._tag).toBe("Admitted");
+    },
+  );
+
+  it("admits a question about the task without spending a clef call", async () => {
+    const admission = await Effect.runPromise(
+      admitTurn(store(activeMeta), db, "s1", "what is the work you were hired for", fakeAi(0.0)),
+    );
+    expect(admission._tag).toBe("Admitted");
+  });
+
+  it("still rejects a semantically off-scope request that is not conversation", async () => {
+    const admission = await Effect.runPromise(
+      admitTurn(store(activeMeta), db, "s1", "plan a birthday party for my mom this weekend", fakeAi(0.05)),
+    );
+    expect(admission._tag).toBe("Rejected");
+  });
 });

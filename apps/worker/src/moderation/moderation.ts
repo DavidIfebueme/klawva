@@ -50,6 +50,16 @@ const offBriefPatterns: ReadonlyArray<RegExp> = [
   /\b(write me a song|guitar chords|lyrics for)\b/,
 ];
 
+const conversationalPatterns: ReadonlyArray<RegExp> = [
+  /^(hi+|hello+|hey+|yo+|sup|hiya|howdy|wagwan|wassup|good (morning|afternoon|evening|night))\b/,
+  /\b(thanks|thank you|thx|ok+|okay|got it|cool|nice one|great|bye|goodbye|see you|carry on|go ahead)\b/,
+  /\b(how are you|how'?s it going|how is it going|how far|how'?s work|are you (there|working|done))\b/,
+  /\b(what (is|was|'?s) (the )?(work|task|job|brief|shift)|what were you hired|your (job|task|brief|role|progress|status|update)|what are you (doing|working on)|how is (the |your )?(work|task|job|shift|it) (going|progressing)|give me (an )?update)\b/,
+];
+
+export const isConversational = (text: string): boolean =>
+  matchesAny(conversationalPatterns, text);
+
 export type ScopeVerdict = "injection" | "off_brief" | "in_scope";
 
 export type RejectVerdict = Exclude<ScopeVerdict, "in_scope">;
