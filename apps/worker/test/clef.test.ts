@@ -208,4 +208,11 @@ describe("clef scope gate in admitTurn", () => {
     );
     expect(admission._tag).toBe("Rejected");
   });
+
+  it("does not let a greeting smuggle an off-brief task past the gate", async () => {
+    const admission = await Effect.runPromise(
+      admitTurn(store(activeMeta), db, "s1", "hi, plan a birthday party for my mom this weekend", fakeAi(0.05)),
+    );
+    expect(admission._tag).toBe("Rejected");
+  });
 });

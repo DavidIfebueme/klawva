@@ -109,6 +109,10 @@ describe("conversational messages", () => {
     "find the cheapest iphone duo listing",
     "write a 500 word market analysis of fintech startups",
     "plan a birthday party for my mom this weekend",
+    "hi, plan a birthday party for my mom this weekend",
+    "hello, write me a market analysis",
+    "thanks, now write me a poem",
+    "what is the work, and also find me a recipe",
   ];
 
   it.each(conversational)("reads %s as conversation, not a work request", (text) => {

@@ -51,10 +51,10 @@ const offBriefPatterns: ReadonlyArray<RegExp> = [
 ];
 
 const conversationalPatterns: ReadonlyArray<RegExp> = [
-  /^(hi+|hello+|hey+|yo+|sup|hiya|howdy|wagwan|wassup|good (morning|afternoon|evening|night))\b/,
-  /\b(thanks|thank you|thx|ok+|okay|got it|cool|nice one|great|bye|goodbye|see you|carry on|go ahead)\b/,
-  /\b(how are you|how'?s it going|how is it going|how far|how'?s work|are you (there|working|done))\b/,
-  /\b(what (is|was|'?s) (the )?(work|task|job|brief|shift)|what were you hired|your (job|task|brief|role|progress|status|update)|what are you (doing|working on)|how is (the |your )?(work|task|job|shift|it) (going|progressing)|give me (an )?update)\b/,
+  /^(hi+|hello+|hey+|yo+|sup|hiya|howdy|wagwan|wassup|good (morning|afternoon|evening|night))( there)?[.,!? ]*$/,
+  /^(thanks|thank you|thx|ok+|okay|got it|cool|nice one|great|bye|goodbye|see you|carry on|go ahead)([,.!? ]+(thanks|thank you|ok+|okay|got it|looks good|good|then))*[.,!? ]*$/,
+  /^(how are you|how'?s it going|how is it going|how far|how'?s work|are you (there|working|done))[? ]*$/,
+  /^(what (is|was|'?s) (the )?(work|task|job|brief|shift)( you were hired for)?|what were you hired (for|to do)|what'?s your (job|task|brief|role|progress|status|update)|what are you (doing|working on)|how is (the |your )?(work|task|job|shift|it) (going|progressing)|give me (an )?update)[? ]*$/,
 ];
 
 export const isConversational = (text: string): boolean =>
