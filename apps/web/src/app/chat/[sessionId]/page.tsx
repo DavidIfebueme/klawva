@@ -144,6 +144,15 @@ export function Component() {
       ? {}
       : { host: import.meta.env.VITE_AGENT_HOST }),
   });
+  const initialMessages = useMemo(
+    () =>
+      fallback.map((entry, index) => ({
+        id: `fallback:${index}`,
+        role: entry.role,
+        parts: [{ type: "text" as const, text: entry.content }],
+      })),
+    [fallback],
+  );
   const {
     messages,
     sendMessage,
@@ -153,7 +162,10 @@ export function Component() {
     connectionError,
     isServerStreaming,
     isRecovering,
-  } = useAgentChat<unknown, UIMessage>({ agent });
+  } = useAgentChat<unknown, UIMessage>({
+    agent,
+    getInitialMessages: async () => initialMessages,
+  });
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState("");
   const pin = useRef({ count: -1, busy: false, lastLen: 0, tools: "" });
