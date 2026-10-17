@@ -34,18 +34,11 @@ describe("shift-started email", () => {
   const start = "2026-10-17T10:00:00.000Z";
   const end = "2026-10-19T10:00:00.000Z";
 
-  it("points web sessions at the chat, not telegram", () => {
-    const html = shiftStartedEmail(
-      "Lead Scout",
-      start,
-      end,
-      undefined,
-      "web",
-      "https://klawva.xyz/chat/s1?token=t1",
-    );
-    expect(html).toContain("https://klawva.xyz/chat/s1?token=t1");
-    expect(html).toContain("Open your employee's chat");
+  it("points web sessions at their account, with no token in the email", () => {
+    const html = shiftStartedEmail("Lead Scout", start, end, undefined, "web");
+    expect(html).toContain("Open your Klawva account");
     expect(html).not.toContain("Telegram");
+    expect(html).not.toContain("token=");
   });
 
   it("tells email sessions to reply", () => {
@@ -57,12 +50,6 @@ describe("shift-started email", () => {
   it("tells telegram sessions to message the bot", () => {
     const html = shiftStartedEmail("Lead Scout", start, end, undefined, "telegram");
     expect(html).toContain("Telegram");
-  });
-
-  it("keeps a tokenless web session off the telegram line", () => {
-    const html = shiftStartedEmail("Lead Scout", start, end, undefined, "web");
-    expect(html).toContain("Open your Klawva account");
-    expect(html).not.toContain("Telegram");
   });
 
   it("shows the opening reply when the employee opened", () => {

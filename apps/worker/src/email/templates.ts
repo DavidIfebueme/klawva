@@ -83,7 +83,6 @@ export const shiftStartedEmail = (
   endIso: string,
   openingReply: string | undefined,
   channel: string,
-  webChatHref?: string,
 ): string => {
   const start = new Date(startIso).toUTCString();
   const end = new Date(endIso).toUTCString();
@@ -93,9 +92,7 @@ export const shiftStartedEmail = (
       : channel === "email"
         ? `<br/><br/>Reply to this email to give it instructions.`
         : channel === "web"
-          ? webChatHref !== undefined
-            ? `<br/><br/><a href="${webChatHref}">Open your employee's chat</a> to give it instructions.`
-            : `<br/><br/>Open your Klawva account to give it instructions.`
+          ? `<br/><br/>Open your Klawva account to give it instructions.`
           : `<br/>Message the bot on Telegram to give instructions.`;
   return renderTemplate({
     title: "Your employee is now active",
