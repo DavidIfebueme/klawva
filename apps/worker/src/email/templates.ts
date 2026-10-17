@@ -92,8 +92,10 @@ export const shiftStartedEmail = (
       ? `<br/><br/><em>${escapeHtml(employeeName)}:</em><br/>${escapeHtml(openingReply)}<br/><br/>Reply to this email to redirect it.`
       : channel === "email"
         ? `<br/><br/>Reply to this email to give it instructions.`
-        : channel === "web" && webChatHref !== undefined
-          ? `<br/><br/><a href="${webChatHref}">Open your employee's chat</a> to give it instructions.`
+        : channel === "web"
+          ? webChatHref !== undefined
+            ? `<br/><br/><a href="${webChatHref}">Open your employee's chat</a> to give it instructions.`
+            : `<br/><br/>Open your Klawva account to give it instructions.`
           : `<br/>Message the bot on Telegram to give instructions.`;
   return renderTemplate({
     title: "Your employee is now active",

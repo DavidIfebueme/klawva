@@ -59,6 +59,12 @@ describe("shift-started email", () => {
     expect(html).toContain("Telegram");
   });
 
+  it("keeps a tokenless web session off the telegram line", () => {
+    const html = shiftStartedEmail("Lead Scout", start, end, undefined, "web");
+    expect(html).toContain("Open your Klawva account");
+    expect(html).not.toContain("Telegram");
+  });
+
   it("shows the opening reply when the employee opened", () => {
     const html = shiftStartedEmail("Lead Scout", start, end, "On it.", "web");
     expect(html).toContain("On it.");
