@@ -21,6 +21,18 @@ import { routeAgentRequest } from "agents";
 import { authorizeStream } from "./session/agent.ts";
 import { sessionTokenMatches } from "./account/account.ts";
 import { constantTimeEqual } from "./lib/secure.ts";
+import {
+  COOKIE_NAME,
+  isPublicApiPath,
+  ownerBlockedResponse,
+  ownerGateEnabled,
+  ownerTokenIsValid,
+  ownerUnlockCookie,
+  ownerUnlockPage,
+  parseCookie,
+  signatureVerifiedApiPath,
+  unlockKeyFromRequest,
+} from "./lib/owner.ts";
 import { signToken, verifyToken } from "./auth/tokens.ts";
 
 export { SessionAgent } from "./session/stream-agent.ts";
@@ -29,6 +41,23 @@ export { WalletAgent } from "./wallet/wallet.ts";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/owner") {
+      return ownerUnlockPage();
+    }
+    if (url.pathname === "/owner/unlock" && request.method === "POST") {
+      const cookie = await ownerUnlockCookie(
+        env.AUTH_SECRET,
+        env.OWNER_KEY,
+        await unlockKeyFromRequest(request),
+      );
+      if (cookie === null) {
+        return new Response(null, { status: 401 });
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { location: "/", "set-cookie": cookie },
+      });
+    }
     if (url.pathname === "/internal/sweep") {
       const provided = request.headers.get("x-cron-secret") ?? "";
       if (env.CRON_SECRET.length === 0 || !constantTimeEqual(provided, env.CRON_SECRET)) {
@@ -43,6 +72,16 @@ export default {
       const segments = url.pathname.split("/").filter((part) => part.length > 0);
       if (segments[0] !== "agents" || segments[1] !== "session") {
         return Response.json({ ok: false }, { status: 404 });
+      }
+      if (
+        ownerGateEnabled(env.OWNER_ONLY, env.OWNER_KEY ?? "") &&
+        !(await ownerTokenIsValid(
+          env.AUTH_SECRET,
+          env.OWNER_KEY ?? "",
+          parseCookie(request.headers.get("cookie"), COOKIE_NAME),
+        ))
+      ) {
+        return ownerBlockedResponse();
       }
       const sessionId = segments[2] ?? "";
       const allowed = await Effect.runPromise(
@@ -62,6 +101,19 @@ export default {
         (await routeAgentRequest(request, env)) ??
         Response.json({ ok: false }, { status: 404 })
       );
+    }
+    if (
+      url.pathname.startsWith("/api/") &&
+      ownerGateEnabled(env.OWNER_ONLY, env.OWNER_KEY) &&
+      !isPublicApiPath(url.pathname) &&
+      !signatureVerifiedApiPath(url.pathname) &&
+      !(await ownerTokenIsValid(
+        env.AUTH_SECRET,
+        env.OWNER_KEY ?? "",
+        parseCookie(request.headers.get("cookie"), COOKIE_NAME),
+      ))
+    ) {
+      return ownerBlockedResponse();
     }
     if (url.pathname === "/api/discord/interactions") {
       const rawBody = await request.text();
