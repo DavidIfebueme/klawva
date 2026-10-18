@@ -133,6 +133,24 @@ describe("session activation", () => {
     expect(meta.window_end).toBe("2026-01-02T00:00:00.000Z");
     expect(writes.length).toBe(1);
   });
+
+  it("treats a hibernating session as already activated", async () => {
+    const { store, meta } = fakeStore({
+      state: "hibernating",
+      window_start: "2026-01-01T00:00:00.000Z",
+      window_end: "2026-01-02T00:00:00.000Z",
+    });
+    const { db, writes } = fakeDb();
+
+    const result = await Effect.runPromise(
+      activateSession(store, db, "s1", "2026-01-02T00:00:00.000Z"),
+    );
+
+    expect(result).toEqual({ state: "hibernating", newlyActivated: false });
+    expect(meta.state).toBe("hibernating");
+    expect(writes.length).toBe(1);
+    expect(writes[0].params[0]).toBe("hibernating");
+  });
 });
 
 describe("session expiry", () => {
@@ -148,7 +166,7 @@ describe("session expiry", () => {
     expect(writes[0].params[0]).toBe("expired");
   });
 
-  it("projects the durable object state when expiry cannot apply", async () => {
+  it("leaves a session that cannot expire alone and projects its state", async () => {
     const { store, meta } = fakeStore({
       state: "active",
       window_start: "2026-01-01T00:00:00.000Z",
@@ -156,12 +174,24 @@ describe("session expiry", () => {
     });
     const { db, writes } = fakeDb();
 
-    const exit = await Effect.runPromiseExit(expireSession(store, db, "s1"));
+    const next = await Effect.runPromise(expireSession(store, db, "s1"));
 
-    expect(exit._tag).toBe("Failure");
+    expect(next).toBe("active");
     expect(meta.state).toBe("active");
     expect(writes.length).toBe(1);
     expect(writes[0].params[0]).toBe("active");
+  });
+
+  it("closes a legacy state that the union no longer carries", async () => {
+    const { store, meta } = fakeStore({ state: "provisioning" });
+    const { db, writes } = fakeDb();
+
+    const next = await Effect.runPromise(expireSession(store, db, "s1"));
+
+    expect(next).toBe("expired");
+    expect(meta.state).toBe("provisioning");
+    expect(writes.length).toBe(1);
+    expect(writes[0].params[0]).toBe("expired");
   });
 });
 

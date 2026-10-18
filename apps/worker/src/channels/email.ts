@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import PostalMime from "postal-mime";
 import { make as makeDatabase } from "../db/database.ts";
-import { liveSessionStates } from "../db/schema.ts";
+import { liveSessionStates, type SessionState } from "../db/schema.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { renderTemplate } from "../email/templates.ts";
 import { toEmailHtml } from "../lib/markdown.ts";
@@ -20,7 +20,7 @@ const replyAddressValue = "employees@klawva.xyz";
 const replyAddressPrefix = "employees+";
 const maxBytes = 1_000_000;
 
-const replyableStates: ReadonlyArray<string> = ["pending", ...liveSessionStates];
+const replyableStates: ReadonlyArray<SessionState> = ["pending", ...liveSessionStates];
 const replyableSlots = replyableStates.map(() => "?").join(", ");
 
 export const replyAddress = (): string => replyAddressValue;

@@ -11,6 +11,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import {
+  liveSessionStates,
   SessionState,
   sessionTransitions,
   terminalSessionStates,
@@ -246,7 +247,7 @@ export const admitTurn = (
   ai?: Ai,
 ): Effect.Effect<TurnAdmission, BudgetExhausted> =>
   Effect.gen(function* () {
-    const state = (yield* store.get("state")) ?? "pending";
+    const state = yield* currentState(store);
     if (state === "pending") {
       return {
         _tag: "AwaitingPayment",
@@ -592,7 +593,6 @@ const complete = HttpApiEndpoint.post("complete", "/complete", {
 
 const expire = HttpApiEndpoint.post("expire", "/expire", {
   success: StateResponse,
-  error: IllegalTransition,
 });
 
 const history = HttpApiEndpoint.get("history", "/history", {
@@ -634,10 +634,18 @@ class SessionGroup extends HttpApiGroup.make("Session")
 
 class SessionApi extends HttpApi.make("SessionApi").add(SessionGroup) {}
 
+const legacyStates: Readonly<Record<string, SessionState>> = {
+  provisioning: "expired",
+};
+
 const currentState = (store: SessionStoreImpl): Effect.Effect<SessionState> =>
   Effect.gen(function* () {
     const raw = yield* store.get("state");
-    return raw === null ? "pending" : Schema.decodeUnknownSync(SessionState)(raw);
+    if (raw === null) {
+      return "pending";
+    }
+    const legacy = legacyStates[raw];
+    return legacy ?? Schema.decodeUnknownSync(SessionState)(raw);
   });
 
 export const activateSession = (
@@ -651,13 +659,13 @@ export const activateSession = (
 > =>
   Effect.gen(function* () {
     const from = yield* currentState(store);
-    if (from === "active") {
+    if (liveSessionStates.includes(from)) {
       const existing = yield* store.get("window_end");
       if (existing === null || windowEnd > existing) {
         yield* store.set("window_end", windowEnd);
       }
       yield* projectState(store, db, sessionId, from);
-      return { state: "active" as const, newlyActivated: false };
+      return { state: from, newlyActivated: false };
     }
     const next = yield* transition(from, "active");
     yield* store.set("state", next);
@@ -674,16 +682,16 @@ export const expireSession = (
   store: SessionStoreImpl,
   db: DatabaseImpl,
   sessionId: string,
-): Effect.Effect<SessionState, IllegalTransition> =>
+): Effect.Effect<SessionState> =>
   Effect.gen(function* () {
     const from = yield* currentState(store);
     if (!canTransition(from, "expired")) {
       yield* projectState(store, db, sessionId, from);
+      return from;
     }
-    const next = yield* transition(from, "expired");
-    yield* store.set("state", next);
-    yield* projectState(store, db, sessionId, next);
-    return next;
+    yield* store.set("state", "expired");
+    yield* projectState(store, db, sessionId, "expired");
+    return "expired";
   });
 
 const sessionGroup = HttpApiBuilder.group(
@@ -701,6 +709,7 @@ const sessionGroup = HttpApiBuilder.group(
       )
       .handle("init", ({ payload }) =>
         Effect.gen(function* () {
+          const db = makeDatabase(sessionEnv.env.DB);
           yield* store.set("state", payload.state);
           yield* store.set("budget_minor", String(payload.budgetMinor));
           yield* store.set("spent_minor", "0");
@@ -712,6 +721,7 @@ const sessionGroup = HttpApiBuilder.group(
             JSON.stringify(payload.allowlist ?? defaultToolAllowlist),
           );
           yield* store.set("model", payload.model ?? defaultModel);
+          yield* projectState(store, db, sessionEnv.sessionId, payload.state);
           return { state: payload.state };
         }),
       )
