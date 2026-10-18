@@ -12,6 +12,7 @@ import {
   ownerUnlockPage,
   parseCookie,
   signatureVerifiedApiPath,
+  unlockKeyFromRequest,
 } from "../src/lib/owner.ts";
 
 const secret = "test-secret";
@@ -92,6 +93,31 @@ describe("owner gate", () => {
 
   it("blocks with a private testing response", () => {
     expect(ownerBlockedResponse().status).toBe(403);
+  });
+
+  it("reads the unlock key from a form body and treats other bodies as empty", async () => {
+    const form = new Request("https://x/owner/unlock", {
+      method: "POST",
+      body: new URLSearchParams({ key: "s3cret" }),
+    });
+    expect(await unlockKeyFromRequest(form)).toBe("s3cret");
+
+    const json = new Request("https://x/owner/unlock", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"key":"s3cret"}',
+    });
+    expect(await unlockKeyFromRequest(json)).toBe("");
+
+    const empty = new Request("https://x/owner/unlock", { method: "POST" });
+    expect(await unlockKeyFromRequest(empty)).toBe("");
+
+    const badMultipart = new Request("https://x/owner/unlock", {
+      method: "POST",
+      headers: { "content-type": "multipart/form-data" },
+      body: "x",
+    });
+    expect(await unlockKeyFromRequest(badMultipart)).toBe("");
   });
 
   it("serves the unlock form", async () => {

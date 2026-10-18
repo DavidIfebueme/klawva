@@ -73,6 +73,19 @@ export const ownerUnlockCookie = async (
   return exit._tag === "Success" ? buildOwnerCookie(exit.value) : null;
 };
 
+export const unlockKeyFromRequest = async (
+  request: Request,
+): Promise<string> => {
+  const exit = await Effect.runPromiseExit(
+    Effect.tryPromise(() => request.formData()),
+  );
+  if (exit._tag !== "Success") {
+    return "";
+  }
+  const value = exit.value.get("key");
+  return typeof value === "string" ? value : "";
+};
+
 export const ownerBlockedResponse = (): Response =>
   Response.json({ error: "private_testing" }, { status: 403 });
 

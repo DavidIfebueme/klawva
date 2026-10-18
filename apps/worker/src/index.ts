@@ -31,6 +31,7 @@ import {
   ownerUnlockPage,
   parseCookie,
   signatureVerifiedApiPath,
+  unlockKeyFromRequest,
 } from "./lib/owner.ts";
 import { signToken, verifyToken } from "./auth/tokens.ts";
 
@@ -44,12 +45,10 @@ export default {
       return ownerUnlockPage();
     }
     if (url.pathname === "/owner/unlock" && request.method === "POST") {
-      const form = await request.formData();
-      const value = form.get("key");
       const cookie = await ownerUnlockCookie(
         env.AUTH_SECRET,
         env.OWNER_KEY,
-        typeof value === "string" ? value : "",
+        await unlockKeyFromRequest(request),
       );
       if (cookie === null) {
         return new Response(null, { status: 401 });
