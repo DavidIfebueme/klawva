@@ -640,6 +640,52 @@ const currentState = (store: SessionStoreImpl): Effect.Effect<SessionState> =>
     return raw === null ? "pending" : Schema.decodeUnknownSync(SessionState)(raw);
   });
 
+export const activateSession = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  windowEnd: string,
+): Effect.Effect<
+  { state: SessionState; newlyActivated: boolean },
+  IllegalTransition
+> =>
+  Effect.gen(function* () {
+    const from = yield* currentState(store);
+    if (from === "active") {
+      const existing = yield* store.get("window_end");
+      if (existing === null || windowEnd > existing) {
+        yield* store.set("window_end", windowEnd);
+      }
+      yield* projectState(store, db, sessionId, from);
+      return { state: "active" as const, newlyActivated: false };
+    }
+    const next = yield* transition(from, "active");
+    yield* store.set("state", next);
+    const started = yield* store.get("window_start");
+    if (started === null) {
+      yield* store.set("window_start", new Date().toISOString());
+    }
+    yield* store.set("window_end", windowEnd);
+    yield* projectState(store, db, sessionId, next);
+    return { state: next, newlyActivated: true };
+  });
+
+export const expireSession = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+): Effect.Effect<SessionState, IllegalTransition> =>
+  Effect.gen(function* () {
+    const from = yield* currentState(store);
+    if (!canTransition(from, "expired")) {
+      yield* projectState(store, db, sessionId, from);
+    }
+    const next = yield* transition(from, "expired");
+    yield* store.set("state", next);
+    yield* projectState(store, db, sessionId, next);
+    return next;
+  });
+
 const sessionGroup = HttpApiBuilder.group(
   SessionApi,
   "Session",
@@ -669,29 +715,10 @@ const sessionGroup = HttpApiBuilder.group(
           return { state: payload.state };
         }),
       )
-      .handle("activate", ({ payload }) =>
-        Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
-          const from = yield* currentState(store);
-          if (from === "active") {
-            const existing = yield* store.get("window_end");
-            if (existing === null || payload.windowEnd > existing) {
-              yield* store.set("window_end", payload.windowEnd);
-              yield* projectState(store, db, sessionEnv.sessionId, "active");
-            }
-            return { state: "active" as const, newlyActivated: false };
-          }
-          const next = yield* transition(from, "active");
-          yield* store.set("state", next);
-          const started = yield* store.get("window_start");
-          if (started === null) {
-            yield* store.set("window_start", new Date().toISOString());
-          }
-          yield* store.set("window_end", payload.windowEnd);
-          yield* projectState(store, db, sessionEnv.sessionId, next);
-          return { state: next, newlyActivated: true };
-        }),
-      )
+      .handle("activate", ({ payload }) => {
+        const db = makeDatabase(sessionEnv.env.DB);
+        return activateSession(store, db, sessionEnv.sessionId, payload.windowEnd);
+      })
       .handle("complete", () =>
         Effect.gen(function* () {
           const db = makeDatabase(sessionEnv.env.DB);
@@ -702,13 +729,11 @@ const sessionGroup = HttpApiBuilder.group(
         }),
       )
       .handle("expire", () =>
-        Effect.gen(function* () {
-          const db = makeDatabase(sessionEnv.env.DB);
-          const next = yield* transition(yield* currentState(store), "expired");
-          yield* store.set("state", next);
-          yield* projectState(store, db, sessionEnv.sessionId, next);
-          return { state: next };
-        }),
+        expireSession(
+          store,
+          makeDatabase(sessionEnv.env.DB),
+          sessionEnv.sessionId,
+        ).pipe(Effect.map((state) => ({ state }))),
       )
       .handle("kickoff", () =>
         Effect.gen(function* () {

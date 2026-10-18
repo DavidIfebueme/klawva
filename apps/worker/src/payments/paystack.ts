@@ -64,6 +64,7 @@ const PaymentRow = Schema.Struct({
   duration_days: Schema.optionalKey(Schema.Number),
   amount_minor: Schema.Number,
   status: Schema.String,
+  confirmed_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 export const handlePaystackWebhook = (
@@ -101,7 +102,7 @@ export const handlePaystackWebhook = (
     }
     const payment = yield* db
       .first(
-        "SELECT p.session_id AS session_id, p.amount_minor AS amount_minor, p.status AS status, s.duration_days AS duration_days FROM payments p JOIN sessions s ON s.id = p.session_id WHERE p.provider_reference = ?",
+        "SELECT p.session_id AS session_id, p.amount_minor AS amount_minor, p.status AS status, p.confirmed_at AS confirmed_at, s.duration_days AS duration_days FROM payments p JOIN sessions s ON s.id = p.session_id WHERE p.provider_reference = ?",
         [reference],
       )
       .pipe(Effect.orDie);
@@ -110,7 +111,10 @@ export const handlePaystackWebhook = (
     }
     const decoded = Schema.decodeUnknownSync(PaymentRow)(payment);
     const now = new Date().toISOString();
-    const endIso = windowEndFor(Date.now(), Number(decoded.duration_days ?? 1));
+    const endIso = windowEndFor(
+      Date.parse(decoded.confirmed_at ?? now),
+      Number(decoded.duration_days ?? 1),
+    );
     if (decoded.status !== "confirmed") {
       const confirmed = yield* db
         .first(
