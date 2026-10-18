@@ -51,7 +51,7 @@ export const decideScope = (
           in_scope: {
             type: "noul",
             instructions:
-              "Is the customer message within the scope of the employer brief? Answer true only when the message asks for work the brief describes.",
+              "Is the customer message within the scope of the employer brief? Answer true when the message asks for work the brief describes, or when it is a greeting, small talk, a thank-you, or a question about the worker's assigned task or progress. Answer false for any other message.",
           },
         },
       });
