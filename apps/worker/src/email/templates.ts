@@ -81,17 +81,19 @@ export const shiftStartedEmail = (
   employeeName: string,
   startIso: string,
   endIso: string,
-  openingReply?: string,
-  isEmailChannel: boolean = false,
+  openingReply: string | undefined,
+  channel: string,
 ): string => {
   const start = new Date(startIso).toUTCString();
   const end = new Date(endIso).toUTCString();
   const opening =
     openingReply !== undefined && openingReply.trim().length > 0
       ? `<br/><br/><em>${escapeHtml(employeeName)}:</em><br/>${escapeHtml(openingReply)}<br/><br/>Reply to this email to redirect it.`
-      : isEmailChannel
+      : channel === "email"
         ? `<br/><br/>Reply to this email to give it instructions.`
-        : `<br/>Message the bot on Telegram to give instructions.`;
+        : channel === "web"
+          ? `<br/><br/>Open your Klawva account to give it instructions.`
+          : `<br/>Message the bot on Telegram to give instructions.`;
   return renderTemplate({
     title: "Your employee is now active",
     body: `<strong>${escapeHtml(employeeName)}</strong> is on shift.<br/>Start: <strong>${start}</strong><br/>End: <strong>${end}</strong>${opening}`,
