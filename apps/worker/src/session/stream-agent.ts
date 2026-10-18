@@ -59,7 +59,11 @@ export class SessionAgent extends AIChatAgent<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname.startsWith("/agents/")) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/agents/")) {
+      if (url.searchParams.get("__agents_transport") === "capnweb") {
+        return new Response("hibernating transport only", { status: 400 });
+      }
       return super.fetch(request);
     }
     return serveRestApi(
