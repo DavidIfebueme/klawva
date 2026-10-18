@@ -28,3 +28,11 @@ jobs:
             fi
           done < <(git ls-files)
           exit $failed
+      - name: keep one writer for session state
+        run: |
+          offenders=$(git grep -n -I -i -E 'UPDATE[[:space:]]+sessions[[:space:]]+SET[[:space:]]+state' -- 'apps/worker/src' ':!apps/worker/src/session/agent.ts' || true)
+          if [ -n "$offenders" ]; then
+            echo "Session state is projected from the session durable object. Write it through projectState in apps/worker/src/session/agent.ts, not directly."
+            echo "$offenders"
+            exit 1
+          fi
