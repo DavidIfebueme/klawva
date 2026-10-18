@@ -1,8 +1,5 @@
 import React, { useRef, useState } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
-import mammoth from "mammoth";
-import * as pdfjsLib from "pdfjs-dist";
-import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
@@ -16,11 +13,14 @@ import {
   type EmployeeDetail,
 } from "@/lib/employees-api";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-
 const maxUploadBytes = 10 * 1024 * 1024;
 
 const extractPdfText = async (buffer: ArrayBuffer): Promise<string> => {
+  const [pdfjsLib, workerSrc] = await Promise.all([
+    import("pdfjs-dist"),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+  ]);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc.default;
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
   const parts: string[] = [];
   for (let n = 1; n <= doc.numPages; n += 1) {
@@ -46,6 +46,7 @@ const extractFileText = async (file: File): Promise<string> => {
     return extractPdfText(buffer);
   }
   if (lower.endsWith(".docx")) {
+    const { default: mammoth } = await import("mammoth");
     const result = await mammoth.extractRawText({ arrayBuffer: buffer });
     return result.value;
   }
