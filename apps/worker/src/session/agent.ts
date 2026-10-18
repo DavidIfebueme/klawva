@@ -27,7 +27,7 @@ import {
   checkNeuronBudget,
   recordAiUsage,
 } from "../agent/meter.ts";
-import { screenScope, steerReply } from "../moderation/moderation.ts";
+import { isConversational, screenScope, steerReply } from "../moderation/moderation.ts";
 import {
   clefFlashModel,
   decideScope,
@@ -260,7 +260,7 @@ export const admitTurn = (
     if (verdict !== "in_scope") {
       return { _tag: "Rejected", reply: steerReply(verdict) } as const;
     }
-    if (ai !== undefined) {
+    if (ai !== undefined && !isConversational(userText)) {
       const scope = yield* decideScope(ai, config.brief, userText).pipe(
         Effect.tap((output) =>
           recordAiUsage(db, {
