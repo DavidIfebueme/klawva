@@ -95,7 +95,7 @@ export async function getSessionLaunch(
 }
 
 const chatMessage = Schema.Struct({
-  role: Schema.String,
+  role: Schema.Literals(["user", "assistant"]),
   content: Schema.String,
   createdAt: Schema.String,
 });
