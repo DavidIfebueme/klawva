@@ -144,6 +144,15 @@ export function Component() {
       ? {}
       : { host: import.meta.env.VITE_AGENT_HOST }),
   });
+  const initialMessages = useMemo(
+    () =>
+      fallback.map((entry, index) => ({
+        id: `fallback:${index}`,
+        role: entry.role,
+        parts: [{ type: "text" as const, text: entry.content }],
+      })),
+    [fallback],
+  );
   const {
     messages,
     sendMessage,
@@ -153,7 +162,10 @@ export function Component() {
     connectionError,
     isServerStreaming,
     isRecovering,
-  } = useAgentChat<unknown, UIMessage>({ agent });
+  } = useAgentChat<unknown, UIMessage>({
+    agent,
+    getInitialMessages: async () => initialMessages,
+  });
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState("");
   const pin = useRef({ count: -1, busy: false, lastLen: 0, tools: "" });
@@ -168,29 +180,33 @@ export function Component() {
   const employee = employeeLabel(who, agentSlug);
 
   const rows = useMemo(() => {
-    const seen = new Set<string>();
-    const merged: Row[] = [];
+    if (messages.length > 0) {
+      const seenLive = new Set<string>();
+      const live: Row[] = [];
+      for (const message of messages) {
+        const content = toText(message);
+        const tools = toolActivity(message);
+        if (content.length === 0 && tools.length === 0) continue;
+        if (seenLive.has(message.id)) continue;
+        seenLive.add(message.id);
+        live.push({
+          key: `live:${message.id}`,
+          role: message.role,
+          content,
+          tools,
+        });
+      }
+      return live;
+    }
+    const seenSeed = new Set<string>();
+    const seeds: Row[] = [];
     for (const entry of fallback) {
       const fingerprint = `${entry.role}:${entry.content}`;
-      if (seen.has(fingerprint)) continue;
-      seen.add(fingerprint);
-      merged.push({ key: `seed:${fingerprint}`, ...entry, tools: [] });
+      if (seenSeed.has(fingerprint)) continue;
+      seenSeed.add(fingerprint);
+      seeds.push({ key: `seed:${fingerprint}`, ...entry, tools: [] });
     }
-    for (const message of messages) {
-      const content = toText(message);
-      const tools = toolActivity(message);
-      const fingerprint = `${message.role}:${content}`;
-      if (content.length === 0 && tools.length === 0) continue;
-      if (seen.has(fingerprint)) continue;
-      seen.add(fingerprint);
-      merged.push({
-        key: `live:${message.id}`,
-        role: message.role,
-        content,
-        tools,
-      });
-    }
-    return merged;
+    return seeds;
   }, [fallback, messages]);
 
   const lastRow = rows.length === 0 ? null : rows[rows.length - 1];
