@@ -5,7 +5,7 @@ import {
   sessionReplyAddress,
 } from "../src/channels/email.ts";
 import { reportEmailHtml } from "../src/email/brevo.ts";
-import { magicLinkEmail } from "../src/email/templates.ts";
+import { magicLinkEmail, shiftStartedEmail } from "../src/email/templates.ts";
 
 describe("email routing address", () => {
   it("accepts the shared reply address and tokenized session addresses", () => {
@@ -27,6 +27,35 @@ describe("shift-ended email", () => {
     expect(html).toContain("KLAWVA");
     expect(html).toContain("https://www.klawva.xyz/report/abc?shareToken=xyz");
     expect(html).toContain("View your mission report");
+  });
+});
+
+describe("shift-started email", () => {
+  const start = "2026-10-17T10:00:00.000Z";
+  const end = "2026-10-19T10:00:00.000Z";
+
+  it("points web sessions at their account, with no token in the email", () => {
+    const html = shiftStartedEmail("Lead Scout", start, end, undefined, "web");
+    expect(html).toContain("Open your Klawva account");
+    expect(html).not.toContain("Telegram");
+    expect(html).not.toContain("token=");
+  });
+
+  it("tells email sessions to reply", () => {
+    const html = shiftStartedEmail("Lead Scout", start, end, undefined, "email");
+    expect(html).toContain("Reply to this email to give it instructions");
+    expect(html).not.toContain("Telegram");
+  });
+
+  it("tells telegram sessions to message the bot", () => {
+    const html = shiftStartedEmail("Lead Scout", start, end, undefined, "telegram");
+    expect(html).toContain("Telegram");
+  });
+
+  it("shows the opening reply when the employee opened", () => {
+    const html = shiftStartedEmail("Lead Scout", start, end, "On it.", "web");
+    expect(html).toContain("On it.");
+    expect(html).toContain("Reply to this email to redirect it");
   });
 });
 
