@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
-import type { DatabaseImpl, Param } from "../src/db/database.ts";
-import type { Env } from "../src/env.ts";
+import * as Schema from "effect/Schema";
+import type { DatabaseImpl } from "../src/db/database.ts";
 import { windowEndFor } from "../src/payments/pricing.ts";
 import {
   handlePaystackWebhook,
+  type PaystackEnv,
   signBody,
   verifySignature,
 } from "../src/payments/paystack.ts";
@@ -43,24 +44,29 @@ describe("paystack webhook", () => {
     });
   };
 
-  const envCapturingWindow = (windows: Array<string>): Env =>
-    ({
-      PAYSTACK_SECRET_KEY: secret,
-      SESSION: {
-        idFromName: (name: string) => name,
-        get: () => ({
-          fetch: async (_url: string, init: { body: string }) => {
-            const body: unknown = JSON.parse(init.body);
-            windows.push(String((body as { windowEnd: string }).windowEnd));
-            return Response.json({ state: "active", newlyActivated: false });
-          },
-        }),
-      },
-      WALLET: {
-        idFromName: (name: string) => name,
-        get: () => ({ fetch: async () => Response.json({ ok: true }) }),
-      },
-    }) as unknown as Env;
+  const envCapturingWindow = (windows: Array<string>): PaystackEnv => ({
+    PAYSTACK_SECRET_KEY: secret,
+    SESSION: {
+      idFromName: (name: string) => name,
+      get: () => ({
+        fetch: async (_url: string, init: { readonly body?: string }) => {
+          const raw = init.body ?? "";
+          const body: unknown = raw.length > 0 ? JSON.parse(raw) : {};
+          const decoded = Schema.decodeUnknownOption(
+            Schema.Struct({ windowEnd: Schema.String }),
+          )(body);
+          windows.push(decoded._tag === "Some" ? decoded.value.windowEnd : "");
+          return Response.json({ state: "active", newlyActivated: false });
+        },
+      }),
+    },
+    WALLET: {
+      idFromName: (name: string) => name,
+      get: () => ({ fetch: async () => Response.json({ ok: true }) }),
+    },
+    BREVO_API_KEY: "",
+    BREVO_SENDER_EMAIL: "",
+  });
 
   const dbForConfirmedPayment = (
     statements: Array<string>,

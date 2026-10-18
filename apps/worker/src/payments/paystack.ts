@@ -5,7 +5,6 @@ import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { shiftStartedEmail } from "../email/templates.ts";
 import { sessionReplyAddress } from "../channels/email.ts";
-import type { Env } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
@@ -67,9 +66,33 @@ const PaymentRow = Schema.Struct({
   confirmed_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
+interface SessionFetch {
+  fetch(
+    url: string,
+    init: {
+      readonly method?: string;
+      readonly headers?: Readonly<Record<string, string>>;
+      readonly body?: string;
+    },
+  ): Promise<Response>;
+}
+
+interface NamedObjects {
+  idFromName(name: string): unknown;
+  get(id: unknown): SessionFetch;
+}
+
+export interface PaystackEnv {
+  readonly PAYSTACK_SECRET_KEY: string;
+  readonly SESSION: NamedObjects;
+  readonly WALLET: NamedObjects;
+  readonly BREVO_API_KEY: string;
+  readonly BREVO_SENDER_EMAIL: string;
+}
+
 export const handlePaystackWebhook = (
   request: Request,
-  env: Env,
+  env: PaystackEnv,
   db: DatabaseImpl,
 ): Effect.Effect<Response, PaystackError> =>
   Effect.gen(function* () {
