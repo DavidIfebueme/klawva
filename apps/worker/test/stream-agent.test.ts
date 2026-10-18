@@ -304,15 +304,15 @@ describe("paid state gate", () => {
 
   it("ends the conversation on terminal states", async () => {
     const brief = JSON.stringify({ task: "x" });
-    for (const state of ["completed", "failed"]) {
+    for (const state of ["completed", "failed", "expired"]) {
       const admission = await attempt({ brief, state });
       expect(admission._tag).toBe("ShiftOver");
     }
   });
 
-  it("admits provisioning, active, hibernating, and recovering states", async () => {
+  it("admits active, hibernating, and recovering states", async () => {
     const brief = JSON.stringify({ task: "x" });
-    for (const state of ["provisioning", "active", "hibernating", "recovering"]) {
+    for (const state of ["active", "hibernating", "recovering"]) {
       const admission = await attempt({ brief, state });
       expect(admission._tag).toBe("Admitted");
     }

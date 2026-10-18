@@ -122,21 +122,7 @@ export const handlePaystackWebhook = (
         return Response.json({ ok: true });
       }
     }
-    const sessionState = yield* db
-      .first("SELECT state AS state FROM sessions WHERE id = ?", [
-        decoded.session_id,
-      ])
-      .pipe(Effect.orDie);
-    if (sessionState !== null && String(sessionState.state) === "active") {
-      return Response.json({ ok: true });
-    }
-    yield* db
-      .run(
-        "UPDATE sessions SET state = 'provisioning', window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
-        [now, endIso, now, decoded.session_id],
-      )
-      .pipe(Effect.orDie);
-    const activated = yield* Effect.tryPromise({
+    const newlyActivated = yield* Effect.tryPromise({
       try: async () => {
         const response = await env.SESSION.get(
           env.SESSION.idFromName(decoded.session_id),
@@ -145,18 +131,17 @@ export const handlePaystackWebhook = (
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ windowEnd: endIso }),
         });
-        return response.ok;
+        if (!response.ok) {
+          return false;
+        }
+        const body: unknown = await response.json();
+        const decodedBody = Schema.decodeUnknownOption(
+          Schema.Struct({ newlyActivated: Schema.Boolean }),
+        )(body);
+        return decodedBody._tag === "Some" && decodedBody.value.newlyActivated;
       },
       catch: (cause) => new PaystackError({ reason: String(cause) }),
     }).pipe(Effect.catch(() => Effect.succeed(false)));
-    if (activated) {
-      yield* db
-        .run(
-          "UPDATE sessions SET state = 'active', updated_at = ? WHERE id = ?",
-          [new Date().toISOString(), decoded.session_id],
-        )
-        .pipe(Effect.orDie);
-    }
     yield* Effect.tryPromise({
       try: () =>
         env.WALLET.get(env.WALLET.idFromName(decoded.session_id)).fetch(
@@ -173,27 +158,28 @@ export const handlePaystackWebhook = (
         ),
       catch: (cause) => new PaystackError({ reason: String(cause) }),
     });
+    if (!newlyActivated) {
+      return Response.json({ ok: true });
+    }
     const sessionRow = yield* db
       .first(
         "SELECT customer_email AS email, listing_id AS listingId, channel AS channel, session_token AS token FROM sessions WHERE id = ?",
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
-    const kickoffReply = !activated
-      ? ""
-      : yield* Effect.tryPromise({
-          try: async () => {
-            const response = await env.SESSION.get(
-              env.SESSION.idFromName(decoded.session_id),
-            ).fetch("https://session/kickoff", { method: "POST" });
-            const body: unknown = await response.json();
-            const decodedBody = Schema.decodeUnknownOption(
-              Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
-            )(body);
-            return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
-          },
-          catch: (cause) => new PaystackError({ reason: String(cause) }),
-        }).pipe(Effect.catch(() => Effect.succeed("")));
+    const kickoffReply = yield* Effect.tryPromise({
+      try: async () => {
+        const response = await env.SESSION.get(
+          env.SESSION.idFromName(decoded.session_id),
+        ).fetch("https://session/kickoff", { method: "POST" });
+        const body: unknown = await response.json();
+        const decodedBody = Schema.decodeUnknownOption(
+          Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
+        )(body);
+        return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
+      },
+      catch: (cause) => new PaystackError({ reason: String(cause) }),
+    }).pipe(Effect.catch(() => Effect.succeed("")));
     if (sessionRow !== null && sessionRow.email !== null) {
       const listingRow = yield* db
         .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
