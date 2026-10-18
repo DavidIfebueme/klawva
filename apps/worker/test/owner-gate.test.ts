@@ -7,6 +7,7 @@ import {
   isPublicApiPath,
   ownerBlockedResponse,
   ownerGateEnabled,
+  ownerSigningSecret,
   ownerTokenIsValid,
   ownerUnlockCookie,
   ownerUnlockPage,
@@ -19,8 +20,14 @@ const secret = "test-secret";
 const future = Math.floor(Date.now() / 1000) + 3600;
 const past = Math.floor(Date.now() / 1000) - 3600;
 
-const ownerToken = async (exp: number): Promise<string> =>
-  Effect.runPromise(signToken(secret, { email: "", exp, scope: "owner" }));
+const ownerToken = async (
+  ownerKey: string,
+  exp: number,
+  scope = "owner",
+): Promise<string> =>
+  Effect.runPromise(
+    signToken(ownerSigningSecret(secret, ownerKey), { email: "", exp, scope }),
+  );
 
 describe("owner gate", () => {
   it("is enabled only for an explicit true flag and a non-empty key", () => {
@@ -71,21 +78,35 @@ describe("owner gate", () => {
   });
 
   it("accepts only a live owner-scoped token", async () => {
-    expect(await ownerTokenIsValid(secret, await ownerToken(future))).toBe(true);
-    const slack = await Effect.runPromise(
-      signToken(secret, { email: "", exp: future, scope: "slack_oauth" }),
-    );
-    expect(await ownerTokenIsValid(secret, slack)).toBe(false);
-    expect(await ownerTokenIsValid(secret, null)).toBe(false);
-    expect(await ownerTokenIsValid(secret, "garbage")).toBe(false);
-    expect(await ownerTokenIsValid(secret, await ownerToken(past))).toBe(false);
+    expect(
+      await ownerTokenIsValid(secret, "keyA", await ownerToken("keyA", future)),
+    ).toBe(true);
+    expect(
+      await ownerTokenIsValid(
+        secret,
+        "keyA",
+        await ownerToken("keyA", future, "slack_oauth"),
+      ),
+    ).toBe(false);
+    expect(await ownerTokenIsValid(secret, "keyA", null)).toBe(false);
+    expect(await ownerTokenIsValid(secret, "keyA", "garbage")).toBe(false);
+    expect(
+      await ownerTokenIsValid(secret, "keyA", await ownerToken("keyA", past)),
+    ).toBe(false);
+  });
+
+  it("revokes issued cookies when the owner key rotates", async () => {
+    const cookie = await ownerUnlockCookie(secret, "keyA", "keyA");
+    const token = parseCookie(cookie ?? "", COOKIE_NAME);
+    expect(await ownerTokenIsValid(secret, "keyA", token)).toBe(true);
+    expect(await ownerTokenIsValid(secret, "keyB", token)).toBe(false);
   });
 
   it("mints an owner cookie only for the exact configured key", async () => {
     const cookie = await ownerUnlockCookie(secret, "s3cret", "s3cret");
     expect(cookie).not.toBe(null);
     const token = parseCookie(cookie ?? "", COOKIE_NAME);
-    expect(await ownerTokenIsValid(secret, token)).toBe(true);
+    expect(await ownerTokenIsValid(secret, "s3cret", token)).toBe(true);
     expect(await ownerUnlockCookie(secret, "s3cret", "wrong")).toBe(null);
     expect(await ownerUnlockCookie(secret, "", "s3cret")).toBe(null);
     expect(await ownerUnlockCookie(secret, undefined, "s3cret")).toBe(null);

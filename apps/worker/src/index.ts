@@ -77,6 +77,7 @@ export default {
         ownerGateEnabled(env.OWNER_ONLY, env.OWNER_KEY ?? "") &&
         !(await ownerTokenIsValid(
           env.AUTH_SECRET,
+          env.OWNER_KEY ?? "",
           parseCookie(request.headers.get("cookie"), COOKIE_NAME),
         ))
       ) {
@@ -108,6 +109,7 @@ export default {
       !signatureVerifiedApiPath(url.pathname) &&
       !(await ownerTokenIsValid(
         env.AUTH_SECRET,
+        env.OWNER_KEY ?? "",
         parseCookie(request.headers.get("cookie"), COOKIE_NAME),
       ))
     ) {

@@ -43,14 +43,22 @@ export const parseCookie = (
 export const buildOwnerCookie = (token: string): string =>
   `${COOKIE_NAME}=${token}; Path=/; Max-Age=${MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
 
+export const ownerSigningSecret = (
+  authSecret: string,
+  ownerKey: string,
+): string => `${authSecret}\u0000owner\u0000${ownerKey}`;
+
 export const ownerTokenIsValid = async (
-  secret: string,
+  authSecret: string,
+  ownerKey: string,
   token: string | null,
 ): Promise<boolean> => {
   if (token === null) {
     return false;
   }
-  const exit = await Effect.runPromiseExit(verifyToken(secret, token));
+  const exit = await Effect.runPromiseExit(
+    verifyToken(ownerSigningSecret(authSecret, ownerKey), token),
+  );
   return exit._tag === "Success" && exit.value.scope === OWNER_SCOPE;
 };
 
@@ -64,7 +72,7 @@ export const ownerUnlockCookie = async (
     return null;
   }
   const exit = await Effect.runPromiseExit(
-    signToken(authSecret, {
+    signToken(ownerSigningSecret(authSecret, expected), {
       email: "",
       exp: Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS,
       scope: OWNER_SCOPE,
