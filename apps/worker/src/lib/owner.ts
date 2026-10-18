@@ -7,15 +7,18 @@ const OWNER_SCOPE = "owner";
 const MAX_AGE_SECONDS = 7776000;
 
 export const ownerGateEnabled = (
-  ownerOnly: string,
-  ownerKey: string,
-): boolean => ownerOnly === "true" && ownerKey.length > 0;
+  ownerOnly: string | undefined,
+  ownerKey: string | undefined,
+): boolean => ownerOnly === "true" && (ownerKey ?? "").length > 0;
 
 export const isPublicApiPath = (pathname: string): boolean =>
-  pathname === "/health" ||
   pathname === "/api/config" ||
   pathname === "/api/listings" ||
   pathname.startsWith("/api/listings/");
+
+export const signatureVerifiedApiPath = (pathname: string): boolean =>
+  pathname === "/api/discord/interactions" ||
+  pathname === "/api/slack/events";
 
 export const parseCookie = (
   header: string | null,
@@ -39,9 +42,6 @@ export const parseCookie = (
 
 export const buildOwnerCookie = (token: string): string =>
   `${COOKIE_NAME}=${token}; Path=/; Max-Age=${MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
-
-export const clearOwnerCookie = (): string =>
-  `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 
 export const ownerTokenIsValid = async (
   secret: string,
@@ -75,3 +75,28 @@ export const ownerUnlockCookie = async (
 
 export const ownerBlockedResponse = (): Response =>
   Response.json({ error: "private_testing" }, { status: 403 });
+
+const unlockPage = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klawva owner</title>
+</head>
+<body>
+<form method="post" action="/owner/unlock">
+<label for="key">Owner key</label>
+<input id="key" type="password" name="key" autocomplete="off" autofocus>
+<button type="submit">Unlock</button>
+</form>
+</body>
+</html>`;
+
+export const ownerUnlockPage = (): Response =>
+  new Response(unlockPage, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy":
+        "default-src 'none'; form-action 'self'; base-uri 'none'",
+    },
+  });

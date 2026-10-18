@@ -23,13 +23,14 @@ import { sessionTokenMatches } from "./account/account.ts";
 import { constantTimeEqual } from "./lib/secure.ts";
 import {
   COOKIE_NAME,
-  clearOwnerCookie,
   isPublicApiPath,
   ownerBlockedResponse,
   ownerGateEnabled,
   ownerTokenIsValid,
   ownerUnlockCookie,
+  ownerUnlockPage,
   parseCookie,
+  signatureVerifiedApiPath,
 } from "./lib/owner.ts";
 import { signToken, verifyToken } from "./auth/tokens.ts";
 
@@ -39,24 +40,23 @@ export { WalletAgent } from "./wallet/wallet.ts";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/owner/unlock") {
+    if (url.pathname === "/owner") {
+      return ownerUnlockPage();
+    }
+    if (url.pathname === "/owner/unlock" && request.method === "POST") {
+      const form = await request.formData();
+      const value = form.get("key");
       const cookie = await ownerUnlockCookie(
         env.AUTH_SECRET,
         env.OWNER_KEY,
-        url.searchParams.get("key") ?? "",
+        typeof value === "string" ? value : "",
       );
       if (cookie === null) {
-        return Response.json({ ok: false }, { status: 401 });
+        return new Response(null, { status: 401 });
       }
       return new Response(null, {
         status: 302,
         headers: { location: "/", "set-cookie": cookie },
-      });
-    }
-    if (url.pathname === "/owner/lock") {
-      return new Response(null, {
-        status: 302,
-        headers: { location: "/", "set-cookie": clearOwnerCookie() },
       });
     }
     if (url.pathname === "/internal/sweep") {
@@ -101,6 +101,18 @@ export default {
         (await routeAgentRequest(request, env)) ??
         Response.json({ ok: false }, { status: 404 })
       );
+    }
+    if (
+      url.pathname.startsWith("/api/") &&
+      ownerGateEnabled(env.OWNER_ONLY, env.OWNER_KEY) &&
+      !isPublicApiPath(url.pathname) &&
+      !signatureVerifiedApiPath(url.pathname) &&
+      !(await ownerTokenIsValid(
+        env.AUTH_SECRET,
+        parseCookie(request.headers.get("cookie"), COOKIE_NAME),
+      ))
+    ) {
+      return ownerBlockedResponse();
     }
     if (url.pathname === "/api/discord/interactions") {
       const rawBody = await request.text();
@@ -234,17 +246,6 @@ export default {
       return exit._tag === "Success"
         ? exit.value
         : Response.json({ ok: false }, { status: 500 });
-    }
-    if (
-      url.pathname.startsWith("/api/") &&
-      ownerGateEnabled(env.OWNER_ONLY, env.OWNER_KEY ?? "") &&
-      !isPublicApiPath(url.pathname) &&
-      !(await ownerTokenIsValid(
-        env.AUTH_SECRET,
-        parseCookie(request.headers.get("cookie"), COOKIE_NAME),
-      ))
-    ) {
-      return ownerBlockedResponse();
     }
     if (url.pathname.startsWith("/api/") ||
       url.pathname.startsWith("/webhooks/") ||

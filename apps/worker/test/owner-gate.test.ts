@@ -4,13 +4,14 @@ import { signToken } from "../src/auth/tokens.ts";
 import {
   COOKIE_NAME,
   buildOwnerCookie,
-  clearOwnerCookie,
   isPublicApiPath,
   ownerBlockedResponse,
   ownerGateEnabled,
   ownerTokenIsValid,
   ownerUnlockCookie,
+  ownerUnlockPage,
   parseCookie,
+  signatureVerifiedApiPath,
 } from "../src/lib/owner.ts";
 
 const secret = "test-secret";
@@ -24,22 +25,30 @@ describe("owner gate", () => {
   it("is enabled only for an explicit true flag and a non-empty key", () => {
     expect(ownerGateEnabled("true", "key")).toBe(true);
     expect(ownerGateEnabled("true", "")).toBe(false);
+    expect(ownerGateEnabled("true", undefined)).toBe(false);
     expect(ownerGateEnabled("false", "key")).toBe(false);
-    expect(ownerGateEnabled("", "key")).toBe(false);
+    expect(ownerGateEnabled(undefined, "key")).toBe(false);
     expect(ownerGateEnabled("1", "key")).toBe(false);
   });
 
-  it("treats health, config and listings as public", () => {
-    expect(isPublicApiPath("/health")).toBe(true);
+  it("keeps config and listings public", () => {
     expect(isPublicApiPath("/api/config")).toBe(true);
     expect(isPublicApiPath("/api/listings")).toBe(true);
     expect(isPublicApiPath("/api/listings/some-slug")).toBe(true);
   });
 
-  it("treats session, payment and slack endpoints as gated", () => {
+  it("gates session, payment and slack oauth endpoints", () => {
     expect(isPublicApiPath("/api/sessions")).toBe(false);
     expect(isPublicApiPath("/api/payments/initialize")).toBe(false);
-    expect(isPublicApiPath("/api/slack/events")).toBe(false);
+    expect(isPublicApiPath("/api/slack/install")).toBe(false);
+  });
+
+  it("exempts only the signature-verified api paths", () => {
+    expect(signatureVerifiedApiPath("/api/discord/interactions")).toBe(true);
+    expect(signatureVerifiedApiPath("/api/slack/events")).toBe(true);
+    expect(signatureVerifiedApiPath("/api/slack/install")).toBe(false);
+    expect(signatureVerifiedApiPath("/api/slack/oauth")).toBe(false);
+    expect(signatureVerifiedApiPath("/api/sessions")).toBe(false);
   });
 
   it("reads a named cookie out of a multi-cookie header", () => {
@@ -60,11 +69,6 @@ describe("owner gate", () => {
     expect(cookie).toContain("SameSite=Lax");
   });
 
-  it("clears the owner cookie immediately", () => {
-    expect(clearOwnerCookie()).toContain("Max-Age=0");
-    expect(parseCookie(clearOwnerCookie(), COOKIE_NAME)).toBe("");
-  });
-
   it("accepts only a live owner-scoped token", async () => {
     expect(await ownerTokenIsValid(secret, await ownerToken(future))).toBe(true);
     const slack = await Effect.runPromise(
@@ -76,11 +80,6 @@ describe("owner gate", () => {
     expect(await ownerTokenIsValid(secret, await ownerToken(past))).toBe(false);
   });
 
-  it("blocks with a private testing response", () => {
-    const response = ownerBlockedResponse();
-    expect(response.status).toBe(403);
-  });
-
   it("mints an owner cookie only for the exact configured key", async () => {
     const cookie = await ownerUnlockCookie(secret, "s3cret", "s3cret");
     expect(cookie).not.toBe(null);
@@ -89,5 +88,16 @@ describe("owner gate", () => {
     expect(await ownerUnlockCookie(secret, "s3cret", "wrong")).toBe(null);
     expect(await ownerUnlockCookie(secret, "", "s3cret")).toBe(null);
     expect(await ownerUnlockCookie(secret, undefined, "s3cret")).toBe(null);
+  });
+
+  it("blocks with a private testing response", () => {
+    expect(ownerBlockedResponse().status).toBe(403);
+  });
+
+  it("serves the unlock form", async () => {
+    const response = ownerUnlockPage();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain('action="/owner/unlock"');
   });
 });
