@@ -14,15 +14,11 @@ export const ownerGateEnabled = (
 export const isPublicApiPath = (pathname: string): boolean =>
   pathname === "/api/config" ||
   pathname === "/api/listings" ||
-  pathname.startsWith("/api/listings/") ||
-  pathname === "/api/devices/claim";
+  pathname.startsWith("/api/listings/");
 
 export const signatureVerifiedApiPath = (pathname: string): boolean =>
   pathname === "/api/discord/interactions" ||
-  pathname === "/api/slack/events" ||
-  pathname === "/api/voice/bolna/webhook" ||
-  pathname === "/api/voice/twiml" ||
-  pathname.startsWith("/api/agent/");
+  pathname === "/api/slack/events";
 
 export const parseCookie = (
   header: string | null,
