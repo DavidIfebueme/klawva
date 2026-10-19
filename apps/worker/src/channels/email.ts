@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import PostalMime from "postal-mime";
 import { make as makeDatabase } from "../db/database.ts";
+import { liveSessionStates, type SessionState } from "../db/schema.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { renderTemplate } from "../email/templates.ts";
 import { toEmailHtml } from "../lib/markdown.ts";
@@ -18,6 +19,9 @@ export interface InboundEmail {
 const replyAddressValue = "employees@klawva.xyz";
 const replyAddressPrefix = "employees+";
 const maxBytes = 1_000_000;
+
+const replyableStates: ReadonlyArray<SessionState> = ["pending", ...liveSessionStates];
+const replyableSlots = replyableStates.map(() => "?").join(", ");
 
 export const replyAddress = (): string => replyAddressValue;
 
@@ -96,14 +100,14 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
       recipientToken !== null
         ? yield* db
             .first(
-              "SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE session_token = ? AND state IN ('pending', 'provisioning', 'active', 'hibernating', 'recovering') LIMIT 1",
-              [recipientToken],
+              `SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE session_token = ? AND state IN (${replyableSlots}) LIMIT 1`,
+              [recipientToken, ...replyableStates],
             )
             .pipe(Effect.orDie)
         : yield* db
             .first(
-              "SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE customer_email = ? AND state IN ('pending', 'provisioning', 'active') ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'provisioning' THEN 1 ELSE 2 END, created_at DESC LIMIT 1",
-              [sender],
+              `SELECT id AS id, state AS state, session_token AS token, customer_email AS customerEmail FROM sessions WHERE customer_email = ? AND state IN (${replyableSlots}) ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, created_at DESC LIMIT 1`,
+              [sender, ...replyableStates],
             )
             .pipe(Effect.orDie);
     if (session === null) {
@@ -120,7 +124,7 @@ export const handleInbound = (env: Env, message: InboundEmail): Effect.Effect<vo
     const sessionToken = String(session.token ?? "");
     const replyTo =
       sessionToken.length > 0 ? sessionReplyAddress(sessionToken) : undefined;
-    if (sessionState === "pending" || sessionState === "provisioning") {
+    if (sessionState === "pending") {
       yield* sendEmail({
         apiKey: env.BREVO_API_KEY,
         senderEmail: env.BREVO_SENDER_EMAIL,
