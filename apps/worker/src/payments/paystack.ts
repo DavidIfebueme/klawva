@@ -5,7 +5,6 @@ import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { shiftStartedEmail } from "../email/templates.ts";
 import { sessionReplyAddress } from "../channels/email.ts";
-import type { Env } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
@@ -64,11 +63,36 @@ const PaymentRow = Schema.Struct({
   duration_days: Schema.optionalKey(Schema.Number),
   amount_minor: Schema.Number,
   status: Schema.String,
+  confirmed_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
+
+interface SessionFetch {
+  fetch(
+    url: string,
+    init: {
+      readonly method?: string;
+      readonly headers?: Readonly<Record<string, string>>;
+      readonly body?: string;
+    },
+  ): Promise<Response>;
+}
+
+interface NamedObjects {
+  idFromName(name: string): unknown;
+  get(id: unknown): SessionFetch;
+}
+
+export interface PaystackEnv {
+  readonly PAYSTACK_SECRET_KEY: string;
+  readonly SESSION: NamedObjects;
+  readonly WALLET: NamedObjects;
+  readonly BREVO_API_KEY: string;
+  readonly BREVO_SENDER_EMAIL: string;
+}
 
 export const handlePaystackWebhook = (
   request: Request,
-  env: Env,
+  env: PaystackEnv,
   db: DatabaseImpl,
 ): Effect.Effect<Response, PaystackError> =>
   Effect.gen(function* () {
@@ -101,7 +125,7 @@ export const handlePaystackWebhook = (
     }
     const payment = yield* db
       .first(
-        "SELECT p.session_id AS session_id, p.amount_minor AS amount_minor, p.status AS status, s.duration_days AS duration_days FROM payments p JOIN sessions s ON s.id = p.session_id WHERE p.provider_reference = ?",
+        "SELECT p.session_id AS session_id, p.amount_minor AS amount_minor, p.status AS status, p.confirmed_at AS confirmed_at, s.duration_days AS duration_days FROM payments p JOIN sessions s ON s.id = p.session_id WHERE p.provider_reference = ?",
         [reference],
       )
       .pipe(Effect.orDie);
@@ -110,7 +134,10 @@ export const handlePaystackWebhook = (
     }
     const decoded = Schema.decodeUnknownSync(PaymentRow)(payment);
     const now = new Date().toISOString();
-    const endIso = windowEndFor(Date.now(), Number(decoded.duration_days ?? 1));
+    const endIso = windowEndFor(
+      Date.parse(decoded.confirmed_at ?? now),
+      Number(decoded.duration_days ?? 1),
+    );
     if (decoded.status !== "confirmed") {
       const confirmed = yield* db
         .first(
@@ -122,21 +149,7 @@ export const handlePaystackWebhook = (
         return Response.json({ ok: true });
       }
     }
-    const sessionState = yield* db
-      .first("SELECT state AS state FROM sessions WHERE id = ?", [
-        decoded.session_id,
-      ])
-      .pipe(Effect.orDie);
-    if (sessionState !== null && String(sessionState.state) === "active") {
-      return Response.json({ ok: true });
-    }
-    yield* db
-      .run(
-        "UPDATE sessions SET state = 'provisioning', window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
-        [now, endIso, now, decoded.session_id],
-      )
-      .pipe(Effect.orDie);
-    const activated = yield* Effect.tryPromise({
+    const newlyActivated = yield* Effect.tryPromise({
       try: async () => {
         const response = await env.SESSION.get(
           env.SESSION.idFromName(decoded.session_id),
@@ -145,18 +158,17 @@ export const handlePaystackWebhook = (
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ windowEnd: endIso }),
         });
-        return response.ok;
+        if (!response.ok) {
+          return false;
+        }
+        const body: unknown = await response.json();
+        const decodedBody = Schema.decodeUnknownOption(
+          Schema.Struct({ newlyActivated: Schema.Boolean }),
+        )(body);
+        return decodedBody._tag === "Some" && decodedBody.value.newlyActivated;
       },
       catch: (cause) => new PaystackError({ reason: String(cause) }),
     }).pipe(Effect.catch(() => Effect.succeed(false)));
-    if (activated) {
-      yield* db
-        .run(
-          "UPDATE sessions SET state = 'active', updated_at = ? WHERE id = ?",
-          [new Date().toISOString(), decoded.session_id],
-        )
-        .pipe(Effect.orDie);
-    }
     yield* Effect.tryPromise({
       try: () =>
         env.WALLET.get(env.WALLET.idFromName(decoded.session_id)).fetch(
@@ -173,27 +185,28 @@ export const handlePaystackWebhook = (
         ),
       catch: (cause) => new PaystackError({ reason: String(cause) }),
     });
+    if (!newlyActivated) {
+      return Response.json({ ok: true });
+    }
     const sessionRow = yield* db
       .first(
         "SELECT customer_email AS email, listing_id AS listingId, channel AS channel, session_token AS token FROM sessions WHERE id = ?",
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
-    const kickoffReply = !activated
-      ? ""
-      : yield* Effect.tryPromise({
-          try: async () => {
-            const response = await env.SESSION.get(
-              env.SESSION.idFromName(decoded.session_id),
-            ).fetch("https://session/kickoff", { method: "POST" });
-            const body: unknown = await response.json();
-            const decodedBody = Schema.decodeUnknownOption(
-              Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
-            )(body);
-            return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
-          },
-          catch: (cause) => new PaystackError({ reason: String(cause) }),
-        }).pipe(Effect.catch(() => Effect.succeed("")));
+    const kickoffReply = yield* Effect.tryPromise({
+      try: async () => {
+        const response = await env.SESSION.get(
+          env.SESSION.idFromName(decoded.session_id),
+        ).fetch("https://session/kickoff", { method: "POST" });
+        const body: unknown = await response.json();
+        const decodedBody = Schema.decodeUnknownOption(
+          Schema.Struct({ reply: Schema.optionalKey(Schema.String) }),
+        )(body);
+        return decodedBody._tag === "Some" ? decodedBody.value.reply ?? "" : "";
+      },
+      catch: (cause) => new PaystackError({ reason: String(cause) }),
+    }).pipe(Effect.catch(() => Effect.succeed("")));
     if (sessionRow !== null && sessionRow.email !== null) {
       const listingRow = yield* db
         .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
