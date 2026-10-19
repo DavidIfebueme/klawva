@@ -10,7 +10,12 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
-import { SessionState } from "../db/schema.ts";
+import {
+  liveSessionStates,
+  SessionState,
+  sessionTransitions,
+  terminalSessionStates,
+} from "../db/schema.ts";
 import { sessionTokenMatches, ownsSession } from "../account/account.ts";
 import { identityFromToken } from "../auth/auth.ts";
 import {
@@ -60,18 +65,8 @@ export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()(
   },
 ) {}
 
-const transitions: Record<SessionState, ReadonlyArray<SessionState>> = {
-  pending: ["provisioning", "failed"],
-  provisioning: ["active", "failed"],
-  active: ["hibernating", "recovering", "completed", "failed"],
-  hibernating: ["recovering", "completed", "failed"],
-  recovering: ["active", "failed"],
-  completed: [],
-  failed: [],
-};
-
 export const canTransition = (from: SessionState, to: SessionState): boolean =>
-  transitions[from].includes(to);
+  sessionTransitions[from].includes(to);
 
 export const canSpend = (
   budgetMinor: number,
@@ -154,6 +149,23 @@ export const makeStore = (sql: SqlStorage): SessionStoreImpl => ({
     }),
 });
 
+export const projectState = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  state: SessionState,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const windowStart = yield* store.get("window_start");
+    const windowEnd = yield* store.get("window_end");
+    yield* db
+      .run(
+        "UPDATE sessions SET state = ?, window_start = ?, window_end = ?, updated_at = ? WHERE id = ?",
+        [state, windowStart, windowEnd, new Date().toISOString(), sessionId],
+      )
+      .pipe(Effect.orDie);
+  });
+
 export class SessionEnv extends Context.Service<
   SessionEnv,
   { readonly env: Env; readonly sessionId: string }
@@ -235,7 +247,7 @@ export const admitTurn = (
   ai?: Ai,
 ): Effect.Effect<TurnAdmission, BudgetExhausted> =>
   Effect.gen(function* () {
-    const state = (yield* store.get("state")) ?? "pending";
+    const state = yield* currentState(store);
     if (state === "pending") {
       return {
         _tag: "AwaitingPayment",
@@ -253,6 +265,12 @@ export const admitTurn = (
       return {
         _tag: "ShiftOver",
         reply: "This shift hit a problem and had to stop. Check your email for what happened.",
+      } as const;
+    }
+    if (state === "expired") {
+      return {
+        _tag: "ShiftOver",
+        reply: "This shift expired before it started. Start a new hire to begin one.",
       } as const;
     }
     const config = yield* loadTurnConfig(store);
@@ -397,11 +415,16 @@ export const completeShift = (
   sessionId: string,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
+    const db = makeDatabase(env.DB);
+    const state = yield* currentState(store);
+    if (terminalSessionStates.includes(state)) {
+      yield* projectState(store, db, sessionId, state);
+      return;
+    }
     const history = yield* store.history();
     const runtime = makeRuntime(env.AI, defaultModel);
     const briefRaw = (yield* store.get("brief")) ?? "{}";
     const brief = Schema.decodeUnknownSync(Brief)(JSON.parse(briefRaw));
-    const db = makeDatabase(env.DB);
     const inChars =
       history.reduce((n, m) => n + m.content.length, 0) +
       JSON.stringify(brief).length;
@@ -457,6 +480,7 @@ export const completeShift = (
       )
       .pipe(Effect.orDie);
     yield* store.set("state", "completed");
+    yield* projectState(store, db, sessionId, "completed");
     const reportUrl = `${env.FRONTEND_BASE_URL}/report/${sessionId}?shareToken=${shareToken}`;
     const email = yield* store.get("email");
     yield* deliverCompletion({
@@ -555,13 +579,20 @@ const init = HttpApiEndpoint.post("init", "/init", {
 
 const activate = HttpApiEndpoint.post("activate", "/activate", {
   payload: Schema.Struct({ windowEnd: Schema.String }),
-  success: StateResponse,
+  success: Schema.Struct({
+    state: SessionState,
+    newlyActivated: Schema.Boolean,
+  }),
   error: IllegalTransition,
 });
 
 const complete = HttpApiEndpoint.post("complete", "/complete", {
   success: StateResponse,
   error: IllegalTransition,
+});
+
+const expire = HttpApiEndpoint.post("expire", "/expire", {
+  success: StateResponse,
 });
 
 const history = HttpApiEndpoint.get("history", "/history", {
@@ -595,6 +626,7 @@ class SessionGroup extends HttpApiGroup.make("Session")
   .add(init)
   .add(activate)
   .add(complete)
+  .add(expire)
   .add(history)
   .add(report)
   .add(kickoff)
@@ -602,10 +634,64 @@ class SessionGroup extends HttpApiGroup.make("Session")
 
 class SessionApi extends HttpApi.make("SessionApi").add(SessionGroup) {}
 
+const legacyStates: Readonly<Record<string, SessionState>> = {
+  provisioning: "expired",
+};
+
 const currentState = (store: SessionStoreImpl): Effect.Effect<SessionState> =>
   Effect.gen(function* () {
     const raw = yield* store.get("state");
-    return raw === null ? "pending" : Schema.decodeUnknownSync(SessionState)(raw);
+    if (raw === null) {
+      return "pending";
+    }
+    const legacy = legacyStates[raw];
+    return legacy ?? Schema.decodeUnknownSync(SessionState)(raw);
+  });
+
+export const activateSession = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+  windowEnd: string,
+): Effect.Effect<
+  { state: SessionState; newlyActivated: boolean },
+  IllegalTransition
+> =>
+  Effect.gen(function* () {
+    const from = yield* currentState(store);
+    if (liveSessionStates.includes(from)) {
+      const existing = yield* store.get("window_end");
+      if (existing === null || windowEnd > existing) {
+        yield* store.set("window_end", windowEnd);
+      }
+      yield* projectState(store, db, sessionId, from);
+      return { state: from, newlyActivated: false };
+    }
+    const next = yield* transition(from, "active");
+    yield* store.set("state", next);
+    const started = yield* store.get("window_start");
+    if (started === null) {
+      yield* store.set("window_start", new Date().toISOString());
+    }
+    yield* store.set("window_end", windowEnd);
+    yield* projectState(store, db, sessionId, next);
+    return { state: next, newlyActivated: true };
+  });
+
+export const expireSession = (
+  store: SessionStoreImpl,
+  db: DatabaseImpl,
+  sessionId: string,
+): Effect.Effect<SessionState> =>
+  Effect.gen(function* () {
+    const from = yield* currentState(store);
+    if (!canTransition(from, "expired")) {
+      yield* projectState(store, db, sessionId, from);
+      return from;
+    }
+    yield* store.set("state", "expired");
+    yield* projectState(store, db, sessionId, "expired");
+    return "expired";
   });
 
 const sessionGroup = HttpApiBuilder.group(
@@ -623,6 +709,7 @@ const sessionGroup = HttpApiBuilder.group(
       )
       .handle("init", ({ payload }) =>
         Effect.gen(function* () {
+          const db = makeDatabase(sessionEnv.env.DB);
           yield* store.set("state", payload.state);
           yield* store.set("budget_minor", String(payload.budgetMinor));
           yield* store.set("spent_minor", "0");
@@ -634,36 +721,29 @@ const sessionGroup = HttpApiBuilder.group(
             JSON.stringify(payload.allowlist ?? defaultToolAllowlist),
           );
           yield* store.set("model", payload.model ?? defaultModel);
+          yield* projectState(store, db, sessionEnv.sessionId, payload.state);
           return { state: payload.state };
         }),
       )
-      .handle("activate", ({ payload }) =>
-        Effect.gen(function* () {
-          const from = yield* currentState(store);
-          if (from === "completed" || from === "failed") {
-            return yield* Effect.fail(new IllegalTransition({ from, to: "active" }));
-          }
-          if (from === "active") {
-            const existing = yield* store.get("window_end");
-            if (existing === null || payload.windowEnd > existing) {
-              yield* store.set("window_end", payload.windowEnd);
-            }
-            return { state: "active" };
-          }
-          yield* store.set("state", "active");
-          const existing = yield* store.get("window_end");
-          if (existing === null || payload.windowEnd > existing) {
-            yield* store.set("window_end", payload.windowEnd);
-          }
-          return { state: "active" as const };
-        }),
-      )
+      .handle("activate", ({ payload }) => {
+        const db = makeDatabase(sessionEnv.env.DB);
+        return activateSession(store, db, sessionEnv.sessionId, payload.windowEnd);
+      })
       .handle("complete", () =>
         Effect.gen(function* () {
+          const db = makeDatabase(sessionEnv.env.DB);
           const next = yield* transition(yield* currentState(store), "completed");
           yield* store.set("state", next);
+          yield* projectState(store, db, sessionEnv.sessionId, next);
           return { state: next };
         }),
+      )
+      .handle("expire", () =>
+        expireSession(
+          store,
+          makeDatabase(sessionEnv.env.DB),
+          sessionEnv.sessionId,
+        ).pipe(Effect.map((state) => ({ state }))),
       )
       .handle("kickoff", () =>
         Effect.gen(function* () {
