@@ -2,14 +2,39 @@ import * as Schema from "effect/Schema";
 
 export const SessionState = Schema.Literals([
   "pending",
-  "provisioning",
   "active",
   "hibernating",
   "recovering",
   "completed",
   "failed",
+  "expired",
 ]);
 export type SessionState = typeof SessionState.Type;
+
+export const sessionTransitions: Record<
+  SessionState,
+  ReadonlyArray<SessionState>
+> = {
+  pending: ["active", "expired", "failed"],
+  active: ["hibernating", "recovering", "completed", "failed"],
+  hibernating: ["active", "recovering", "completed", "failed"],
+  recovering: ["active", "completed", "failed"],
+  completed: [],
+  failed: [],
+  expired: [],
+};
+
+export const liveSessionStates: ReadonlyArray<SessionState> = [
+  "active",
+  "hibernating",
+  "recovering",
+];
+
+export const terminalSessionStates: ReadonlyArray<SessionState> = [
+  "completed",
+  "failed",
+  "expired",
+];
 
 export const ListingStatus = Schema.Literals([
   "draft",
