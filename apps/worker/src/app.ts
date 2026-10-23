@@ -39,6 +39,7 @@ import { AuthError } from "./auth/tokens.ts";
 import { StudioApi, studioGroup } from "./studio/api.ts";
 import { AdminApi, adminGroup } from "./admin/api.ts";
 import { AccountApi, accountGroup } from "./account/api.ts";
+import { DevicesApi, devicesGroup } from "./auth/devices-api.ts";
 import { ownsSession, sessionTokenMatches } from "./account/account.ts";
 
 const ReportStats = Schema.Array(
@@ -900,7 +901,10 @@ export const makeAppLayer = (env: Env) => {
   const accountRoutes = HttpApiBuilder.layer(AccountApi).pipe(
     Layer.provide(accountGroup.pipe(Layer.provide(services))),
   );
-  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes).pipe(
+  const deviceRoutes = HttpApiBuilder.layer(DevicesApi).pipe(
+    Layer.provide(devicesGroup.pipe(Layer.provide(services))),
+  );
+  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes, deviceRoutes).pipe(
     Layer.provide(HttpServer.layerServices),
   );
 };
