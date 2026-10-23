@@ -151,6 +151,16 @@ const accountUnlinkChannel = HttpApiEndpoint.delete(
   },
 );
 
+const accountSetMarket = HttpApiEndpoint.post(
+  "accountSetMarket",
+  "/api/account/market",
+  {
+    payload: Schema.Struct({ market: Schema.Literals(["us", "in", "ng"]) }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: AuthError,
+  },
+);
+
 class AccountGroup extends HttpApiGroup.make("Account")
   .add(accountSessions)
   .add(accountSession)
@@ -158,7 +168,8 @@ class AccountGroup extends HttpApiGroup.make("Account")
   .add(accountAddMember)
   .add(accountRemoveMember)
   .add(accountChannels)
-  .add(accountUnlinkChannel) {}
+  .add(accountUnlinkChannel)
+  .add(accountSetMarket) {}
 
 export class AccountApi extends HttpApi.make("AccountApi").add(AccountGroup) {}
 
@@ -293,6 +304,19 @@ export const accountGroup = HttpApiBuilder.group(
             params.channel,
             params.chatId,
           );
+          return { ok: true };
+        }),
+      )
+      .handle("accountSetMarket", ({ payload }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          yield* db
+            .run("UPDATE users SET market = ?, updated_at = ? WHERE id = ?", [
+              payload.market,
+              new Date().toISOString(),
+              identity.userId,
+            ])
+            .pipe(Effect.orDie);
           return { ok: true };
         }),
       );

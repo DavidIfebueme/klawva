@@ -109,6 +109,7 @@ export type EventPayload = typeof EventPayload.Type;
 export class User extends Schema.Class<User>("User")({
   id: Schema.String,
   email: Schema.String,
+  market: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 }) {}
