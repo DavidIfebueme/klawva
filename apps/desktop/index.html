@@ -4,31 +4,115 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Klawva</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 42rem; }
-      h1 { font-size: 1.4rem; }
-      .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
-      code { background: #f4f4f4; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 1.1rem; }
-      button { padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
-      #status { white-space: pre-wrap; color: #444; }
+      :root {
+        --klawva-bg: #0a0a0a;
+        --klawva-surface: #111111;
+        --klawva-elevated: #1a1a1a;
+        --klawva-border: #2a2a2a;
+        --klawva-accent: #e8ff47;
+        --klawva-orange: #ff4d00;
+        --klawva-text: #f5f5f5;
+        --klawva-muted: #888888;
+        --klawva-dim: #444444;
+        --font-syne: "Syne", sans-serif;
+        --font-mono: "DM Mono", monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        background: var(--klawva-bg);
+        color: var(--klawva-text);
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        line-height: 1.7;
+        margin: 0;
+        padding: 2rem;
+        -webkit-font-smoothing: antialiased;
+      }
+      ::selection { background: var(--klawva-accent); color: var(--klawva-bg); }
+      main { max-width: 40rem; margin: 0 auto; }
+      h1 {
+        font-family: var(--font-syne);
+        font-weight: 800;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.25rem;
+      }
+      .tag { color: var(--klawva-muted); margin-bottom: 1.5rem; }
+      .card {
+        background: var(--klawva-surface);
+        border: 1px solid var(--klawva-border);
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        margin: 1rem 0;
+      }
+      .card p { margin: 0.35rem 0; }
+      code {
+        background: var(--klawva-elevated);
+        border: 1px solid var(--klawva-border);
+        border-radius: 4px;
+        padding: 0.15rem 0.45rem;
+        font-size: 1rem;
+        color: var(--klawva-accent);
+        letter-spacing: 0.08em;
+      }
+      a { color: var(--klawva-accent); }
+      button {
+        font-family: var(--font-mono);
+        font-size: 0.875rem;
+        padding: 0.5rem 1.1rem;
+        border-radius: 6px;
+        border: 1px solid var(--klawva-accent);
+        background: var(--klawva-accent);
+        color: var(--klawva-bg);
+        cursor: pointer;
+      }
+      button:hover { background: transparent; color: var(--klawva-accent); }
+      button.secondary {
+        background: transparent;
+        border-color: var(--klawva-border);
+        color: var(--klawva-text);
+      }
+      button.secondary:hover { border-color: var(--klawva-accent); color: var(--klawva-accent); }
+      ul#sessions { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+      ul#sessions li { margin: 0.4rem 0; }
+      #status {
+        white-space: pre-wrap;
+        color: var(--klawva-muted);
+        font-size: 0.8rem;
+        max-height: 12rem;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--klawva-border) var(--klawva-bg);
+      }
+      .brand-dot { color: var(--klawva-accent); }
     </style>
   </head>
   <body>
-    <h1>Klawva desktop</h1>
-    <div class="card" id="pair-card">
-      <p>Pair this machine with your klawva account.</p>
-      <p>Your code: <code id="pair-code">…</code></p>
-      <p>Enter it at <a href="https://klawva.xyz/pair" target="_blank" rel="noreferrer">klawva.xyz/pair</a></p>
-      <button id="start-pair">Start pairing</button>
-    </div>
-    <div class="card" id="sessions-card" hidden>
-      <p>Your hires</p>
-      <ul id="sessions"></ul>
-    </div>
-    <div class="card">
-      <p>Status</p>
-      <div id="status">booting</div>
-    </div>
+    <main>
+      <h1>Klawva<span class="brand-dot">.</span></h1>
+      <p class="tag">your employees, on this machine</p>
+      <div class="card" id="pair-card">
+        <p>Pair this machine with your klawva account.</p>
+        <p>Your code: <code id="pair-code">…</code></p>
+        <p>Enter it at <a href="https://klawva.xyz/pair" target="_blank" rel="noreferrer">klawva.xyz/pair</a></p>
+        <button id="start-pair">Start pairing</button>
+      </div>
+      <div class="card" id="sessions-card" hidden>
+        <p>Your hires</p>
+        <ul id="sessions"></ul>
+      </div>
+      <div class="card">
+        <p>Status</p>
+        <div id="status">booting</div>
+      </div>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
