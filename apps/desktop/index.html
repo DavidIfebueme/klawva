@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Klawva</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 42rem; }
+      h1 { font-size: 1.4rem; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+      code { background: #f4f4f4; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 1.1rem; }
+      button { padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
+      #status { white-space: pre-wrap; color: #444; }
+    </style>
+  </head>
+  <body>
+    <h1>Klawva desktop</h1>
+    <div class="card" id="pair-card">
+      <p>Pair this machine with your klawva account.</p>
+      <p>Your code: <code id="pair-code">…</code></p>
+      <p>Enter it at <a href="https://klawva.xyz/pair" target="_blank" rel="noreferrer">klawva.xyz/pair</a></p>
+      <button id="start-pair">Start pairing</button>
+    </div>
+    <div class="card" id="sessions-card" hidden>
+      <p>Your hires</p>
+      <ul id="sessions"></ul>
+    </div>
+    <div class="card">
+      <p>Status</p>
+      <div id="status">booting</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
