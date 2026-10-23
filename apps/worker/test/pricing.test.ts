@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  dailyHireCap,
   discountFor,
   durationOptions,
+  hireCapReached,
   isSupportedDuration,
   priceForDays,
   windowEndFor,
@@ -68,5 +70,14 @@ describe("windowEndFor", () => {
   it("never returns a window shorter than a day", () => {
     const start = Date.UTC(2026, 0, 1, 0, 0, 0);
     expect(windowEndFor(start, 0)).toBe(new Date(start + 86400000).toISOString());
+  });
+});
+
+describe("daily hire cap", () => {
+  it("admits below the cap and refuses at it", () => {
+    expect(hireCapReached(0)).toBe(false);
+    expect(hireCapReached(dailyHireCap - 1)).toBe(false);
+    expect(hireCapReached(dailyHireCap)).toBe(true);
+    expect(hireCapReached(dailyHireCap + 3)).toBe(true);
   });
 });
