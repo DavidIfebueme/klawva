@@ -9,6 +9,8 @@ import {
 } from "../src/listings/listings.ts";
 import { definitions } from "../src/listings/definitions.ts";
 import { ManifestJson, manifestOf } from "../src/db/schema.ts";
+import { maxSecondsForBudget } from "../src/voice/ratecard.ts";
+import { soulFor } from "../src/agent/souls.ts";
 
 describe("eval bands", () => {
   it("bands scores", () => {
@@ -145,5 +147,64 @@ describe("typed manifest", () => {
     });
     const manifest = manifestOf({ soul: "typed soul", manifest: stored });
     expect(manifest.phone?.inbound).toBe(true);
+  });
+});
+
+describe("phone listings", () => {
+  const phones = definitions.filter((definition) => definition.phone !== undefined);
+
+  it("ships the four phone employees, each with a launch market and a soul", () => {
+    const ids = phones.map((definition) => definition.agentId).sort();
+    expect(ids).toEqual([
+      "appointmentsetter",
+      "checkincaller",
+      "followupcaller",
+      "receptionist",
+    ]);
+    for (const definition of phones) {
+      expect(definition.launchMarkets?.length).toBeGreaterThan(0);
+      expect(soulFor(definition.agentId)).toContain("Klawva");
+    }
+  });
+
+  it("keeps nigeria out of the receptionist until wholesale lands", () => {
+    const receptionist = phones.find((definition) => definition.agentId === "receptionist");
+    expect(receptionist?.launchMarkets).toEqual(["us", "in"]);
+    expect(receptionist?.phone?.inbound).toBe(true);
+    expect(receptionist?.phone?.outbound).toBe(false);
+  });
+
+  it("receptionist budget covers 25 hosted minutes a shift", () => {
+    const receptionist = phones.find((definition) => definition.agentId === "receptionist");
+    expect(receptionist).toBeDefined();
+    expect(maxSecondsForBudget(receptionist!.budgetMinor, "bolna")).toBeGreaterThanOrEqual(25 * 60);
+  });
+
+  it("outbound budgets cover 15 nigerian minutes a shift, the worst market rail", () => {
+    const outbound = phones.filter((definition) => definition.phone?.outbound === true);
+    expect(outbound.length).toBe(3);
+    for (const definition of outbound) {
+      expect(maxSecondsForBudget(definition.budgetMinor, "twilio")).toBeGreaterThanOrEqual(15 * 60);
+    }
+  });
+
+  it("prices phone shifts above the agreed 50 percent margin floor", () => {
+    for (const definition of phones) {
+      expect(definition.priceMinor).toBeGreaterThanOrEqual(
+        Math.ceil(definition.budgetMinor * 1.5),
+      );
+    }
+  });
+
+  it("changes the manifest hash when launch markets change", async () => {
+    const receptionist = phones.find((definition) => definition.agentId === "receptionist");
+    const bare = manifestFor(receptionist!, "soul");
+    const expanded = manifestFor(
+      { ...receptionist!, launchMarkets: ["us", "in", "ng"] },
+      "soul",
+    );
+    const bareHash = await Effect.runPromise(manifestHash(bare));
+    const expandedHash = await Effect.runPromise(manifestHash(expanded));
+    expect(expandedHash).not.toBe(bareHash);
   });
 });
