@@ -25,6 +25,7 @@ import { sendEmail } from "./email/brevo.ts";
 import { escapeHtml, renderTemplate } from "./email/templates.ts";
 import { initializePayment } from "./payments/paystack.ts";
 import {
+  hireCapReached,
   durationOptions,
   isSupportedDuration,
   priceForDays,
@@ -777,6 +778,19 @@ const rootGroup = HttpApiBuilder.group(
             customerEmail !== undefined && customerEmail.length > 0
               ? yield* upsertUser(db, customerEmail)
               : null;
+          if (userId !== null) {
+            const today = yield* db
+              .first(
+                "SELECT COUNT(*) AS count FROM sessions WHERE user_id = ? AND created_at >= ?",
+                [userId, new Date(Date.now() - 86_400_000).toISOString()],
+              )
+              .pipe(Effect.orDie);
+            if (today !== null && hireCapReached(Number(today.count))) {
+              return yield* Effect.fail(
+                new ListingConflict({ reason: "daily_hire_cap" }),
+              );
+            }
+          }
           const listing = yield* db
             .first(
               "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor, v.tool_allowlist AS toolAllowlist, v.model AS model, v.soul AS soul, v.manifest AS manifest FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
