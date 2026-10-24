@@ -44,7 +44,7 @@ export const accountSessionDetail = (
       .pipe(Effect.orDie);
     const report = yield* db
       .first(
-        "SELECT summary AS summary, share_token AS shareToken, delivered_at AS deliveredAt FROM mission_reports WHERE session_id = ?",
+        "SELECT summary AS summary, share_token AS shareToken, delivered_at AS deliveredAt FROM mission_reports WHERE session_id = ? AND transport_id IS NULL",
         [sessionId],
       )
       .pipe(Effect.orDie);
