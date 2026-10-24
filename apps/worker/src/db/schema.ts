@@ -81,12 +81,15 @@ export const DesktopManifest = Schema.Struct({
   ownDevice: Schema.Boolean,
 });
 export type DesktopManifest = typeof DesktopManifest.Type;
+export const LaunchMarket = Schema.Literals(["us", "in", "ng"]);
+export type LaunchMarket = typeof LaunchMarket.Type;
 
 export const Manifest = Schema.Struct({
   soul: Schema.String,
   voice: Schema.optional(VoiceManifest),
   phone: Schema.optional(PhoneManifest),
   desktop: Schema.optional(DesktopManifest),
+  launchMarkets: Schema.optional(Schema.Array(LaunchMarket)),
 });
 export type Manifest = typeof Manifest.Type;
 
