@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ModelError,
 } from "../agent/runtime.ts";
+import type { DatabaseImpl } from "../db/database.ts";
 
 const ReportStats = Schema.Array(
   Schema.Struct({ label: Schema.String, value: Schema.String }),
@@ -27,6 +28,33 @@ export interface Report {
     readonly value: string;
   }>;
 }
+
+export const zeroTurnReport: Report = {
+  summary: "Nothing happened. No turns were mirrored to this shift.",
+  stats: [],
+};
+
+export const fileCallReport = (
+  db: DatabaseImpl,
+  sessionId: string,
+  transportId: string,
+  report: Report,
+): Effect.Effect<void> =>
+  db
+    .run(
+      "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(session_id, transport_id) WHERE transport_id IS NOT NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, updated_at = excluded.updated_at",
+      [
+        crypto.randomUUID(),
+        sessionId,
+        transportId,
+        report.summary,
+        JSON.stringify(report.stats),
+        crypto.randomUUID().replace(/-/g, ""),
+        new Date().toISOString(),
+        new Date().toISOString(),
+      ],
+    )
+    .pipe(Effect.orDie);
 
 export const fallbackReport = (
   history: ReadonlyArray<ChatMessage>,
