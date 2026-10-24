@@ -4,7 +4,7 @@ import { defaultModel, defaultToolAllowlist, type AgentRuntimeImpl } from "../ag
 import { type DatabaseImpl } from "../db/database.ts";
 import { runEval, type Band } from "../eval/eval.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
-import { manifestHash } from "../listings/listings.ts";
+import { encodeManifest, manifestFor, manifestHash } from "../listings/listings.ts";
 import { statusForBand } from "../listings/publish.ts";
 import type { ListingDefinition } from "../listings/definitions.ts";
 import { screenSoul } from "../moderation/moderation.ts";
@@ -119,15 +119,23 @@ export const createAuthorDraft = (
       priceMinor: input.priceMinor,
       budgetMinor: input.budgetMinor,
     };
-    const hash = yield* manifestHash(definition).pipe(Effect.orDie);
+    const manifest = manifestFor(definition, input.soul);
+    const hash = yield* manifestHash({
+      manifest,
+      briefFields: input.briefFields,
+      toolAllowlist: defaultToolAllowlist,
+      model: defaultModel,
+      budgetMinor: input.budgetMinor,
+    }).pipe(Effect.orDie);
     yield* db
       .run(
-        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
+        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
         [
           crypto.randomUUID(),
           id,
           hash,
           input.soul,
+          encodeManifest(manifest),
           JSON.stringify(input.briefFields),
           JSON.stringify(defaultToolAllowlist),
           defaultModel,
@@ -212,12 +220,20 @@ export const updateAuthorDraft = (
       priceMinor: input.priceMinor,
       budgetMinor: input.budgetMinor,
     };
-    const hash = yield* manifestHash(definition).pipe(Effect.orDie);
+    const manifest = manifestFor(definition, input.soul);
+    const hash = yield* manifestHash({
+      manifest,
+      briefFields: input.briefFields,
+      toolAllowlist: defaultToolAllowlist,
+      model: defaultModel,
+      budgetMinor: input.budgetMinor,
+    }).pipe(Effect.orDie);
     yield* db
       .run(
-        "UPDATE listing_versions SET soul = ?, brief_fields = ?, manifest_hash = ?, budget_minor = ?, score = NULL WHERE listing_id = ? AND version = ?",
+        "UPDATE listing_versions SET soul = ?, manifest = ?, brief_fields = ?, manifest_hash = ?, budget_minor = ?, score = NULL WHERE listing_id = ? AND version = ?",
         [
           input.soul,
+          encodeManifest(manifest),
           JSON.stringify(input.briefFields),
           hash,
           input.budgetMinor,
