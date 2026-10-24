@@ -325,7 +325,7 @@ const report = (
   Effect.gen(function* () {
     const row = yield* db
       .first(
-        "SELECT share_token AS shareToken FROM mission_reports WHERE session_id = ?",
+        "SELECT share_token AS shareToken FROM mission_reports WHERE session_id = ? AND transport_id IS NULL",
         [sessionId],
       )
       .pipe(Effect.orDie);

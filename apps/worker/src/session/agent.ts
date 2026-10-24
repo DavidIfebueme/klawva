@@ -43,7 +43,7 @@ import {
   scoreShift,
   shiftScore,
 } from "../moderation/clef.ts";
-import { fallbackReport, generateReport } from "../report/report.ts";
+import { fallbackReport, generateReport, zeroTurnReport } from "../report/report.ts";
 import { reportEmailHtml, sendEmail } from "../email/brevo.ts";
 import { sendMessage } from "../channels/telegram.ts";
 import { postMessage } from "../channels/slack.ts";
@@ -433,7 +433,9 @@ export const completeShift = (
     const inChars =
       history.reduce((n, m) => n + m.content.length, 0) +
       JSON.stringify(brief).length;
-    const report = yield* generateReport({ runtime, history, brief }).pipe(
+    const report = yield* (history.length === 0
+      ? Effect.succeed(zeroTurnReport)
+      : generateReport({ runtime, history, brief }).pipe(
       Effect.tap((result) =>
         recordAiUsage(db, {
           model: defaultModel,
@@ -450,7 +452,7 @@ export const completeShift = (
           ok: false,
         }).pipe(Effect.andThen(() => Effect.succeed(fallbackReport(history)))),
       ),
-    );
+    ));
     const scoreResult = yield* scoreShift(env.AI, brief, history).pipe(
       Effect.timeoutOption("10 seconds"),
       Effect.option,
@@ -458,7 +460,7 @@ export const completeShift = (
     const scoreValue =
       scoreResult._tag === "Some" ? scoreResult.value : undefined;
     const stats =
-      scoreValue !== undefined && scoreValue._tag === "Some"
+      history.length > 0 && scoreValue !== undefined && scoreValue._tag === "Some"
         ? [
             ...report.stats,
             {
@@ -471,7 +473,7 @@ export const completeShift = (
     const now = new Date().toISOString();
     yield* db
       .run(
-        "INSERT INTO mission_reports (id, session_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, stats = excluded.stats, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
+        "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) WHERE transport_id IS NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
         [
           crypto.randomUUID(),
           sessionId,
