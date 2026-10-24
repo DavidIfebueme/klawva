@@ -19,7 +19,8 @@ export const isPublicApiPath = (pathname: string): boolean =>
 
 export const signatureVerifiedApiPath = (pathname: string): boolean =>
   pathname === "/api/discord/interactions" ||
-  pathname === "/api/slack/events";
+  pathname === "/api/slack/events" ||
+  pathname === "/api/voice/bolna/webhook";
 
 export const parseCookie = (
   header: string | null,
