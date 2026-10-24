@@ -50,11 +50,18 @@ const waitForCallback = async (timeoutMs = 300_000): Promise<string> => {
   }
 };
 
+let cachedAccessToken: { readonly token: string; readonly expiresAt: number } | null =
+  null;
+
 export const accessTokenForGmail = async (): Promise<string> => {
+  if (cachedAccessToken !== null && Date.now() < cachedAccessToken.expiresAt - 60_000) {
+    return cachedAccessToken.token;
+  }
   const stored = await invoke<string | null>("read_secret", { name: refreshTokenKey });
   if (stored === null || stored.length === 0) {
     throw new Error("gmail is not connected");
   }
   const tokens = await refreshAccessToken(stored);
+  cachedAccessToken = { token: tokens.accessToken, expiresAt: tokens.expiresAt };
   return tokens.accessToken;
 };

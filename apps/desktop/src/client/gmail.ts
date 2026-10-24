@@ -1,8 +1,16 @@
-export const googleClientId: string =
-  typeof import.meta.env.VITE_GOOGLE_CLIENT_ID === "string" &&
-  import.meta.env.VITE_GOOGLE_CLIENT_ID.length > 0
-    ? import.meta.env.VITE_GOOGLE_CLIENT_ID
-    : "klawva-google-client-id-unset";
+export const googleClientId = (): string => {
+  const id =
+    typeof import.meta.env.VITE_GOOGLE_CLIENT_ID === "string" &&
+    import.meta.env.VITE_GOOGLE_CLIENT_ID.length > 0
+      ? import.meta.env.VITE_GOOGLE_CLIENT_ID
+      : null;
+  if (id === null) {
+    throw new Error(
+      "google connect is not configured: VITE_GOOGLE_CLIENT_ID is unset in this build",
+    );
+  }
+  return id;
+};
 
 export const gmailScopes = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -41,7 +49,7 @@ export const buildAuthUrl = (params: {
   readonly redirectUri: string;
 }): string => {
   const query = new URLSearchParams({
-    client_id: googleClientId,
+    client_id: googleClientId(),
     redirect_uri: params.redirectUri,
     response_type: "code",
     scope: gmailScopes.join(" "),
@@ -97,7 +105,7 @@ export const exchangeCode = (
 ): Promise<GoogleTokens> =>
   tokenRequest(
     new URLSearchParams({
-      client_id: googleClientId,
+      client_id: googleClientId(),
       code,
       code_verifier: verifier,
       grant_type: "authorization_code",
@@ -108,7 +116,7 @@ export const exchangeCode = (
 export const refreshAccessToken = (refreshToken: string): Promise<GoogleTokens> =>
   tokenRequest(
     new URLSearchParams({
-      client_id: googleClientId,
+      client_id: googleClientId(),
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -185,10 +193,15 @@ const headerValue = (
   name: string,
 ): string => headers.find((header) => header.name.toLowerCase() === name)?.value ?? "";
 
-const decodeBody = (data: string): string => {
+export const decodeBody = (data: string): string => {
   const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
   try {
-    return atob(normalized);
+    const binary = atob(normalized);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder("utf-8").decode(bytes);
   } catch {
     return "";
   }
@@ -236,6 +249,9 @@ export const getThread = async (
   });
 };
 
+const headerSafe = (value: string): string =>
+  value.replace(/[\r\n]+/g, " ").trim();
+
 export const buildDraftRaw = (params: {
   readonly to: string;
   readonly subject: string;
@@ -244,15 +260,15 @@ export const buildDraftRaw = (params: {
   readonly references?: string;
 }): string => {
   const lines = [
-    `To: ${params.to}`,
-    `Subject: ${params.subject}`,
+    `To: ${headerSafe(params.to)}`,
+    `Subject: ${headerSafe(params.subject)}`,
     "Content-Type: text/plain; charset=utf-8",
   ];
   if (params.inReplyTo !== undefined && params.inReplyTo.length > 0) {
-    lines.push(`In-Reply-To: ${params.inReplyTo}`);
+    lines.push(`In-Reply-To: ${headerSafe(params.inReplyTo)}`);
   }
   if (params.references !== undefined && params.references.length > 0) {
-    lines.push(`References: ${params.references}`);
+    lines.push(`References: ${headerSafe(params.references)}`);
   }
   const message = `${lines.join("\r\n")}\r\n\r\n${params.body}`;
   return btoa(unescape(encodeURIComponent(message)))

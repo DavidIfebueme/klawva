@@ -151,11 +151,16 @@ fn store_secret(name: String, value: String) -> Result<(), String> {
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect();
     let cipher = vault::protect(value.as_bytes())?;
-    fs::write(
-        dir.join(format!("{}.secret", clean)),
-        URL_SAFE_NO_PAD.encode(cipher),
-    )
-    .map_err(|e| e.to_string())
+    let path = dir.join(format!("{}.secret", clean));
+    fs::write(&path, URL_SAFE_NO_PAD.encode(cipher)).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&path).map_err(|e| e.to_string())?.permissions();
+        permissions.set_mode(0o600);
+        fs::set_permissions(&path, permissions).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
