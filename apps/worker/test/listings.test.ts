@@ -225,8 +225,8 @@ describe("desktop listings", () => {
   it("ships the five ready desktop employees, each with a soul", () => {
     const ids = desktops.map((definition) => definition.agentId).sort();
     expect(ids).toEqual([
-      "inboxemployee",
-      "joblocalseeker",
+      "cvtailor",
+      "inbox",
       "moneyadmin",
       "paperwork",
       "study",
@@ -243,14 +243,14 @@ describe("desktop listings", () => {
     }
   });
 
-  it("funds the inbox employee for a measured hundred-turn day", () => {
-    const inbox = desktops.find((definition) => definition.agentId === "inboxemployee");
+  it("funds the inbox for an initial hundred-turn budget, corrected by the first measured week", () => {
+    const inbox = desktops.find((definition) => definition.agentId === "inbox");
     expect(inbox).toBeDefined();
     expect(inbox!.budgetMinor).toBeGreaterThanOrEqual(100 * 50);
   });
 
   it("prices the inbox employee at one and a half times the consumer cloud shift", () => {
-    const inbox = desktops.find((definition) => definition.agentId === "inboxemployee");
+    const inbox = desktops.find((definition) => definition.agentId === "inbox");
     const jobseeker = definitions.find((definition) => definition.agentId === "jobseeker");
     expect(inbox).toBeDefined();
     expect(jobseeker).toBeDefined();
@@ -259,7 +259,7 @@ describe("desktop listings", () => {
   });
 
   it("keeps the draft-only employees draft only in their souls", () => {
-    for (const agentId of ["inboxemployee", "paperwork", "joblocalseeker"]) {
+    for (const agentId of ["inbox", "paperwork", "cvtailor"]) {
       const soul = soulFor(agentId).toLowerCase();
       expect(soul).toContain("never");
     }
