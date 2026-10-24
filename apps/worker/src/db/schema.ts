@@ -63,6 +63,38 @@ export type MessageRole = typeof MessageRole.Type;
 export const Brief = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
 export type Brief = typeof Brief.Type;
 
+export const VoiceManifest = Schema.Struct({
+  listen: Schema.Boolean,
+  speak: Schema.Boolean,
+  voiceId: Schema.optional(Schema.String),
+});
+export type VoiceManifest = typeof VoiceManifest.Type;
+
+export const PhoneManifest = Schema.Struct({
+  outbound: Schema.Boolean,
+  inbound: Schema.Boolean,
+  script: Schema.String,
+});
+export type PhoneManifest = typeof PhoneManifest.Type;
+
+export const DesktopManifest = Schema.Struct({
+  ownDevice: Schema.Boolean,
+});
+export type DesktopManifest = typeof DesktopManifest.Type;
+
+export const Manifest = Schema.Struct({
+  soul: Schema.String,
+  voice: Schema.optional(VoiceManifest),
+  phone: Schema.optional(PhoneManifest),
+  desktop: Schema.optional(DesktopManifest),
+});
+export type Manifest = typeof Manifest.Type;
+
+export const ManifestJson = Schema.fromJsonString(Manifest);
+export type ManifestJson = typeof ManifestJson.Type;
+
+export const manifestForSoul = (soul: string): Manifest => ({ soul });
+
 export const StringList = Schema.fromJsonString(Schema.Array(Schema.String));
 export type StringList = typeof StringList.Type;
 
@@ -98,6 +130,7 @@ export class ListingVersion extends Schema.Class<ListingVersion>("ListingVersion
   version: Schema.Number,
   manifestHash: Schema.String,
   soul: Schema.String,
+  manifest: Schema.NullOr(ManifestJson),
   briefFields: StringList,
   toolAllowlist: StringList,
   model: Schema.String,
@@ -106,6 +139,16 @@ export class ListingVersion extends Schema.Class<ListingVersion>("ListingVersion
   reviewedAt: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
 }) {}
+
+export const manifestOf = (version: {
+  readonly soul: string;
+  readonly manifest: string | null;
+}): Manifest => {
+  if (version.manifest === null) {
+    return manifestForSoul(version.soul);
+  }
+  return Schema.decodeUnknownSync(ManifestJson)(version.manifest);
+};
 
 export class Session extends Schema.Class<Session>("Session")({
   id: Schema.String,
