@@ -14,7 +14,8 @@ export const ownerGateEnabled = (
 export const isPublicApiPath = (pathname: string): boolean =>
   pathname === "/api/config" ||
   pathname === "/api/listings" ||
-  pathname.startsWith("/api/listings/");
+  pathname.startsWith("/api/listings/") ||
+  pathname === "/api/devices/claim";
 
 export const signatureVerifiedApiPath = (pathname: string): boolean =>
   pathname === "/api/discord/interactions" ||
