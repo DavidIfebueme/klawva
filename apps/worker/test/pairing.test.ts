@@ -6,13 +6,16 @@ import { approvePairCode, claimPairCode } from "../src/auth/pairing.ts";
 type Writes = Array<{ readonly sql: string; readonly params: ReadonlyArray<Param> }>;
 
 const fakeDb = (
-  firstRows: ReadonlyArray<Row | null>,
+  pairCodeRows: ReadonlyArray<Row | null>,
 ): { db: DatabaseImpl; writes: Writes } => {
   const writes: Writes = [];
-  const queue = [...firstRows];
+  const queue = [...pairCodeRows];
   const db: DatabaseImpl = {
     all: () => Effect.succeed([]),
-    first: () => Effect.succeed(queue.length > 0 ? (queue.shift() ?? null) : null),
+    first: (sql) =>
+      sql.startsWith("SELECT value AS value FROM counters")
+        ? Effect.succeed(null)
+        : Effect.succeed(queue.length > 0 ? (queue.shift() ?? null) : null),
     run: (sql, params) => {
       writes.push({ sql, params: params ?? [] });
       return Effect.void;
@@ -61,5 +64,36 @@ describe("pair codes", () => {
     const claimed = await Effect.runPromise(claimPairCode(db, "STAL-E111"));
     expect(claimed).toBeNull();
     expect(writes.some((w) => w.sql.includes("DELETE FROM pair_codes"))).toBe(true);
+  });
+});
+
+describe("claim throttling", () => {
+  it("counts each miss and stops reading after five attempts on the same code", async () => {
+    const writes: Writes = [];
+    let counterValue = 0;
+    const db: DatabaseImpl = {
+      all: () => Effect.succeed([]),
+      first: (sql) =>
+        sql.startsWith("SELECT value AS value FROM counters")
+          ? Effect.succeed({ value: counterValue })
+          : Effect.succeed(null),
+      run: (sql, params) => {
+        writes.push({ sql, params: params ?? [] });
+        if (sql.includes("INSERT INTO counters")) {
+          counterValue += 1;
+        }
+        return Effect.void;
+      },
+      batch: () => Effect.void,
+      changed: () => Effect.succeed(1),
+    };
+    for (let i = 0; i < 5; i++) {
+      const claimed = await Effect.runPromise(claimPairCode(db, "MISS-0000"));
+      expect(claimed).toBeNull();
+    }
+    const blocked = await Effect.runPromise(claimPairCode(db, "MISS-0000"));
+    expect(blocked).toBeNull();
+    const pairCodeReads = writes.filter((w) => w.sql.includes("INSERT INTO counters"));
+    expect(pairCodeReads.length).toBe(5);
   });
 });

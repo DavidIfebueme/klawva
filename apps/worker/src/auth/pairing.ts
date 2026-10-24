@@ -22,15 +22,30 @@ export interface ClaimedCode {
   readonly token: string;
 }
 
+const pairClaimAttemptLimit = 5;
+
 export const claimPairCode = (
   db: DatabaseImpl,
   code: string,
 ): Effect.Effect<ClaimedCode | null, Error> =>
   Effect.gen(function* () {
+    const attemptKey = `pair-attempt:${code}`;
+    const attempts = yield* db
+      .first("SELECT value AS value FROM counters WHERE key = ?", [attemptKey])
+      .pipe(Effect.orDie);
+    if (attempts !== null && Number(attempts.value) >= pairClaimAttemptLimit) {
+      return null;
+    }
     const row = yield* db
       .first("SELECT user_id AS userId, name AS name, created_at AS createdAt FROM pair_codes WHERE code = ?", [code])
       .pipe(Effect.orDie);
     if (row === null) {
+      yield* db
+        .run(
+          "INSERT INTO counters (key, value, updated_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at",
+          [attemptKey, new Date().toISOString()],
+        )
+        .pipe(Effect.orDie);
       return null;
     }
     const age = Date.now() - Date.parse(String(row.createdAt));
