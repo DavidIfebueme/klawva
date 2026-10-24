@@ -66,7 +66,14 @@ export const bindTransport = (
         [sessionId, type],
       )
       .pipe(Effect.orDie);
+    const now = new Date().toISOString();
     if (row === null) {
+      yield* db
+        .run(
+          "INSERT INTO session_transports (id, session_id, type, state, carrier, carrier_ref, created_at, updated_at) VALUES (?, ?, ?, 'bound', ?, ?, ?, ?)",
+          [crypto.randomUUID(), sessionId, type, carrier, carrierRef, now, now],
+        )
+        .pipe(Effect.orDie);
       return;
     }
     const from = Schema.decodeUnknownSync(TransportState)(row.state);
@@ -74,7 +81,7 @@ export const bindTransport = (
     yield* db
       .run(
         "UPDATE session_transports SET state = 'bound', carrier = ?, carrier_ref = ?, updated_at = ? WHERE session_id = ? AND type = ? AND carrier_ref IS NULL",
-        [carrier, carrierRef, new Date().toISOString(), sessionId, type],
+        [carrier, carrierRef, now, sessionId, type],
       )
       .pipe(Effect.orDie);
   });

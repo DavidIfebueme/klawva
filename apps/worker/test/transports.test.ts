@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
 import {
   canTransitionTransport,
+  bindTransport,
   closeTransports,
   projectTransports,
   transitionTransport,
@@ -14,9 +15,16 @@ const fakeDb = (
   existing: ReadonlyArray<Row> = [],
 ): { db: DatabaseImpl; writes: Writes } => {
   const writes: Writes = [];
+  const visible = (sql: string): ReadonlyArray<Row> => {
+    let rows = existing;
+    if (sql.includes("carrier_ref IS NULL")) {
+      rows = rows.filter((row) => row.carrierRef === null || row.carrierRef === undefined);
+    }
+    return rows;
+  };
   const db: DatabaseImpl = {
-    all: () => Effect.succeed(existing),
-    first: () => Effect.succeed(existing[0] ?? null),
+    all: (sql) => Effect.succeed(visible(String(sql))),
+    first: (sql) => Effect.succeed(visible(String(sql))[0] ?? null),
     run: (sql, params) => {
       writes.push({ sql, params: params ?? [] });
       return Effect.void;
@@ -83,5 +91,22 @@ describe("closeTransports", () => {
     await Effect.runPromise(closeTransports(db, "s1", ["desktop"]));
     expect(writes[0].sql).toContain("type IN");
     expect(writes[0].params).toContain("desktop");
+  });
+});
+
+describe("bindTransport call legs", () => {
+  it("binds the pending capability row for the first call", async () => {
+    const { db, writes } = fakeDb([{ state: "pending" }]);
+    await Effect.runPromise(bindTransport(db, "s1", "phone_out", "bolna", "exec-1"));
+    const bind = writes.find((w) => w.sql.includes("SET state = 'bound'"));
+    expect(bind).toBeDefined();
+  });
+
+  it("creates a fresh bound row for the second call, since the capability row is already consumed", async () => {
+    const { db, writes } = fakeDb([{ state: "bound", carrierRef: "exec-1" }]);
+    await Effect.runPromise(bindTransport(db, "s1", "phone_out", "bolna", "exec-2"));
+    const insert = writes.find((w) => w.sql.includes("INSERT INTO session_transports"));
+    expect(insert).toBeDefined();
+    expect(insert!.params[4]).toBe("exec-2");
   });
 });
