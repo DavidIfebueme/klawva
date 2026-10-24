@@ -25,6 +25,8 @@ jobs:
 
       - name: build the desktop frontend
         run: pnpm --dir apps/desktop build
+        env:
+          VITE_GOOGLE_CLIENT_ID: 446318558489-f16fn18krt9vk0egftj6kbpcdlmkk2m7.apps.googleusercontent.com
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -55,6 +57,8 @@ jobs:
 
       - name: build the desktop frontend
         run: pnpm --dir apps/desktop build
+        env:
+          VITE_GOOGLE_CLIENT_ID: 446318558489-f16fn18krt9vk0egftj6kbpcdlmkk2m7.apps.googleusercontent.com
 
       - name: install tauri system dependencies
         run: |
