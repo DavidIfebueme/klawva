@@ -405,7 +405,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const row = yield* db
             .first(
-              "SELECT m.summary AS summary, m.stats AS stats, m.share_token AS shareToken, COALESCE(l.slug, '') AS agentSlug, COALESCE(l.name, 'Your employee') AS agentName FROM mission_reports m LEFT JOIN sessions s ON s.id = m.session_id LEFT JOIN agent_listings l ON l.id = s.listing_id WHERE m.session_id = ? AND m.share_token = ?",
+              "SELECT m.summary AS summary, m.stats AS stats, m.share_token AS shareToken, COALESCE(l.slug, '') AS agentSlug, COALESCE(l.name, 'Your employee') AS agentName FROM mission_reports m LEFT JOIN sessions s ON s.id = m.session_id LEFT JOIN agent_listings l ON l.id = s.listing_id WHERE m.session_id = ? AND m.share_token = ? AND m.transport_id IS NULL",
               [params.sessionId, query.shareToken],
             )
             .pipe(Effect.orDie);
