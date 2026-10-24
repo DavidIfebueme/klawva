@@ -4,6 +4,7 @@ import type { DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
 import {
   AWS_DAILY_ALARM_MICROS,
+  bedrockRateKnown,
   makeBedrockRuntime,
   withAwsCap,
 } from "./bedrock.ts";
@@ -22,6 +23,16 @@ export const bedrockEnabled = (env: Env): boolean =>
   ((typeof env.AWS_BEDROCK_API_KEY === "string" && env.AWS_BEDROCK_API_KEY.length > 0) ||
     (typeof env.AWS_ACCESS_KEY_ID === "string" && env.AWS_ACCESS_KEY_ID.length > 0));
 
+export const resolveBedrockModelId = (model: string): string => {
+  const id = model.slice(bedrockPrefix.length);
+  if (!bedrockRateKnown(id)) {
+    throw new Error(
+      `unknown bedrock model "${id}": add its published rate to the rate card before routing turns to it`,
+    );
+  }
+  return id;
+};
+
 export const resolveRuntime = (
   env: Env,
   db: DatabaseImpl,
@@ -29,7 +40,7 @@ export const resolveRuntime = (
   allowlist: ReadonlyArray<string> = defaultToolAllowlist,
 ): AgentRuntimeImpl => {
   if (model.startsWith(bedrockPrefix) && bedrockEnabled(env)) {
-    const bedrockModel = model.slice(bedrockPrefix.length);
+    const bedrockModel = resolveBedrockModelId(model);
     const specs = toolSpecsFor(allowlist);
     const runtime = makeBedrockRuntime(
       {
@@ -41,7 +52,7 @@ export const resolveRuntime = (
       },
       specs,
     );
-    return withAwsCap(db, runtime, () =>
+    return withAwsCap(db, runtime, bedrockModel, () =>
       sendEmail({
         apiKey: env.BREVO_API_KEY,
         senderEmail: env.BREVO_SENDER_EMAIL,

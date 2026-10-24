@@ -160,6 +160,9 @@ const bedrockRates: Record<string, { inPerMillion: number; outPerMillion: number
   "amazon.nova-micro-v1:0": { inPerMillion: 0.035, outPerMillion: 0.14 },
 };
 
+export const bedrockRateKnown = (model: string): boolean =>
+  bedrockRates[model] !== undefined;
+
 export const bedrockCostMicros = (params: {
   readonly model: string;
   readonly inTokens: number;
@@ -209,6 +212,7 @@ export const recordAwsUsage = (
 export const withAwsCap = (
   db: DatabaseImpl,
   runtime: AgentRuntimeImpl,
+  model: string,
   onAlarm: () => Effect.Effect<void>,
 ): AgentRuntimeImpl => ({
   complete: (messages, withTools) =>
@@ -221,7 +225,7 @@ export const withAwsCap = (
       }
       const result = yield* runtime.complete(messages, withTools);
       yield* recordAwsUsage(db, {
-        model: "amazon.nova-micro-v1:0",
+        model,
         inTokens: result.usage.inTokens,
         outTokens: result.usage.outTokens,
       });

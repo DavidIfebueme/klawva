@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
 import type { ModelResult } from "../src/agent/runtime.ts";
+import { resolveBedrockModelId } from "../src/agent/proxy.ts";
 import {
   AWS_DAILY_ALARM_MICROS,
   AWS_DAILY_CAP_MICROS,
@@ -53,10 +54,8 @@ describe("bedrock cost", () => {
     expect(cost).toBe(175_000);
   });
 
-  it("returns null for an unknown model so it never silently bills", () => {
-    expect(
-      bedrockCostMicros({ model: "unknown", inTokens: 1, outTokens: 1 }),
-    ).toBeNull();
+  it("refuses an unknown bedrock model instead of metering silently", () => {
+    expect(() => resolveBedrockModelId("bedrock:unknown-typo")).toThrow();
   });
 });
 
@@ -126,7 +125,7 @@ describe("aws cap", () => {
       { prefix: "SELECT value AS value FROM counters", rows: [{ value: AWS_DAILY_CAP_MICROS }] },
     ]);
     const exit = await Effect.runPromiseExit(
-      withAwsCap(db, runtime, () => Effect.void).complete([], false),
+      withAwsCap(db, runtime, "amazon.nova-micro-v1:0", () => Effect.void).complete([], false),
     );
     expect(exit._tag).toBe("Failure");
   });
@@ -136,7 +135,7 @@ describe("aws cap", () => {
     const { db } = fakeDb([
       { prefix: "SELECT value AS value FROM counters", rows: [{ value: AWS_DAILY_ALARM_MICROS - 100 }, { value: AWS_DAILY_ALARM_MICROS + 1 }] },
     ]);
-    const wrapped = withAwsCap(db, runtime, () =>
+    const wrapped = withAwsCap(db, runtime, "amazon.nova-micro-v1:0", () =>
       Effect.sync(() => {
         alarms += 1;
       }),
@@ -150,7 +149,7 @@ describe("aws cap", () => {
     const { db } = fakeDb([
       { prefix: "SELECT value AS value FROM counters", rows: [{ value: AWS_DAILY_ALARM_MICROS + 1 }] },
     ]);
-    const wrapped = withAwsCap(db, runtime, () =>
+    const wrapped = withAwsCap(db, runtime, "amazon.nova-micro-v1:0", () =>
       Effect.sync(() => {
         alarms += 1;
       }),
