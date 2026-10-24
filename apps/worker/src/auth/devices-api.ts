@@ -162,8 +162,8 @@ export const devicesGroup = HttpApiBuilder.group(
       )
       .handle("deviceRotate", ({ params }) =>
         Effect.gen(function* () {
-          yield* requireIdentity();
-          const rotated = yield* rotateToken(db, params.id).pipe(
+          const identity = yield* requireIdentity();
+          const rotated = yield* rotateToken(db, identity.userId, params.id).pipe(
             Effect.catch((cause) =>
               Effect.fail(new AuthError({ reason: String(cause) })),
             ),
