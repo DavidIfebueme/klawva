@@ -168,19 +168,30 @@ export const toolRegistry: ReadonlyArray<ToolDefinition> = [
   webSearchTool,
 ];
 
-export const specsFor = (
+export interface ToolSpec {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Record<string, unknown>;
+}
+
+export const toolSpecsFor = (
   allowlist: ReadonlyArray<string>,
-): ReadonlyArray<Record<string, unknown>> =>
+): ReadonlyArray<ToolSpec> =>
   toolRegistry
     .filter((tool) => allowlist.includes(tool.name))
     .map((tool) => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      },
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
     }));
+
+export const specsFor = (
+  allowlist: ReadonlyArray<string>,
+): ReadonlyArray<Record<string, unknown>> =>
+  toolSpecsFor(allowlist).map((spec) => ({
+    type: "function",
+    function: spec,
+  }));
 
 const ToolCallSchema = Schema.Struct({
   id: Schema.optionalKey(Schema.String),
