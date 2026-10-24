@@ -29,3 +29,6 @@ dist/
 # worker static assets (populated at deploy)
 apps/worker/assets/*
 !apps/worker/assets/.gitkeep
+
+# rust build output
+apps/desktop/src-tauri/target/
