@@ -9,7 +9,7 @@ import {
 } from "../src/listings/listings.ts";
 import { definitions } from "../src/listings/definitions.ts";
 import { ManifestJson, manifestOf } from "../src/db/schema.ts";
-import { maxSecondsForBudget } from "../src/voice/ratecard.ts";
+import { koboPerMinute, maxSecondsForBudget } from "../src/voice/ratecard.ts";
 import { soulFor } from "../src/agent/souls.ts";
 
 describe("eval bands", () => {
@@ -188,11 +188,14 @@ describe("phone listings", () => {
     }
   });
 
-  it("prices phone shifts above the agreed 50 percent margin floor", () => {
+  it("prices a phone shift at least twice its measured rail cost, a real 50 percent margin floor", () => {
+    const measuredCost = (definition: (typeof phones)[number]): number =>
+      definition.agentId === "receptionist"
+        ? 25 * koboPerMinute("bolna")
+        : 15 * koboPerMinute("twilio");
     for (const definition of phones) {
-      expect(definition.priceMinor).toBeGreaterThanOrEqual(
-        Math.ceil(definition.budgetMinor * 1.5),
-      );
+      const cost = measuredCost(definition);
+      expect(definition.priceMinor).toBeGreaterThanOrEqual(cost * 2);
     }
   });
 
