@@ -206,8 +206,15 @@ describe("phone listings", () => {
       { ...receptionist!, launchMarkets: ["us", "in", "ng"] },
       "soul",
     );
-    const bareHash = await Effect.runPromise(manifestHash(bare));
-    const expandedHash = await Effect.runPromise(manifestHash(expanded));
+    const wrap = (manifest: ReturnType<typeof manifestFor>) => ({
+      manifest,
+      briefFields: [],
+      toolAllowlist: [],
+      model: "m1",
+      budgetMinor: 0,
+    });
+    const bareHash = await Effect.runPromise(manifestHash(wrap(bare)));
+    const expandedHash = await Effect.runPromise(manifestHash(wrap(expanded)));
     expect(expandedHash).not.toBe(bareHash);
   });
 });
