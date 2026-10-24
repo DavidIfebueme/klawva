@@ -50,3 +50,15 @@ jobs:
             failed=1
           fi
           exit $failed
+      - name: keep one writer for session transports
+        run: |
+          # session_transports rows are written by the session durable object
+          # through apps/worker/src/session/transports.ts and its handlers.
+          writes=$(perl -0777 -ne '
+            print "$ARGV\n" if /(?:INSERT\s+INTO|UPDATE)\s+session_transports\b/gis;
+          ' $(git ls-files 'apps/worker/src') | grep -v '^apps/worker/src/session/' || true)
+          if [ -n "$writes" ]; then
+            echo "session_transports is written outside the session durable object:"
+            echo "$writes"
+            exit 1
+          fi
