@@ -843,6 +843,14 @@ const rootGroup = HttpApiBuilder.group(
             ],
           )
           .pipe(Effect.orDie);
+          if (userId !== null) {
+            yield* db
+              .run(
+                "INSERT INTO device_sessions (device_id, session_id, created_at) SELECT d.id, ?, ? FROM devices d WHERE d.user_id = ? AND d.revoked_at IS NULL ON CONFLICT(device_id, session_id) DO NOTHING",
+                [id, now, userId],
+              )
+              .pipe(Effect.orDie);
+          }
           yield* Effect.tryPromise({
             try: () =>
               env.SESSION.get(env.SESSION.idFromName(id)).fetch(
