@@ -23,11 +23,11 @@ import { deviceForToken } from "../auth/devices.ts";
 import {
   defaultModel,
   defaultToolAllowlist,
-  makeRuntime,
   ModelError,
   resolveAllowlist,
   runTurn,
 } from "../agent/runtime.ts";
+import { resolveRuntime } from "../agent/proxy.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
 import {
   charsToTokens,
@@ -427,7 +427,7 @@ export const completeShift = (
       return;
     }
     const history = yield* store.history();
-    const runtime = makeRuntime(env.AI, defaultModel);
+    const runtime = resolveRuntime(env, db, defaultModel);
     const briefRaw = (yield* store.get("brief")) ?? "{}";
     const brief = Schema.decodeUnknownSync(Brief)(JSON.parse(briefRaw));
     const inChars =
@@ -774,8 +774,9 @@ const sessionGroup = HttpApiBuilder.group(
           yield* store.spend(50);
           const config = yield* loadTurnConfig(store);
           const kickoffText = `Begin the shift. Restate the task from the brief in one line, state your immediate plan in two or three steps, then take the first action now.`;
-          const sessionRuntime = makeRuntime(
-            sessionEnv.env.AI,
+          const sessionRuntime = resolveRuntime(
+            sessionEnv.env,
+            db,
             config.model,
             config.allowlist,
           );
@@ -860,8 +861,9 @@ const sessionGroup = HttpApiBuilder.group(
             yield* persistReply(store, db, sessionEnv.sessionId, budgetReply);
             return { ok: true, reply: budgetReply };
           }
-          const sessionRuntime = makeRuntime(
-            sessionEnv.env.AI,
+          const sessionRuntime = resolveRuntime(
+            sessionEnv.env,
+            db,
             admission.config.model,
             admission.config.allowlist,
           );
