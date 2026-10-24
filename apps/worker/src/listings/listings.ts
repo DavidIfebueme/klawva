@@ -21,6 +21,9 @@ export const manifestFor = (
   ...(definition.voice === undefined ? {} : { voice: definition.voice }),
   ...(definition.phone === undefined ? {} : { phone: definition.phone }),
   ...(definition.desktop === undefined ? {} : { desktop: definition.desktop }),
+  ...(definition.launchMarkets === undefined
+    ? {}
+    : { launchMarkets: [...definition.launchMarkets] }),
 });
 
 export const encodeManifest = (manifest: Manifest): string =>
