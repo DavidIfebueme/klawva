@@ -28,10 +28,8 @@ const bolnaWebhook = HttpApiEndpoint.post(
   "/api/voice/bolna/webhook",
   {
     payload: Schema.Struct({
-      carrierRef: Schema.optionalKey(Schema.String),
-      execution_id: Schema.optionalKey(Schema.String),
-      summary: Schema.optionalKey(Schema.String),
-      transcript: Schema.optionalKey(Schema.String),
+      carrierRef: Schema.String,
+      summary: Schema.String,
     }),
     success: Schema.Struct({ ok: Schema.Boolean }),
     error: AuthError,
@@ -119,16 +117,11 @@ export const voiceGroup = HttpApiBuilder.group(
           if (typeof secret !== "string" || secret !== env.CRON_SECRET) {
             return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
           }
-          const carrierRef = payload.carrierRef ?? payload.execution_id;
-          if (carrierRef === undefined) {
-            return yield* Effect.fail(new AuthError({ reason: "missing_ref" }));
-          }
-          const summary =
-            payload.summary ??
-            (payload.transcript !== undefined && payload.transcript.length > 0
-              ? payload.transcript.slice(0, 500)
-              : "call completed");
-          const filed = yield* fileBolnaReport(db, carrierRef, summary);
+          const filed = yield* fileBolnaReport(
+            db,
+            payload.carrierRef,
+            payload.summary,
+          );
           if (!filed) {
             return yield* Effect.fail(
               new AuthError({ reason: "transport_not_found" }),

@@ -37,6 +37,11 @@ export interface Env {
   readonly AWS_BEDROCK_API_KEY?: string;
   readonly AWS_REGION?: string;
   readonly BEDROCK_ENABLED?: string;
+  readonly BOLNA_API_KEY?: string;
+  readonly TWILIO_ACCOUNT_SID?: string;
+  readonly TWILIO_AUTH_TOKEN?: string;
+  readonly TWILIO_FROM_NUMBER?: string;
+  readonly VOICE_RELAY_URL?: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(
