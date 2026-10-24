@@ -42,6 +42,7 @@ import { StudioApi, studioGroup } from "./studio/api.ts";
 import { AdminApi, adminGroup } from "./admin/api.ts";
 import { AccountApi, accountGroup } from "./account/api.ts";
 import { DevicesApi, devicesGroup } from "./auth/devices-api.ts";
+import { VoiceApi, voiceGroup } from "./voice/api.ts";
 import { ownsSession, sessionTokenMatches } from "./account/account.ts";
 
 const ReportStats = Schema.Array(
@@ -932,7 +933,10 @@ export const makeAppLayer = (env: Env) => {
   const deviceRoutes = HttpApiBuilder.layer(DevicesApi).pipe(
     Layer.provide(devicesGroup.pipe(Layer.provide(services))),
   );
-  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes, deviceRoutes).pipe(
+  const voiceRoutes = HttpApiBuilder.layer(VoiceApi).pipe(
+    Layer.provide(voiceGroup.pipe(Layer.provide(services))),
+  );
+  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes, deviceRoutes, voiceRoutes).pipe(
     Layer.provide(HttpServer.layerServices),
   );
 };
