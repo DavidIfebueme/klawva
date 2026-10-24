@@ -39,6 +39,7 @@ import { AuthError } from "./auth/tokens.ts";
 import { StudioApi, studioGroup } from "./studio/api.ts";
 import { AdminApi, adminGroup } from "./admin/api.ts";
 import { AccountApi, accountGroup } from "./account/api.ts";
+import { DevicesApi, devicesGroup } from "./auth/devices-api.ts";
 import { ownsSession, sessionTokenMatches } from "./account/account.ts";
 
 const ReportStats = Schema.Array(
@@ -842,6 +843,14 @@ const rootGroup = HttpApiBuilder.group(
             ],
           )
           .pipe(Effect.orDie);
+          if (userId !== null) {
+            yield* db
+              .run(
+                "INSERT INTO device_sessions (device_id, session_id, created_at) SELECT d.id, ?, ? FROM devices d WHERE d.user_id = ? AND d.revoked_at IS NULL ON CONFLICT(device_id, session_id) DO NOTHING",
+                [id, now, userId],
+              )
+              .pipe(Effect.orDie);
+          }
           yield* Effect.tryPromise({
             try: () =>
               env.SESSION.get(env.SESSION.idFromName(id)).fetch(
@@ -900,7 +909,10 @@ export const makeAppLayer = (env: Env) => {
   const accountRoutes = HttpApiBuilder.layer(AccountApi).pipe(
     Layer.provide(accountGroup.pipe(Layer.provide(services))),
   );
-  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes).pipe(
+  const deviceRoutes = HttpApiBuilder.layer(DevicesApi).pipe(
+    Layer.provide(devicesGroup.pipe(Layer.provide(services))),
+  );
+  return Layer.mergeAll(mainRoutes, studioRoutes, adminRoutes, accountRoutes, deviceRoutes).pipe(
     Layer.provide(HttpServer.layerServices),
   );
 };
