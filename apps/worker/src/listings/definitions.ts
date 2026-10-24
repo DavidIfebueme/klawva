@@ -1,3 +1,5 @@
+import type { DesktopManifest, PhoneManifest, VoiceManifest } from "../db/schema.ts";
+
 export interface ListingDefinition {
   readonly slug: string;
   readonly name: string;
@@ -7,6 +9,9 @@ export interface ListingDefinition {
   readonly briefFields: ReadonlyArray<string>;
   readonly priceMinor: number;
   readonly budgetMinor: number;
+  readonly voice?: VoiceManifest;
+  readonly phone?: PhoneManifest;
+  readonly desktop?: DesktopManifest;
 }
 
 export const definitions: ReadonlyArray<ListingDefinition> = [
