@@ -29,3 +29,8 @@ const dayMs = 24 * 60 * 60 * 1000;
 
 export const windowEndFor = (nowMs: number, days: number): string =>
   new Date(nowMs + Math.max(1, days) * dayMs).toISOString();
+
+export const dailyHireCap = 10;
+
+export const hireCapReached = (hiresToday: number): boolean =>
+  hiresToday >= dailyHireCap;
