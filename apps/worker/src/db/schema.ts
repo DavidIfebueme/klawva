@@ -84,6 +84,8 @@ export type DesktopManifest = typeof DesktopManifest.Type;
 export const LaunchMarket = Schema.Literals(["us", "in", "ng"]);
 export type LaunchMarket = typeof LaunchMarket.Type;
 
+export const accountMarketOrNull = Schema.NullOr(LaunchMarket);
+
 export const Manifest = Schema.Struct({
   soul: Schema.String,
   voice: Schema.optional(VoiceManifest),
@@ -109,6 +111,7 @@ export type EventPayload = typeof EventPayload.Type;
 export class User extends Schema.Class<User>("User")({
   id: Schema.String,
   email: Schema.String,
+  market: Schema.NullOr(LaunchMarket),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 }) {}
