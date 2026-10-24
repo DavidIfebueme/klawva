@@ -5,10 +5,6 @@ import type { Carrier, CallHandle, DialParams } from "./carrier.ts";
 import { CarrierError } from "./carrier.ts";
 import { budgetCoversCall, maxSecondsForBudget } from "./ratecard.ts";
 import { aiDisclosureLine, consentFor, insideCallingWindow, type Market } from "./rules.ts";
-import {
-  bindTransport,
-  type IllegalTransportTransition,
-} from "../session/transports.ts";
 
 export class DialRefused extends Schema.TaggedError<DialRefused>()(
   "DialRefused",
@@ -23,7 +19,6 @@ export class DialRefused extends Schema.TaggedError<DialRefused>()(
 ) {}
 
 export interface CheckedDialParams {
-  readonly sessionId: string;
   readonly to: string;
   readonly market: Market;
   readonly agentName: string;
@@ -36,10 +31,7 @@ export const dialChecked = (
   db: DatabaseImpl,
   carrier: Carrier,
   params: CheckedDialParams,
-): Effect.Effect<
-  CallHandle & { maxSeconds: number },
-  DialRefused | CarrierError | IllegalTransportTransition
-> =>
+): Effect.Effect<CallHandle & { maxSeconds: number }, DialRefused | CarrierError> =>
   Effect.gen(function* () {
     const consent = yield* consentFor(db, params.to);
     if (consent.onDnc) {
@@ -64,13 +56,5 @@ export const dialChecked = (
       maxSeconds,
     };
     const handle = yield* carrier.dial(dialParams);
-    // a dial that cannot bind its leg is a failed dial: the report layer needs the row
-    yield* bindTransport(
-      db,
-      params.sessionId,
-      "phone_out",
-      carrier.name,
-      handle.carrierRef,
-    );
     return { ...handle, maxSeconds };
   });
