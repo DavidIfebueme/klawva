@@ -6,18 +6,11 @@ import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { identityFromToken, tokenFromHeaders } from "./auth.ts";
-import { bundleAllowed, grantBundle } from "../desktop/bundles.ts";
 import { AuthError } from "./tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { ListingNotFound } from "../errors.ts";
 import { pairDevice, revokeDevice, rotateToken, scopeDeviceSession } from "./devices.ts";
-import {
-  approvePairCode,
-  claimPairCode,
-  deviceIdForRawToken,
-  sessionsForDevice,
-} from "./pairing.ts";
 
 const DeviceRow = Schema.Struct({
   id: Schema.String,
@@ -48,7 +41,7 @@ const deviceRotate = HttpApiEndpoint.post(
   {
     params: Schema.Struct({ id: Schema.String }),
     success: Schema.Struct({ token: Schema.String }),
-    error: [AuthError, ListingNotFound],
+    error: Schema.Union([AuthError, ListingNotFound]),
   },
 );
 
@@ -58,7 +51,7 @@ const deviceRevoke = HttpApiEndpoint.post(
   {
     params: Schema.Struct({ id: Schema.String }),
     success: Schema.Struct({ ok: Schema.Boolean }),
-    error: [AuthError, ListingNotFound],
+    error: Schema.Union([AuthError, ListingNotFound]),
   },
 );
 
@@ -73,70 +66,12 @@ const deviceScope = HttpApiEndpoint.post(
   },
 );
 
-const DeviceSessionRow = Schema.Struct({
-  id: Schema.String,
-  state: Schema.String,
-  listingName: Schema.NullOr(Schema.String),
-});
-
-const pairCodeApprove = HttpApiEndpoint.post(
-  "pairCodeApprove",
-  "/api/devices/codes",
-  {
-    payload: Schema.Struct({ code: Schema.String, name: Schema.String }),
-    success: Schema.Struct({ ok: Schema.Boolean }),
-    error: AuthError,
-  },
-);
-
-const pairCodeClaim = HttpApiEndpoint.post(
-  "pairCodeClaim",
-  "/api/devices/claim",
-  {
-    payload: Schema.Struct({ code: Schema.String }),
-    success: Schema.Struct({ id: Schema.String, token: Schema.String }),
-    error: [AuthError, ListingNotFound],
-  },
-);
-
-const deviceSessions = HttpApiEndpoint.get(
-  "deviceSessions",
-  "/api/device/sessions",
-  {
-    success: Schema.Array(DeviceSessionRow),
-    error: AuthError,
-  },
-);
-
-const bundleAllowedRow = Schema.Struct({
-  allowed: Schema.Boolean,
-  reason: Schema.optional(Schema.String),
-});
-
-const deviceBundleAllowed = HttpApiEndpoint.get(
-  "deviceBundleAllowed",
-  "/api/device/bundles/:bundleId/allowed",
-  {
-    params: Schema.Struct({ bundleId: Schema.String }),
-    query: Schema.Struct({
-      version: Schema.String,
-      sha256: Schema.String,
-    }),
-    success: bundleAllowedRow,
-    error: AuthError,
-  },
-);
-
 class DevicesGroup extends HttpApiGroup.make("Devices")
   .add(deviceCreate)
   .add(deviceList)
   .add(deviceRotate)
   .add(deviceRevoke)
-  .add(deviceScope)
-  .add(pairCodeApprove)
-  .add(pairCodeClaim)
-  .add(deviceSessions)
-  .add(deviceBundleAllowed) {}
+  .add(deviceScope) {}
 
 export class DevicesApi extends HttpApi.make("DevicesApi").add(DevicesGroup) {}
 
@@ -230,67 +165,6 @@ export const devicesGroup = HttpApiBuilder.group(
             );
           }
           return { ok: true };
-        }),
-      )
-      .handle("pairCodeApprove", ({ payload }) =>
-        Effect.gen(function* () {
-          const identity = yield* requireIdentity();
-          yield* approvePairCode(db, identity.userId, payload.code, payload.name);
-          return { ok: true };
-        }),
-      )
-      .handle("pairCodeClaim", ({ payload }) =>
-        Effect.gen(function* () {
-          const claimed = yield* claimPairCode(db, payload.code).pipe(
-            Effect.catch((cause) =>
-              Effect.fail(new AuthError({ reason: String(cause) })),
-            ),
-          );
-          if (claimed === null) {
-            return yield* Effect.fail(new ListingNotFound({}));
-          }
-          return { id: claimed.deviceId, token: claimed.token };
-        }),
-      )
-      .handle("deviceSessions", () =>
-        Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          const token = tokenFromHeaders(request.headers);
-          if (token === null) {
-            return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
-          }
-          const deviceId = yield* deviceIdForRawToken(db, token).pipe(
-            Effect.catch(() => Effect.succeed(null)),
-          );
-          if (deviceId === null) {
-            return yield* Effect.fail(new AuthError({ reason: "bad_device_token" }));
-          }
-          return yield* sessionsForDevice(db, deviceId);
-        }),
-      )
-      .handle("deviceBundleAllowed", ({ params, query }) =>
-        Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          const token = tokenFromHeaders(request.headers);
-          if (token === null) {
-            return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
-          }
-          const deviceId = yield* deviceIdForRawToken(db, token).pipe(
-            Effect.catch(() => Effect.succeed(null)),
-          );
-          if (deviceId === null) {
-            return yield* Effect.fail(new AuthError({ reason: "bad_device_token" }));
-          }
-          const decision = yield* bundleAllowed(db, {
-            bundleId: params.bundleId,
-            version: query.version,
-            sha256: query.sha256,
-          });
-          if (!decision.allowed) {
-            return { allowed: false, reason: decision.reason };
-          }
-          yield* grantBundle(db, deviceId, params.bundleId, query.version);
-          return { allowed: true };
         }),
       );
   }),
