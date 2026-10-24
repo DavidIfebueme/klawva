@@ -19,6 +19,7 @@ import {
 } from "../db/schema.ts";
 import { sessionTokenMatches, ownsSession } from "../account/account.ts";
 import { identityFromToken } from "../auth/auth.ts";
+import { deviceForToken } from "../auth/devices.ts";
 import {
   defaultModel,
   defaultToolAllowlist,
@@ -388,11 +389,13 @@ export const authorizeStream = (
     const identity = yield* identityFromToken(env, db, clean).pipe(
       Effect.catch(() => Effect.succeed(null)),
     );
-    if (identity === null) {
-      return false;
+    if (identity !== null) {
+      return yield* ownsSession(db, identity.userId, identity.email, sessionId);
     }
-    const owned = yield* ownsSession(db, identity.userId, identity.email, sessionId);
-    return owned;
+    const deviceId = yield* deviceForToken(db, sessionId, clean).pipe(
+      Effect.catch(() => Effect.succeed(null)),
+    );
+    return deviceId !== null;
   });
 
 export const messageText = (message: UIMessage): string =>
