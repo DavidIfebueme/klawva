@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
-import type { DatabaseImpl, Row } from "../src/db/database.ts";
+import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
 import type { CallHandle, Carrier } from "../src/voice/carrier.ts";
 import { dialChecked } from "../src/voice/dial.ts";
+import { fileBolnaReport, upsertConsent } from "../src/voice/api.ts";
 import {
   budgetCoversCall,
   koboPerMinute,
@@ -127,5 +128,73 @@ describe("gated dial", () => {
     const { carrier, calls } = recordingCarrier();
     await Effect.runPromise(dialChecked(fakeDb(consentedRow), carrier, base));
     expect(calls[0].welcomeMessage.startsWith(aiDisclosureLine)).toBe(true);
+  });
+});
+
+describe("consent ingestion", () => {
+  it("upserts a consent row per uploaded number", async () => {
+    const writes: Array<{ sql: string; params: ReadonlyArray<Param> }> = [];
+    const db: DatabaseImpl = {
+      all: () => Effect.succeed([]),
+      first: () => Effect.succeed(null),
+      run: (sql, params) => {
+        writes.push({ sql: String(sql), params: params ?? [] });
+        return Effect.void;
+      },
+      batch: () => Effect.void,
+      changed: () => Effect.succeed(0),
+    };
+    await Effect.runPromise(
+      upsertConsent(db, {
+        number: "+2349066033744",
+        source: "booking_form",
+        consentedAt: "2026-10-01T00:00:00Z",
+      }),
+    );
+    expect(writes.length).toBe(1);
+    expect(writes[0].sql.toUpperCase()).toContain("CONFLICT");
+    expect(writes[0].params[0]).toBe("+2349066033744");
+    expect(writes[0].params[1]).toBe("booking_form");
+    expect(writes[0].params[2]).toBe("2026-10-01T00:00:00Z");
+  });
+});
+
+describe("bolna transcript ingest", () => {
+  const dbFor = (row: Row | null): { db: DatabaseImpl; writes: Array<{ sql: string; params: ReadonlyArray<Param> }> } => {
+    const writes: Array<{ sql: string; params: ReadonlyArray<Param> }> = [];
+    return {
+      db: {
+        all: () => Effect.succeed(row !== null ? [row] : []),
+        first: () => Effect.succeed(row),
+        run: (sql, params) => {
+          writes.push({ sql: String(sql), params: params ?? [] });
+          return Effect.void;
+        },
+        batch: () => Effect.void,
+        changed: () => Effect.succeed(0),
+      },
+      writes,
+    };
+  };
+
+  it("files a call report against the transport's session", async () => {
+    const { db, writes } = dbFor({ id: "t1", sessionId: "s1" });
+    const filed = await Effect.runPromise(
+      fileBolnaReport(db, "exec-123", "call completed, slot booked"),
+    );
+    expect(filed).toBe(true);
+    const reportWrite = writes.find((w) => w.sql.toUpperCase().includes("MISSION_REPORTS"));
+    expect(reportWrite).toBeDefined();
+    expect(reportWrite!.params[1]).toBe("s1");
+    expect(reportWrite!.params[2]).toBe("t1");
+    expect(reportWrite!.params[3]).toBe("call completed, slot booked");
+  });
+
+  it("returns false when the carrier ref is unknown", async () => {
+    const { db } = dbFor(null);
+    const filed = await Effect.runPromise(
+      fileBolnaReport(db, "nope", "call completed"),
+    );
+    expect(filed).toBe(false);
   });
 });

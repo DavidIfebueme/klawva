@@ -71,11 +71,9 @@ export const bolnaCarrier = (config: BolnaConfig): Carrier => ({
                       },
                     },
                     synthesizer: {
-                      provider: "elevenlabs",
+                      provider: "azure",
                       provider_config: {
-                        voice: "Angelica",
-                        voice_id: "IkSv4tkouLJ6kYsQA7XD",
-                        model: "eleven_turbo_v2_5",
+                        voice_name: "en-US-AvaNeural",
                       },
                       stream: true,
                       buffer_size: 250,
