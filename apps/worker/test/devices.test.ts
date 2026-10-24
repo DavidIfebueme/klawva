@@ -7,22 +7,35 @@ import {
   pairDevice,
   revokeDevice,
   rotateToken,
+  scopeDeviceSession,
 } from "../src/auth/devices.ts";
 
 type Writes = Array<{ readonly sql: string; readonly params: ReadonlyArray<Param> }>;
 
 const fakeDb = (
-  rowsByPrefix: ReadonlyArray<{ prefix: string; row: Row | null }>,
+  rowsByPrefix: ReadonlyArray<{
+    prefix: string;
+    row: Row | null;
+    atParams?: (params: ReadonlyArray<Param>) => boolean;
+  }>,
 ): { db: DatabaseImpl; writes: Writes } => {
   const writes: Writes = [];
+  const hit = (sql: string, params: ReadonlyArray<Param>) =>
+    rowsByPrefix.find(
+      (entry) =>
+        sql.startsWith(entry.prefix) &&
+        (entry.atParams === undefined || entry.atParams(params)),
+    );
   const db: DatabaseImpl = {
-    all: (sql) => {
-      const hit = rowsByPrefix.find((entry) => sql.startsWith(entry.prefix));
-      return Effect.succeed(hit !== null && hit !== undefined && hit.row !== null ? [hit.row] : []);
+    all: (sql, params) => {
+      const entry = hit(sql, params ?? []);
+      return Effect.succeed(
+        entry !== undefined && entry.row !== null ? [entry.row] : [],
+      );
     },
-    first: (sql) => {
-      const hit = rowsByPrefix.find((entry) => sql.startsWith(entry.prefix));
-      return Effect.succeed(hit?.row ?? null);
+    first: (sql, params) => {
+      const entry = hit(sql, params ?? []);
+      return Effect.succeed(entry?.row ?? null);
     },
     run: (sql, params) => {
       writes.push({ sql, params: params ?? [] });
@@ -83,7 +96,7 @@ describe("rotateToken", () => {
     const { db, writes } = fakeDb([
       { prefix: "SELECT token_hash", row: { tokenHash: "oldhash" } },
     ]);
-    const rotated = await Effect.runPromise(rotateToken(db, "d1"));
+    const rotated = await Effect.runPromise(rotateToken(db, "u1", "d1"));
     expect(rotated).not.toBeNull();
     const update = writes.find((w) => w.sql.includes("UPDATE devices SET previous_token_hash"));
     expect(update).toBeDefined();
@@ -94,7 +107,7 @@ describe("rotateToken", () => {
 
   it("returns null for a revoked or unknown device", async () => {
     const { db } = fakeDb([{ prefix: "SELECT token_hash", row: null }]);
-    const rotated = await Effect.runPromise(rotateToken(db, "d1"));
+    const rotated = await Effect.runPromise(rotateToken(db, "u1", "d1"));
     expect(rotated).toBeNull();
   });
 });
@@ -116,5 +129,47 @@ describe("revokeDevice", () => {
     const { db } = fakeDb([]);
     const revoked = await Effect.runPromise(revokeDevice(db, "u1", "gone"));
     expect(revoked).toBe(false);
+  });
+});
+
+describe("scopeDeviceSession", () => {
+  it("refuses to scope a device to a session the caller does not own", async () => {
+    const { db, writes } = fakeDb([
+      {
+        prefix: "SELECT 1 AS ok",
+        row: null,
+        atParams: (params) => params[2] === "stranger@example.com",
+      },
+      {
+        prefix: "SELECT 1 AS ok",
+        row: { ok: 1 },
+      },
+    ]);
+    const refused = await Effect.runPromise(
+      scopeDeviceSession(db, "u1", "stranger@example.com", "d1", "s-other"),
+    );
+    expect(refused).toBe(false);
+    expect(writes.find((w) => w.sql.includes("INSERT INTO device_sessions"))).toBeUndefined();
+    const admitted = await Effect.runPromise(
+      scopeDeviceSession(db, "u1", "owner@example.com", "d1", "s-mine"),
+    );
+    expect(admitted).toBe(true);
+    expect(writes.some((w) => w.sql.includes("INSERT INTO device_sessions"))).toBe(true);
+  });
+});
+
+describe("rotateToken scoping", () => {
+  it("refuses to rotate a device owned by another user", async () => {
+    const { db } = fakeDb([
+      {
+        prefix: "SELECT token_hash",
+        row: { tokenHash: "oldhash" },
+        atParams: (params) => params[1] === "u1",
+      },
+    ]);
+    const stranger = await Effect.runPromise(rotateToken(db, "u2", "d1"));
+    expect(stranger).toBeNull();
+    const owner = await Effect.runPromise(rotateToken(db, "u1", "d1"));
+    expect(owner).not.toBeNull();
   });
 });

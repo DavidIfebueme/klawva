@@ -41,11 +41,15 @@ export const pairDevice = (
 
 export const rotateToken = (
   db: DatabaseImpl,
+  userId: string,
   deviceId: string,
 ): Effect.Effect<{ token: string } | null, Error> =>
   Effect.gen(function* () {
     const row = yield* db
-      .first("SELECT token_hash AS tokenHash FROM devices WHERE id = ? AND revoked_at IS NULL", [deviceId])
+      .first(
+        "SELECT token_hash AS tokenHash FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+        [deviceId, userId],
+      )
       .pipe(Effect.orDie);
     if (row === null) {
       return null;
@@ -77,14 +81,22 @@ export const deviceForToken = (
       .join("");
     const row = yield* db
       .first(
-        "SELECT d.id AS id FROM devices d JOIN device_sessions s ON s.device_id = d.id WHERE (d.token_hash = ? OR d.previous_token_hash = ?) AND d.revoked_at IS NULL AND s.session_id = ?",
-        [hash, hash, sessionId],
+        "SELECT d.id AS id, d.token_hash = ? AS isCurrent FROM devices d JOIN device_sessions s ON s.device_id = d.id WHERE (d.token_hash = ? OR d.previous_token_hash = ?) AND d.revoked_at IS NULL AND s.session_id = ?",
+        [hash, hash, hash, sessionId],
       )
       .pipe(Effect.orDie);
     if (row === null) {
       return null;
     }
     const deviceId = String(row.id);
+    if (Number(row.isCurrent) === 1) {
+      yield* db
+        .run(
+          "UPDATE devices SET previous_token_hash = NULL WHERE id = ?",
+          [deviceId],
+        )
+        .pipe(Effect.orDie);
+    }
     yield* db
       .run("UPDATE devices SET last_seen_at = ? WHERE id = ?", [
         new Date().toISOString(),
@@ -105,6 +117,27 @@ export const scopeSession = (
       [deviceId, sessionId, new Date().toISOString()],
     )
     .pipe(Effect.orDie);
+
+export const scopeDeviceSession = (
+  db: DatabaseImpl,
+  userId: string,
+  email: string,
+  deviceId: string,
+  sessionId: string,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const owned = yield* db
+      .first(
+        "SELECT 1 AS ok FROM sessions WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND customer_email = ?))",
+        [sessionId, userId, email],
+      )
+      .pipe(Effect.orDie);
+    if (owned === null) {
+      return false;
+    }
+    yield* scopeSession(db, deviceId, sessionId);
+    return true;
+  });
 
 export const revokeDevice = (
   db: DatabaseImpl,

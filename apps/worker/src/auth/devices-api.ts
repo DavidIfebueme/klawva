@@ -10,7 +10,7 @@ import { AuthError } from "./tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { ListingNotFound } from "../errors.ts";
-import { pairDevice, revokeDevice, rotateToken, scopeSession } from "./devices.ts";
+import { pairDevice, revokeDevice, rotateToken, scopeDeviceSession } from "./devices.ts";
 
 const DeviceRow = Schema.Struct({
   id: Schema.String,
@@ -118,8 +118,8 @@ export const devicesGroup = HttpApiBuilder.group(
       )
       .handle("deviceRotate", ({ params }) =>
         Effect.gen(function* () {
-          yield* requireIdentity();
-          const rotated = yield* rotateToken(db, params.id).pipe(
+          const identity = yield* requireIdentity();
+          const rotated = yield* rotateToken(db, identity.userId, params.id).pipe(
             Effect.catch((cause) =>
               Effect.fail(new AuthError({ reason: String(cause) })),
             ),
@@ -152,7 +152,18 @@ export const devicesGroup = HttpApiBuilder.group(
           if (owned === null) {
             return yield* Effect.fail(new AuthError({ reason: "device_not_found" }));
           }
-          yield* scopeSession(db, params.id, payload.sessionId);
+          const scoped = yield* scopeDeviceSession(
+            db,
+            identity.userId,
+            identity.email,
+            params.id,
+            payload.sessionId,
+          );
+          if (!scoped) {
+            return yield* Effect.fail(
+              new AuthError({ reason: "session_not_found" }),
+            );
+          }
           return { ok: true };
         }),
       );
