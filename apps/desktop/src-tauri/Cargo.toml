@@ -12,13 +12,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-websocket = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-base64 = "0.22"
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
-    "Win32_Foundation",
-    "Win32_Security_Cryptography",
-] }
 
 [profile.release]
 panic = "abort"
