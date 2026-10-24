@@ -842,6 +842,7 @@ const rootGroup = HttpApiBuilder.group(
               : [
                   ...(manifest.phone?.outbound === true ? ["phone_out" as const] : []),
                   ...(manifest.phone?.inbound === true ? ["phone_in" as const] : []),
+                  ...(manifest.desktop?.ownDevice === true ? ["desktop" as const] : []),
                 ];
           if (transports.length > 0 && !bedrockEnabled(env)) {
             return yield* Effect.fail(
