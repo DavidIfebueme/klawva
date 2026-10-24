@@ -32,6 +32,11 @@ export interface Env {
   readonly BRAVE_API_KEY: string;
   readonly OWNER_ONLY?: string;
   readonly OWNER_KEY?: string;
+  readonly AWS_ACCESS_KEY_ID?: string;
+  readonly AWS_SECRET_ACCESS_KEY?: string;
+  readonly AWS_BEDROCK_API_KEY?: string;
+  readonly AWS_REGION?: string;
+  readonly BEDROCK_ENABLED?: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(
