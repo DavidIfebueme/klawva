@@ -218,3 +218,50 @@ describe("phone listings", () => {
     expect(expandedHash).not.toBe(bareHash);
   });
 });
+
+describe("desktop listings", () => {
+  const desktops = definitions.filter((definition) => definition.category === "desktop");
+
+  it("ships the five ready desktop employees, each with a soul", () => {
+    const ids = desktops.map((definition) => definition.agentId).sort();
+    expect(ids).toEqual([
+      "cvtailor",
+      "inbox",
+      "moneyadmin",
+      "paperwork",
+      "study",
+    ]);
+    for (const definition of desktops) {
+      expect(soulFor(definition.agentId)).toContain("Klawva");
+    }
+  });
+
+  it("carries no phone or voice blocks in v1", () => {
+    for (const definition of desktops) {
+      expect(definition.phone).toBeUndefined();
+      expect(definition.voice).toBeUndefined();
+    }
+  });
+
+  it("funds the inbox for an initial hundred-turn budget, corrected by the first measured week", () => {
+    const inbox = desktops.find((definition) => definition.agentId === "inbox");
+    expect(inbox).toBeDefined();
+    expect(inbox!.budgetMinor).toBeGreaterThanOrEqual(100 * 50);
+  });
+
+  it("prices the inbox employee at one and a half times the consumer cloud shift", () => {
+    const inbox = desktops.find((definition) => definition.agentId === "inbox");
+    const jobseeker = definitions.find((definition) => definition.agentId === "jobseeker");
+    expect(inbox).toBeDefined();
+    expect(jobseeker).toBeDefined();
+    expect(inbox!.priceMinor).toBeGreaterThanOrEqual(jobseeker!.priceMinor * 1.5);
+    expect(inbox!.priceMinor).toBeLessThanOrEqual(jobseeker!.priceMinor * 2);
+  });
+
+  it("keeps the draft-only employees draft only in their souls", () => {
+    for (const agentId of ["inbox", "paperwork", "cvtailor"]) {
+      const soul = soulFor(agentId).toLowerCase();
+      expect(soul).toContain("never");
+    }
+  });
+});

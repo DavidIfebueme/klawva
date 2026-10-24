@@ -149,3 +149,7 @@ describe("owner gate", () => {
     expect(await response.text()).toContain('action="/owner/unlock"');
   });
 });
+
+it("lets the bolna webhook past the owner gate, since it verifies its own secret", () => {
+  expect(signatureVerifiedApiPath("/api/voice/bolna/webhook")).toBe(true);
+});

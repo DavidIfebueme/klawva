@@ -198,3 +198,32 @@ describe("bolna transcript ingest", () => {
     expect(filed).toBe(false);
   });
 });
+
+describe("bolna webhook payload mapping", () => {
+  it("accepts bolna's execution shape: execution_id for the ref, transcript excerpt as the summary", async () => {
+    const { db, writes } = (() => {
+      const w: Array<{ sql: string; params: ReadonlyArray<Param> }> = [];
+      return {
+        db: {
+          all: () => Effect.succeed([]),
+          first: () => Effect.succeed({ id: "t1", sessionId: "s1" }),
+          run: (sql: string, params?: ReadonlyArray<Param>) => {
+            w.push({ sql, params: params ?? [] });
+            return Effect.void;
+          },
+          batch: () => Effect.void,
+          changed: () => Effect.succeed(0),
+        } as DatabaseImpl,
+        writes: w,
+      };
+    })();
+    const transcript = "caller: book me thursday. agent: done, thursday at 3pm.";
+    const filed = await Effect.runPromise(
+      fileBolnaReport(db, "exec-99", transcript.slice(0, 500)),
+    );
+    expect(filed).toBe(true);
+    const report = writes.find((w) => w.sql.toUpperCase().includes("MISSION_REPORTS"));
+    expect(report!.params[3]).toContain("thursday");
+    void writes;
+  });
+});
