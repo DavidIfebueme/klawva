@@ -9,7 +9,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { Database, layer as databaseLayer } from "./db/database.ts";
-import { Channel } from "./db/schema.ts";
+import { Channel, LaunchMarket } from "./db/schema.ts";
 import { Brief } from "./db/schema.ts";
 import { manifestOf, type TransportType } from "./db/schema.ts";
 import { bedrockEnabled } from "./agent/proxy.ts";
@@ -298,6 +298,7 @@ const requestLinkEndpoint = HttpApiEndpoint.post(
     payload: Schema.Struct({
       email: Schema.String,
       next: Schema.optionalKey(Schema.String),
+      market: Schema.optionalKey(LaunchMarket),
     }),
     success: Schema.Struct({ ok: Schema.Boolean }),
   },
@@ -379,7 +380,13 @@ const rootGroup = HttpApiBuilder.group(
           if (!allowed) {
             return { ok: true };
           }
-          yield* requestMagicLink(env, db, payload.email, payload.next ?? "/studio").pipe(Effect.orDie);
+          yield* requestMagicLink(
+            env,
+            db,
+            payload.email,
+            payload.next ?? "/studio",
+            payload.market,
+          ).pipe(Effect.orDie);
           return { ok: true };
         }),
       )
