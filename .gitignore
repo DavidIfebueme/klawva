@@ -32,3 +32,6 @@ apps/worker/assets/*
 
 # rust build output
 apps/desktop/src-tauri/target/
+
+# local env with real credentials, never committed
+apps/desktop/.env.local
