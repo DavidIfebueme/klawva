@@ -11,6 +11,7 @@ import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import { Database, layer as databaseLayer } from "./db/database.ts";
 import { Channel } from "./db/schema.ts";
 import { Brief } from "./db/schema.ts";
+import { manifestOf, type TransportType } from "./db/schema.ts";
 import { soulFor } from "./agent/souls.ts";
 import {
   handleUpdate,
@@ -776,7 +777,7 @@ const rootGroup = HttpApiBuilder.group(
               : null;
           const listing = yield* db
             .first(
-              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor, v.tool_allowlist AS toolAllowlist, v.model AS model, v.soul AS soul FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
+              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor, v.tool_allowlist AS toolAllowlist, v.model AS model, v.soul AS soul, v.manifest AS manifest FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
               [payload.listingId],
             )
             .pipe(Effect.orDie);
@@ -804,6 +805,20 @@ const rootGroup = HttpApiBuilder.group(
             listing === null || typeof listing.soul !== "string"
               ? soulFor(payload.agentId)
               : listing.soul;
+          const manifest =
+            listing === null
+              ? null
+              : manifestOf({
+                  soul,
+                  manifest: typeof listing.manifest === "string" ? listing.manifest : null,
+                });
+          const transports: ReadonlyArray<TransportType> =
+            manifest === null
+              ? []
+              : [
+                  ...(manifest.phone?.outbound === true ? ["phone_out" as const] : []),
+                  ...(manifest.phone?.inbound === true ? ["phone_in" as const] : []),
+                ];
           yield* db.run(
             "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, duration_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -842,6 +857,7 @@ const rootGroup = HttpApiBuilder.group(
                     email: customerEmail ?? "",
                     allowlist,
                     model,
+                    transports,
                   }),
                 },
               ),

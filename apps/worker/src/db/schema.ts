@@ -192,3 +192,30 @@ export class ActivityEvent extends Schema.Class<ActivityEvent>("ActivityEvent")(
   payload: EventPayload,
   occurredAt: Schema.String,
 }) {}
+
+export const TransportType = Schema.Literals(["desktop", "phone_in", "phone_out"]);
+export type TransportType = typeof TransportType.Type;
+
+export const TransportState = Schema.Literals(["pending", "bound", "active", "closed"]);
+export type TransportState = typeof TransportState.Type;
+
+export const transportTransitions: Record<
+  TransportState,
+  ReadonlyArray<TransportState>
+> = {
+  pending: ["bound", "closed"],
+  bound: ["active", "closed"],
+  active: ["closed"],
+  closed: [],
+};
+
+export class SessionTransport extends Schema.Class<SessionTransport>("SessionTransport")({
+  id: Schema.String,
+  sessionId: Schema.String,
+  type: TransportType,
+  state: TransportState,
+  carrier: Schema.NullOr(Schema.String),
+  carrierRef: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+}) {}
