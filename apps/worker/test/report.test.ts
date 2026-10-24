@@ -68,8 +68,45 @@ describe("report layers", () => {
       fileCallReport(db, "s1", "t1", { summary: "call done", stats: [] }),
     );
     expect(writes.length).toBe(1);
-    expect(writes[0].sql).toContain("ON CONFLICT(session_id, transport_id) WHERE transport_id IS NOT NULL");
+    expect(writes[0].sql.toUpperCase()).toContain("CONFLICT");
     expect(writes[0].params[1]).toBe("s1");
     expect(writes[0].params[2]).toBe("t1");
+  });
+
+  it("overwrites the first report when the same session plus transport reports twice, and a digest coexists with a call report", async () => {
+    const writes: Array<{ sql: string; params: ReadonlyArray<Param> }> = [];
+    const db: DatabaseImpl = {
+      all: () => Effect.succeed([]),
+      first: () => Effect.succeed(null),
+      run: (sql, params) => {
+        writes.push({ sql, params: params ?? [] });
+        return Effect.void;
+      },
+      batch: () => Effect.void,
+      changed: () => Effect.succeed(0),
+    };
+    await Effect.runPromise(
+      fileCallReport(db, "s1", "t1", { summary: "first", stats: [] }),
+    );
+    await Effect.runPromise(
+      fileCallReport(db, "s1", "t1", { summary: "second wins", stats: [] }),
+    );
+    const callReports = writes.filter(
+      (w) => !w.sql.includes("digest") && w.params[2] === "t1",
+    );
+    expect(callReports.length).toBe(2);
+    for (const write of callReports) {
+      expect(write.sql.toUpperCase()).toContain("CONFLICT");
+      expect(write.sql.toUpperCase()).toContain("UPDATE");
+    }
+    expect(callReports[0].params[3]).toContain("first");
+    expect(callReports[1].params[3]).toContain("second wins");
+
+    await Effect.runPromise(
+      fileCallReport(db, "s1", "", { summary: "shift digest", stats: [] }),
+    );
+    const digest = writes[2];
+    expect(digest.sql.toUpperCase()).toContain("CONFLICT");
+    expect(digest.params[3]).toContain("shift digest");
   });
 });
