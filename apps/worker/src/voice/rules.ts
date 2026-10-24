@@ -1,7 +1,8 @@
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl } from "../db/database.ts";
+import type { LaunchMarket } from "../db/schema.ts";
 
-export type Market = "us" | "in" | "ng";
+export type Market = LaunchMarket;
 
 const quietWindowsUtc: Record<Market, { startHour: number; endHour: number }> = {
   us: { startHour: 13, endHour: 25 },
