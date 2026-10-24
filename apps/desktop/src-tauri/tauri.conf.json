@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://klawva.xyz wss://klawva.xyz"
+      "csp": "default-src 'self'; connect-src 'self' https://klawva.xyz wss://klawva.xyz https://gmail.googleapis.com https://oauth2.googleapis.com"
     }
   },
   "bundle": {
