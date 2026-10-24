@@ -15,6 +15,7 @@ import {
   SessionState,
   sessionTransitions,
   terminalSessionStates,
+  TransportType,
 } from "../db/schema.ts";
 import { sessionTokenMatches, ownsSession } from "../account/account.ts";
 import { identityFromToken } from "../auth/auth.ts";
@@ -33,6 +34,7 @@ import {
   recordAiUsage,
 } from "../agent/meter.ts";
 import { isConversational, screenScope, steerReply } from "../moderation/moderation.ts";
+import { closeTransports, projectTransports } from "./transports.ts";
 import {
   clefFlashModel,
   decideScope,
@@ -573,6 +575,7 @@ const init = HttpApiEndpoint.post("init", "/init", {
     email: Schema.optionalKey(Schema.String),
     allowlist: Schema.optionalKey(Schema.Array(Schema.String)),
     model: Schema.optionalKey(Schema.String),
+    transports: Schema.optionalKey(Schema.Array(TransportType)),
   }),
   success: StateResponse,
 });
@@ -722,6 +725,7 @@ const sessionGroup = HttpApiBuilder.group(
           );
           yield* store.set("model", payload.model ?? defaultModel);
           yield* projectState(store, db, sessionEnv.sessionId, payload.state);
+          yield* projectTransports(db, sessionEnv.sessionId, payload.transports ?? []);
           return { state: payload.state };
         }),
       )
@@ -735,15 +739,17 @@ const sessionGroup = HttpApiBuilder.group(
           const next = yield* transition(yield* currentState(store), "completed");
           yield* store.set("state", next);
           yield* projectState(store, db, sessionEnv.sessionId, next);
+          yield* closeTransports(db, sessionEnv.sessionId);
           return { state: next };
         }),
       )
       .handle("expire", () =>
-        expireSession(
-          store,
-          makeDatabase(sessionEnv.env.DB),
-          sessionEnv.sessionId,
-        ).pipe(Effect.map((state) => ({ state }))),
+        Effect.gen(function* () {
+          const db = makeDatabase(sessionEnv.env.DB);
+          const state = yield* expireSession(store, db, sessionEnv.sessionId);
+          yield* closeTransports(db, sessionEnv.sessionId);
+          return { state };
+        }),
       )
       .handle("kickoff", () =>
         Effect.gen(function* () {
