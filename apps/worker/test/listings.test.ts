@@ -29,33 +29,45 @@ describe("eval bands", () => {
 });
 
 describe("manifest hash", () => {
-  it("is deterministic for the same manifest", async () => {
+  const content = (manifest: ReturnType<typeof manifestFor>) => ({
+    manifest,
+    briefFields: definitions[0].briefFields,
+    toolAllowlist: ["fetch_url"],
+    model: "m1",
+    budgetMinor: 100,
+  });
+
+  it("is deterministic for the same version content", async () => {
     const manifest = manifestFor(definitions[0], "soul text");
-    const first = await Effect.runPromise(manifestHash(manifest));
-    const second = await Effect.runPromise(manifestHash(manifest));
+    const first = await Effect.runPromise(manifestHash(content(manifest)));
+    const second = await Effect.runPromise(manifestHash(content(manifest)));
     expect(first).toBe(second);
   });
 
   it("changes when the soul changes", async () => {
-    const base = manifestFor(definitions[0], "soul text");
-    const edited = manifestFor(definitions[0], "soul text, edited");
+    const base = content(manifestFor(definitions[0], "soul text"));
+    const edited = content(manifestFor(definitions[0], "soul text, edited"));
     const first = await Effect.runPromise(manifestHash(base));
     const changed = await Effect.runPromise(manifestHash(edited));
     expect(changed).not.toBe(first);
   });
 
   it("changes when a voice or phone block is added, so block edits cannot bypass versioning", async () => {
-    const bare = manifestFor(definitions[0], "soul text");
-    const withVoice = manifestFor(
-      { ...definitions[0], voice: { listen: true, speak: true } },
-      "soul text",
+    const bare = content(manifestFor(definitions[0], "soul text"));
+    const withVoice = content(
+      manifestFor(
+        { ...definitions[0], voice: { listen: true, speak: true } },
+        "soul text",
+      ),
     );
-    const withPhone = manifestFor(
-      {
-        ...definitions[0],
-        phone: { outbound: true, inbound: false, script: "hello" },
-      },
-      "soul text",
+    const withPhone = content(
+      manifestFor(
+        {
+          ...definitions[0],
+          phone: { outbound: true, inbound: false, script: "hello" },
+        },
+        "soul text",
+      ),
     );
     const bareHash = await Effect.runPromise(manifestHash(bare));
     const voiceHash = await Effect.runPromise(manifestHash(withVoice));
@@ -63,6 +75,33 @@ describe("manifest hash", () => {
     expect(voiceHash).not.toBe(bareHash);
     expect(phoneHash).not.toBe(bareHash);
     expect(phoneHash).not.toBe(voiceHash);
+  });
+
+  it("changes when a desktop block toggles, so the desktop signal versions with the manifest", async () => {
+    const cloud = content(manifestFor(definitions[0], "soul text"));
+    const desktop = content(
+      manifestFor(
+        { ...definitions[0], desktop: { ownDevice: true } },
+        "soul text",
+      ),
+    );
+    const cloudHash = await Effect.runPromise(manifestHash(cloud));
+    const desktopHash = await Effect.runPromise(manifestHash(desktop));
+    expect(desktopHash).not.toBe(cloudHash);
+  });
+
+  it("changes with any version-level field, so two versions never silently share an audit hash", async () => {
+    const base = content(manifestFor(definitions[0], "soul text"));
+    const baseHash = await Effect.runPromise(manifestHash(base));
+    for (const variant of [
+      { ...base, budgetMinor: base.budgetMinor + 1 },
+      { ...base, model: "m2" },
+      { ...base, briefFields: [...base.briefFields, "extra"] },
+      { ...base, toolAllowlist: [] },
+    ]) {
+      const hash = await Effect.runPromise(manifestHash(variant));
+      expect(hash).not.toBe(baseHash);
+    }
   });
 });
 

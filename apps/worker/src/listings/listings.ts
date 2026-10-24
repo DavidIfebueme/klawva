@@ -20,17 +20,26 @@ export const manifestFor = (
   soul,
   ...(definition.voice === undefined ? {} : { voice: definition.voice }),
   ...(definition.phone === undefined ? {} : { phone: definition.phone }),
+  ...(definition.desktop === undefined ? {} : { desktop: definition.desktop }),
 });
 
 export const encodeManifest = (manifest: Manifest): string =>
   JSON.stringify(manifest);
 
+export interface VersionContent {
+  readonly manifest: Manifest;
+  readonly briefFields: ReadonlyArray<string>;
+  readonly toolAllowlist: ReadonlyArray<string>;
+  readonly model: string;
+  readonly budgetMinor: number;
+}
+
 export const manifestHash = (
-  manifest: Manifest,
+  content: VersionContent,
 ): Effect.Effect<string, ListingError> =>
   Effect.tryPromise({
     try: async () => {
-      const bytes = new TextEncoder().encode(encodeManifest(manifest));
+      const bytes = new TextEncoder().encode(JSON.stringify(content));
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       return Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -47,7 +56,13 @@ export const seedListings = (
     for (const definition of definitions) {
       const soul = soulFor(definition.agentId);
       const manifest = manifestFor(definition, soul);
-      const hash = yield* manifestHash(manifest);
+      const hash = yield* manifestHash({
+        manifest,
+        briefFields: definition.briefFields,
+        toolAllowlist: defaultToolAllowlist,
+        model: defaultModel,
+        budgetMinor: definition.budgetMinor,
+      });
       const manifestJson = encodeManifest(manifest);
       const now = new Date().toISOString();
       yield* db

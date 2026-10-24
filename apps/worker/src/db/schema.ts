@@ -77,10 +77,16 @@ export const PhoneManifest = Schema.Struct({
 });
 export type PhoneManifest = typeof PhoneManifest.Type;
 
+export const DesktopManifest = Schema.Struct({
+  ownDevice: Schema.Boolean,
+});
+export type DesktopManifest = typeof DesktopManifest.Type;
+
 export const Manifest = Schema.Struct({
   soul: Schema.String,
   voice: Schema.optional(VoiceManifest),
   phone: Schema.optional(PhoneManifest),
+  desktop: Schema.optional(DesktopManifest),
 });
 export type Manifest = typeof Manifest.Type;
 

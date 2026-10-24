@@ -120,7 +120,13 @@ export const createAuthorDraft = (
       budgetMinor: input.budgetMinor,
     };
     const manifest = manifestFor(definition, input.soul);
-    const hash = yield* manifestHash(manifest).pipe(Effect.orDie);
+    const hash = yield* manifestHash({
+      manifest,
+      briefFields: input.briefFields,
+      toolAllowlist: defaultToolAllowlist,
+      model: defaultModel,
+      budgetMinor: input.budgetMinor,
+    }).pipe(Effect.orDie);
     yield* db
       .run(
         "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)",
@@ -215,7 +221,13 @@ export const updateAuthorDraft = (
       budgetMinor: input.budgetMinor,
     };
     const manifest = manifestFor(definition, input.soul);
-    const hash = yield* manifestHash(manifest).pipe(Effect.orDie);
+    const hash = yield* manifestHash({
+      manifest,
+      briefFields: input.briefFields,
+      toolAllowlist: defaultToolAllowlist,
+      model: defaultModel,
+      budgetMinor: input.budgetMinor,
+    }).pipe(Effect.orDie);
     yield* db
       .run(
         "UPDATE listing_versions SET soul = ?, manifest = ?, brief_fields = ?, manifest_hash = ?, budget_minor = ?, score = NULL WHERE listing_id = ? AND version = ?",
