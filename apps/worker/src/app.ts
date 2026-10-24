@@ -146,6 +146,11 @@ const health = HttpApiEndpoint.get("health", "/health", {
   success: HealthResponse,
 });
 
+export const phonePathBlocked = (
+  transports: ReadonlyArray<TransportType>,
+  bedrockOn: boolean,
+): boolean => !bedrockOn && transports.some((t) => t !== "desktop");
+
 const createSession = HttpApiEndpoint.post("createSession", "/api/sessions", {
   payload: CreateSession,
   success: SessionCreated,
@@ -842,8 +847,9 @@ const rootGroup = HttpApiBuilder.group(
               : [
                   ...(manifest.phone?.outbound === true ? ["phone_out" as const] : []),
                   ...(manifest.phone?.inbound === true ? ["phone_in" as const] : []),
+                  ...(manifest.desktop?.ownDevice === true ? ["desktop" as const] : []),
                 ];
-          if (transports.length > 0 && !bedrockEnabled(env)) {
+          if (phonePathBlocked(transports, bedrockEnabled(env))) {
             return yield* Effect.fail(
               new ListingConflict({ reason: "phone_path_not_live" }),
             );
