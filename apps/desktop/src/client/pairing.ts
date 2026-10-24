@@ -5,7 +5,7 @@ export interface ClaimedDevice {
   readonly token: string;
 }
 
-const isClaimShape = (value: unknown): value is { id: string; token: string } =>
+export const isClaimShape = (value: unknown): value is { id: string; token: string } =>
   typeof value === "object" &&
   value !== null &&
   "id" in value &&

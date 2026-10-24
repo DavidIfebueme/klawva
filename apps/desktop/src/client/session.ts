@@ -7,7 +7,7 @@ export interface HiredSession {
   readonly listingName: string | null;
 }
 
-const isSessionRow = (
+export const isSessionRow = (
   value: unknown,
 ): value is { id: string; state: string; listingName: string | null } =>
   typeof value === "object" &&

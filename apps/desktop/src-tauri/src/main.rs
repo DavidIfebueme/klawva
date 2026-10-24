@@ -56,7 +56,12 @@ fn write_note(slug: String, name: String, contents: String) -> Result<(), String
 fn read_workspace_file(slug: String, relative_path: String) -> Result<String, String> {
     let root = workspace_root(&slug)?;
     let path = safe_join(&root, &relative_path)?;
-    fs::read_to_string(&path).map_err(|e| e.to_string())
+    let root_canon = root.canonicalize().map_err(|e| e.to_string())?;
+    let file_canon = path.canonicalize().map_err(|e| e.to_string())?;
+    if !file_canon.starts_with(&root_canon) {
+        return Err("path escapes the workspace".to_string());
+    }
+    fs::read_to_string(&file_canon).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
