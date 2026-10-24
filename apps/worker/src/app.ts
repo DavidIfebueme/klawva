@@ -12,6 +12,7 @@ import { Database, layer as databaseLayer } from "./db/database.ts";
 import { Channel } from "./db/schema.ts";
 import { Brief } from "./db/schema.ts";
 import { manifestOf, type TransportType } from "./db/schema.ts";
+import { bedrockEnabled } from "./agent/proxy.ts";
 import { soulFor } from "./agent/souls.ts";
 import {
   handleUpdate,
@@ -820,6 +821,11 @@ const rootGroup = HttpApiBuilder.group(
                   ...(manifest.phone?.outbound === true ? ["phone_out" as const] : []),
                   ...(manifest.phone?.inbound === true ? ["phone_in" as const] : []),
                 ];
+          if (transports.length > 0 && !bedrockEnabled(env)) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "phone_path_not_live" }),
+            );
+          }
           yield* db.run(
             "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, duration_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
