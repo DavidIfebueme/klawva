@@ -43,6 +43,7 @@ describe("owner gate", () => {
     expect(isPublicApiPath("/api/config")).toBe(true);
     expect(isPublicApiPath("/api/listings")).toBe(true);
     expect(isPublicApiPath("/api/listings/some-slug")).toBe(true);
+    expect(isPublicApiPath("/api/devices/claim")).toBe(true);
   });
 
   it("gates session, payment and slack oauth endpoints", () => {
