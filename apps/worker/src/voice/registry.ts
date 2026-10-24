@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { LaunchMarket } from "../db/schema.ts";
+import { LaunchMarket, accountMarketOrNull } from "../db/schema.ts";
 
 export interface VoiceEntry {
   readonly demo: string;
@@ -54,4 +54,4 @@ export const resolveVoiceId = (params: {
 export const AccountMarket = LaunchMarket;
 export type AccountMarket = LaunchMarket;
 
-export const accountMarketOrNull = Schema.NullOr(LaunchMarket);
+export { accountMarketOrNull };

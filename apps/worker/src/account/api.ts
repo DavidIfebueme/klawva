@@ -8,6 +8,7 @@ import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { identityFromToken, tokenFromHeaders } from "../auth/auth.ts";
 import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
+import { LaunchMarket } from "../db/schema.ts";
 import { WorkerEnv } from "../env.ts";
 import { ListingNotFound } from "../errors.ts";
 import {
@@ -155,7 +156,7 @@ const accountSetMarket = HttpApiEndpoint.post(
   "accountSetMarket",
   "/api/account/market",
   {
-    payload: Schema.Struct({ market: Schema.Literals(["us", "in", "ng"]) }),
+    payload: Schema.Struct({ market: LaunchMarket }),
     success: Schema.Struct({ ok: Schema.Boolean }),
     error: AuthError,
   },

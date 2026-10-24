@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { backfillSessionsForUser } from "../account/account.ts";
 import type { DatabaseImpl } from "../db/database.ts";
+import type { LaunchMarket } from "../db/schema.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { magicLinkEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
@@ -61,15 +62,31 @@ export const upsertUser = (
     return id;
   });
 
+export const stampMarketIfUnset = (
+  db: DatabaseImpl,
+  userId: string,
+  market: LaunchMarket,
+): Effect.Effect<void> =>
+  db
+    .run(
+      "UPDATE users SET market = ?, updated_at = ? WHERE id = ? AND market IS NULL",
+      [market, new Date().toISOString(), userId],
+    )
+    .pipe(Effect.orDie);
+
 export const requestMagicLink = (
   env: Env,
   db: DatabaseImpl,
   email: string,
   next: string,
+  market?: LaunchMarket,
 ): Effect.Effect<void, AuthError> =>
   Effect.gen(function* () {
     const normalized = normalize(email);
-    yield* upsertUser(db, normalized);
+    const userId = yield* upsertUser(db, normalized);
+    if (market !== undefined) {
+      yield* stampMarketIfUnset(db, userId, market);
+    }
     const token = yield* signToken(env.AUTH_SECRET, {
       email: normalized,
       exp: nowSeconds() + magicLinkTtlSeconds,
