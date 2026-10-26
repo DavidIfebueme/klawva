@@ -233,9 +233,11 @@ export function Component() {
           <p className="font-mono text-klawva-dim text-xs mt-8">
             {agentName} · 24-hour shift · channel: {channel}
           </p>
-          <p className="font-mono text-klawva-dim text-xs mt-6">
-            Use a different channel instead
-          </p>
+          {!desktop && (
+            <p className="font-mono text-klawva-dim text-xs mt-6">
+              Use a different channel instead
+            </p>
+          )}
           {channel !== "web" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
               <a href={chatLink} className="text-klawva-accent underline">
@@ -243,26 +245,30 @@ export function Component() {
               </a>
             </p>
           )}
-          {channel !== "telegram" && (
+          {!desktop && channel !== "telegram" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
               <a href={link} className="text-klawva-accent underline">
                 Open Telegram
               </a>
             </p>
           )}
-          {channel !== "email" && (
+          {!desktop && channel !== "email" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
               Prefer email? Your employee will email you. Reply to that thread
               from the address you paid with.
             </p>
           )}
-          <p className="font-mono text-klawva-dim text-xs mt-2">
-            For teams:{" "}
-            <a href={slackLink} className="text-klawva-accent underline">
-              Connect Slack
-            </a>
-          </p>
-          <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
+          {!desktop && (
+            <>
+              <p className="font-mono text-klawva-dim text-xs mt-2">
+                For teams:{" "}
+                <a href={slackLink} className="text-klawva-accent underline">
+                  Connect Slack
+                </a>
+              </p>
+              <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
+            </>
+          )}
         </div>
       </main>
       <Footer />
