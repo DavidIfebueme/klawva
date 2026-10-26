@@ -80,6 +80,7 @@ const sessionLaunch = Schema.Struct({
   agentName: Schema.String,
   customerEmail: Schema.String,
   brief: Schema.Record(Schema.String, Schema.String),
+  desktop: Schema.optionalKey(Schema.Boolean),
 });
 export type SessionLaunch = typeof sessionLaunch.Type;
 

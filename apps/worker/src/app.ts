@@ -210,6 +210,7 @@ const sessionLaunchEndpoint = HttpApiEndpoint.get(
       agentName: Schema.String,
       customerEmail: Schema.String,
       brief: Schema.Record(Schema.String, Schema.String),
+      desktop: Schema.Boolean,
     }),
     error: ListingNotFound,
   },
@@ -553,6 +554,12 @@ const rootGroup = HttpApiBuilder.group(
               String(session.listingId),
             ])
             .pipe(Effect.orDie);
+          const desktopTransport = yield* db
+            .first(
+              "SELECT id AS id FROM session_transports WHERE session_id = ? AND type = 'desktop' LIMIT 1",
+              [params.id],
+            )
+            .pipe(Effect.orDie);
           const brief = Schema.decodeUnknownOption(Brief)(session.brief);
           let code = row === null ? null : String(row.code);
           if (code === null) {
@@ -581,6 +588,7 @@ const rootGroup = HttpApiBuilder.group(
             customerEmail:
               session.customerEmail === null ? "" : String(session.customerEmail),
             brief: brief._tag === "Some" ? brief.value : {},
+            desktop: desktopTransport !== null,
           };
         }),
       )
