@@ -5,6 +5,11 @@ on:
     paths:
       - "apps/desktop/**"
       - ".github/workflows/desktop.yml"
+  push:
+    branches: [master]
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
   workflow_dispatch:
 
 jobs:
@@ -39,6 +44,27 @@ jobs:
 
       - name: smoke the built binary
         run: ./apps/desktop/src-tauri/target/release/klawva-desktop.exe --smoke
+
+      - name: bundle the windows installer
+        if: github.ref == 'refs/heads/master'
+        run: pnpm --dir apps/desktop tauri build
+        env:
+          VITE_GOOGLE_CLIENT_ID: 446318558489-f16fn18krt9vk0egftj6kbpcdlmkk2m7.apps.googleusercontent.com
+
+      - name: stage the installer under its stable name
+        if: github.ref == 'refs/heads/master'
+        run: cp "apps/desktop/src-tauri/target/release/bundle/nsis/Klawva_0.1.0_x64-setup.exe" klawva-desktop-windows.exe
+
+      - name: publish the installer to the rolling release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: desktop latest
+          prerelease: true
+          files: klawva-desktop-windows.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
     runs-on: ubuntu-latest
@@ -76,3 +102,24 @@ jobs:
 
       - name: smoke the built binary
         run: ./apps/desktop/src-tauri/target/release/klawva-desktop --smoke
+
+      - name: bundle the linux installer
+        if: github.ref == 'refs/heads/master'
+        run: pnpm --dir apps/desktop tauri build
+        env:
+          VITE_GOOGLE_CLIENT_ID: 446318558489-f16fn18krt9vk0egftj6kbpcdlmkk2m7.apps.googleusercontent.com
+
+      - name: stage the installer under its stable name
+        if: github.ref == 'refs/heads/master'
+        run: cp apps/desktop/src-tauri/target/release/bundle/appimage/Klawva_0.1.0_amd64.AppImage klawva-desktop-linux.AppImage
+
+      - name: publish the installer to the rolling release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: desktop latest
+          prerelease: true
+          files: klawva-desktop-linux.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
