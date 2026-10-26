@@ -126,6 +126,16 @@ export function Component() {
                   )}
                 </Link>
               ))}
+              {visible.some((employee) => employee.category === "desktop") && (
+                <div className="col-span-full text-center mt-4">
+                  <a
+                    href="/download"
+                    className="text-xs text-klawva-muted underline font-mono"
+                  >
+                    desktop employees run on your computer — get the app
+                  </a>
+                </div>
+              )}
             </div>
           )}
         </div>

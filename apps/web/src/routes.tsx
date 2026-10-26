@@ -97,6 +97,7 @@ export const router = createBrowserRouter([
           redirect(`/employees/${params.agent ?? ""}`),
       },
       { path: "/checkout", lazy: () => import("./app/checkout/page.tsx") },
+      { path: "/download", lazy: () => import("./app/download/page.tsx") },
       { path: "/store", loader: () => redirect("/employees") },
       { path: "/agents", loader: () => redirect("/employees") },
       { path: "/custom-request", element: <CustomRequest /> },
