@@ -10,6 +10,14 @@ import {
   maxSecondsForBudget,
 } from "../src/voice/ratecard.ts";
 import { aiDisclosureLine, insideCallingWindow } from "../src/voice/rules.ts";
+import { signatureVerifiedApiPath } from "../src/lib/owner.ts";
+import {
+  TWIML_DEFAULT_SECONDS,
+  TWIML_MAX_SECONDS,
+  TWIML_MIN_SECONDS,
+  clampRelaySeconds,
+  twimlForCall,
+} from "../src/voice/twiml.ts";
 
 const fakeDb = (row: Row | null): DatabaseImpl => ({
   all: () => Effect.succeed(row !== null ? [row] : []),
@@ -225,5 +233,28 @@ describe("bolna webhook payload mapping", () => {
     const report = writes.find((w) => w.sql.toUpperCase().includes("MISSION_REPORTS"));
     expect(report!.params[3]).toContain("thursday");
     void writes;
+  });
+});
+
+describe("twiml relay", () => {
+  it("serves the disclosure and the caller's stop inside the clamp band", () => {
+    const xml = twimlForCall(clampRelaySeconds("120"));
+    expect(xml).toContain("This call is from an AI employee");
+    expect(xml).toContain("up to 120 seconds");
+    expect(xml).toContain("<Hangup/>");
+    expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+  });
+
+  it("clamps the stop so no caller pushes a call past the budget brake", () => {
+    expect(clampRelaySeconds("99999")).toBe(TWIML_MAX_SECONDS);
+    expect(clampRelaySeconds("1")).toBe(TWIML_MIN_SECONDS);
+    expect(clampRelaySeconds("abc")).toBe(TWIML_DEFAULT_SECONDS);
+    expect(clampRelaySeconds(null)).toBe(TWIML_DEFAULT_SECONDS);
+    expect(clampRelaySeconds("1e3")).toBe(TWIML_DEFAULT_SECONDS);
+    expect(clampRelaySeconds("120abc")).toBe(TWIML_DEFAULT_SECONDS);
+  });
+
+  it("lets the twiml route past the owner gate, since twilio verifies nothing but the url", () => {
+    expect(signatureVerifiedApiPath("/api/voice/twiml")).toBe(true);
   });
 });
