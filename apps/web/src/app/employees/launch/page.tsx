@@ -243,26 +243,30 @@ export function Component() {
               </a>
             </p>
           )}
-          {channel !== "telegram" && (
+          {!desktop && channel !== "telegram" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
               <a href={link} className="text-klawva-accent underline">
                 Open Telegram
               </a>
             </p>
           )}
-          {channel !== "email" && (
+          {!desktop && channel !== "email" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
               Prefer email? Your employee will email you. Reply to that thread
               from the address you paid with.
             </p>
           )}
-          <p className="font-mono text-klawva-dim text-xs mt-2">
-            For teams:{" "}
-            <a href={slackLink} className="text-klawva-accent underline">
-              Connect Slack
-            </a>
-          </p>
-          <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
+          {!desktop && (
+            <>
+              <p className="font-mono text-klawva-dim text-xs mt-2">
+                For teams:{" "}
+                <a href={slackLink} className="text-klawva-accent underline">
+                  Connect Slack
+                </a>
+              </p>
+              <p className="font-mono text-klawva-dim text-xs mt-8 break-all">{link}</p>
+            </>
+          )}
         </div>
       </main>
       <Footer />
