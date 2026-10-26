@@ -550,19 +550,16 @@ const rootGroup = HttpApiBuilder.group(
             return yield* Effect.fail(new ListingNotFound({}));
           }
           const listing = yield* db
+            .first("SELECT name AS name FROM agent_listings WHERE id = ?", [
+              String(session.listingId),
+            ])
+            .pipe(Effect.orDie);
+          const desktopTransport = yield* db
             .first(
-              "SELECT l.name AS name, v.manifest AS manifest, v.soul AS soul FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
-              [String(session.listingId)],
+              "SELECT id AS id FROM session_transports WHERE session_id = ? AND type = 'desktop' LIMIT 1",
+              [params.id],
             )
             .pipe(Effect.orDie);
-          const manifest =
-            listing === null || listing.manifest === null
-              ? null
-              : manifestOf({
-                  soul: String(listing.soul ?? ""),
-                  manifest:
-                    typeof listing.manifest === "string" ? listing.manifest : null,
-                });
           const brief = Schema.decodeUnknownOption(Brief)(session.brief);
           let code = row === null ? null : String(row.code);
           if (code === null) {
@@ -591,7 +588,7 @@ const rootGroup = HttpApiBuilder.group(
             customerEmail:
               session.customerEmail === null ? "" : String(session.customerEmail),
             brief: brief._tag === "Some" ? brief.value : {},
-            desktop: manifest?.desktop?.ownDevice === true,
+            desktop: desktopTransport !== null,
           };
         }),
       )
