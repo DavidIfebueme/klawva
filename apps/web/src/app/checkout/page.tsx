@@ -125,6 +125,7 @@ export function Component() {
   const fields = fieldsFor(employee);
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [email, setEmail] = useState(() => getStudioSession()?.email ?? "");
+  const isDesktop = employee.category === "desktop";
   const [channel, setChannel] = useState<ChannelChoice>("telegram");
   const [durationDays, setDurationDays] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -211,7 +212,7 @@ export function Component() {
       const session = await createHireSession({
         listingId: employee.id,
         agentId: employee.slug,
-        channel,
+        channel: isDesktop ? "web" : channel,
         brief: Object.fromEntries(
           fields.map((field) => [field.id, (brief[field.id] ?? "").trim()]),
         ),
@@ -392,6 +393,18 @@ export function Component() {
                 </div>
               </div>
 
+              {isDesktop ? (
+                <div className="flex flex-col gap-2 border border-klawva-accent rounded p-4 bg-klawva-accent/5">
+                  <p className="font-syne font-bold text-sm text-klawva-text">
+                    Runs on your computer
+                  </p>
+                  <p className="font-mono text-klawva-muted text-xs">
+                    this is a desktop employee. after payment you get the app,
+                    pair it once, and it works on your computer. no telegram, no
+                    email.
+                  </p>
+                </div>
+              ) : (
               <div className="flex flex-col gap-3">
                 <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
                   How should it reach you?
@@ -421,6 +434,7 @@ export function Component() {
                   You can link another channel from the launch page after payment.
                 </p>
               </div>
+              )}
 
               <div className="flex items-center justify-between pt-4 border-t border-klawva-border">
                 <div>
