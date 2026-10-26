@@ -82,7 +82,7 @@ const accountSession = HttpApiEndpoint.get(
   {
     params: IdParam,
     success: SessionDetailResponse,
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -97,7 +97,7 @@ const accountMembers = HttpApiEndpoint.get(
   {
     params: IdParam,
     success: Schema.Array(MemberRow),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -108,7 +108,7 @@ const accountAddMember = HttpApiEndpoint.post(
     params: IdParam,
     payload: Schema.Struct({ email: Schema.String }),
     success: Schema.Struct({ ok: Schema.Boolean }),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -118,7 +118,7 @@ const accountRemoveMember = HttpApiEndpoint.delete(
   {
     params: Schema.Struct({ id: Schema.String, email: Schema.String }),
     success: Schema.Struct({ ok: Schema.Boolean }),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -134,7 +134,7 @@ const accountChannels = HttpApiEndpoint.get(
   {
     params: IdParam,
     success: Schema.Array(ChannelLinkRow),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -148,7 +148,7 @@ const accountUnlinkChannel = HttpApiEndpoint.delete(
       chatId: Schema.String,
     }),
     success: Schema.Struct({ ok: Schema.Boolean }),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
