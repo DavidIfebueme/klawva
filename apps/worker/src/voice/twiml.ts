@@ -5,10 +5,11 @@ export const TWIML_MIN_SECONDS = 30;
 export const TWIML_MAX_SECONDS = 600;
 
 export const clampRelaySeconds = (raw: string | null): number => {
-  const parsed = raw === null ? NaN : Number.parseInt(raw, 10);
-  if (Number.isNaN(parsed)) {
+  const trimmed = raw?.trim();
+  if (trimmed === undefined || !/^\d+$/.test(trimmed)) {
     return TWIML_DEFAULT_SECONDS;
   }
+  const parsed = Number.parseInt(trimmed, 10);
   return Math.min(Math.max(parsed, TWIML_MIN_SECONDS), TWIML_MAX_SECONDS);
 };
 

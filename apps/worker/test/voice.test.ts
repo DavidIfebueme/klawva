@@ -250,6 +250,8 @@ describe("twiml relay", () => {
     expect(clampRelaySeconds("1")).toBe(TWIML_MIN_SECONDS);
     expect(clampRelaySeconds("abc")).toBe(TWIML_DEFAULT_SECONDS);
     expect(clampRelaySeconds(null)).toBe(TWIML_DEFAULT_SECONDS);
+    expect(clampRelaySeconds("1e3")).toBe(TWIML_DEFAULT_SECONDS);
+    expect(clampRelaySeconds("120abc")).toBe(TWIML_DEFAULT_SECONDS);
   });
 
   it("lets the twiml route past the owner gate, since twilio verifies nothing but the url", () => {
