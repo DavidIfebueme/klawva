@@ -54,7 +54,14 @@ export const waitForClaim = async (
     if (elapsed > timeoutSeconds) {
       throw new Error("pairing timed out");
     }
-    const claimed = await claimDevice(code);
+    let claimed: ClaimedDevice | null = null;
+    try {
+      claimed = await claimDevice(code);
+    } catch {
+      onWait(elapsed);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      continue;
+    }
     if (claimed !== null) {
       return claimed;
     }
