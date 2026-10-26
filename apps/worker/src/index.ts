@@ -34,6 +34,7 @@ import {
   unlockKeyFromRequest,
 } from "./lib/owner.ts";
 import { signToken, verifyToken } from "./auth/tokens.ts";
+import { desktopCorsHeaders, deviceApiPath } from "./lib/desktop-cors.ts";
 
 export { SessionAgent } from "./session/stream-agent.ts";
 export { WalletAgent } from "./wallet/wallet.ts";
@@ -259,6 +260,18 @@ export default {
       url.pathname.startsWith("/webhooks/") ||
       url.pathname.startsWith("/internal/") ||
       url.pathname === "/health") {
+      if (deviceApiPath(url.pathname)) {
+        const origin = request.headers.get("origin");
+        if (request.method === "OPTIONS") {
+          return new Response(null, { status: 204, headers: desktopCorsHeaders(origin) });
+        }
+        const response = await toResponse(request, env);
+        const headers = new Headers(response.headers);
+        for (const [key, value] of Object.entries(desktopCorsHeaders(origin))) {
+          headers.set(key, value);
+        }
+        return new Response(response.body, { status: response.status, headers });
+      }
       return toResponse(request, env);
     }
     return env.ASSETS.fetch(request);
