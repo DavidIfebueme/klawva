@@ -47,7 +47,7 @@ const deviceRotate = HttpApiEndpoint.post(
   {
     params: Schema.Struct({ id: Schema.String }),
     success: Schema.Struct({ token: Schema.String }),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -57,7 +57,7 @@ const deviceRevoke = HttpApiEndpoint.post(
   {
     params: Schema.Struct({ id: Schema.String }),
     success: Schema.Struct({ ok: Schema.Boolean }),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
@@ -94,7 +94,7 @@ const pairCodeClaim = HttpApiEndpoint.post(
   {
     payload: Schema.Struct({ code: Schema.String }),
     success: Schema.Struct({ id: Schema.String, token: Schema.String }),
-    error: Schema.Union([AuthError, ListingNotFound]),
+    error: [AuthError, ListingNotFound],
   },
 );
 
