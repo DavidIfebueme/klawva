@@ -115,6 +115,13 @@ export default {
     ) {
       return ownerBlockedResponse();
     }
+    if (url.pathname === "/api/voice/twiml" && request.method === "GET") {
+      const { clampRelaySeconds, twimlForCall } = await import("./voice/twiml.ts");
+      const seconds = clampRelaySeconds(url.searchParams.get("maxSeconds"));
+      return new Response(twimlForCall(seconds), {
+        headers: { "Content-Type": "text/xml; charset=utf-8" },
+      });
+    }
     if (url.pathname === "/api/discord/interactions") {
       const rawBody = await request.text();
       const signature = request.headers.get("x-signature-ed25519") ?? "";
