@@ -98,6 +98,7 @@ export const router = createBrowserRouter([
       },
       { path: "/checkout", lazy: () => import("./app/checkout/page.tsx") },
       { path: "/download", lazy: () => import("./app/download/page.tsx") },
+      { path: "/pair", lazy: () => import("./app/pair/page.tsx") },
       { path: "/store", loader: () => redirect("/employees") },
       { path: "/agents", loader: () => redirect("/employees") },
       { path: "/custom-request", element: <CustomRequest /> },
