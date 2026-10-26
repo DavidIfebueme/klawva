@@ -3,8 +3,10 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import {
-  detectDesktopOs,
   desktopDownloadUrl,
+  detectVisitorOs,
+  downloadOsFor,
+  unavailableOsCopy,
   type DesktopOs,
 } from "@/lib/desktop-app";
 
@@ -15,7 +17,8 @@ const steps = [
 ];
 
 export function Component() {
-  const os: DesktopOs = useMemo(() => detectDesktopOs(navigator.userAgent), []);
+  const visitor = useMemo(() => detectVisitorOs(navigator.userAgent), []);
+  const os = downloadOsFor(visitor);
   const other: DesktopOs = os === "windows" ? "linux" : "windows";
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -32,17 +35,31 @@ export function Component() {
             desktop employees run on your computer, not in the cloud. the app is
             how they get there.
           </p>
-          <a href={desktopDownloadUrl(os)}>
-            <Button>download for {os}</Button>
-          </a>
-          <div className="mt-4">
-            <a
-              href={desktopDownloadUrl(other)}
-              className="text-xs text-klawva-muted underline font-mono"
-            >
-              download for {other} instead
-            </a>
-          </div>
+          {os === null ? (
+            <div className="bg-klawva-surface border border-klawva-accent rounded-lg px-5 py-6">
+              <p className="font-mono text-klawva-muted text-sm mb-4">
+                {unavailableOsCopy(visitor)}
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button href={desktopDownloadUrl("windows")}>windows</Button>
+                <Button variant="secondary" href={desktopDownloadUrl("linux")}>
+                  linux
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Button href={desktopDownloadUrl(os)}>download for {os}</Button>
+              <div className="mt-4">
+                <a
+                  href={desktopDownloadUrl(other)}
+                  className="text-xs text-klawva-muted underline font-mono"
+                >
+                  download for {other} instead
+                </a>
+              </div>
+            </>
+          )}
           <ol className="text-left font-mono text-klawva-muted text-sm mt-12 space-y-3 list-decimal list-inside">
             {steps.map((step) => (
               <li key={step}>{step}</li>
