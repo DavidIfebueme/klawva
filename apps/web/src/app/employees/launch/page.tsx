@@ -233,9 +233,11 @@ export function Component() {
           <p className="font-mono text-klawva-dim text-xs mt-8">
             {agentName} · 24-hour shift · channel: {channel}
           </p>
-          <p className="font-mono text-klawva-dim text-xs mt-6">
-            Use a different channel instead
-          </p>
+          {!desktop && (
+            <p className="font-mono text-klawva-dim text-xs mt-6">
+              Use a different channel instead
+            </p>
+          )}
           {channel !== "web" && (
             <p className="font-mono text-klawva-dim text-xs mt-2">
               <a href={chatLink} className="text-klawva-accent underline">
