@@ -9,6 +9,59 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { getSessionLaunch } from "@/lib/employees-api";
 import { toolActivity } from "@/lib/chat-activity";
+import {
+  desktopDownloadUrl,
+  detectVisitorOs,
+  downloadOsFor,
+  unavailableOsCopy,
+} from "@/lib/desktop-app";
+
+function DesktopDownloadBlock({ agentName }: { readonly agentName: string }) {
+  const visitor = useMemo(() => detectVisitorOs(navigator.userAgent), []);
+  const os = downloadOsFor(visitor);
+  const other = os === "windows" ? "linux" : "windows";
+  return (
+    <div className="text-left bg-klawva-surface border border-klawva-accent rounded-lg px-5 py-4 mb-8">
+      <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
+        Runs on your computer
+      </p>
+      <p className="font-mono text-klawva-muted text-sm mb-4">
+        {agentName} is a desktop employee. It only works through the klawva
+        desktop app, so get that first.
+      </p>
+      {os === null ? (
+        <p className="font-mono text-klawva-muted text-sm">
+          {unavailableOsCopy(visitor)}
+        </p>
+      ) : (
+        <>
+          <div className="mb-2">
+            <Button variant="primary" href={desktopDownloadUrl(os)}>
+              download for {os}
+            </Button>
+          </div>
+          <a
+            href={desktopDownloadUrl(other)}
+            className="text-xs text-klawva-muted underline font-mono"
+          >
+            download for {other} instead
+          </a>
+          <ol className="font-mono text-klawva-muted text-xs mt-4 space-y-1.5 list-decimal list-inside">
+            <li>install the app and open it</li>
+            <li>approve the pairing code it shows, right here on this site</li>
+            <li>your employee starts working on your computer</li>
+          </ol>
+        </>
+      )}
+      <a
+        href="/download"
+        className="text-xs text-klawva-muted underline font-mono block mt-3"
+      >
+        all download options
+      </a>
+    </div>
+  );
+}
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -27,11 +80,12 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     agentName: launch.agentName,
     customerEmail: launch.customerEmail,
     brief: launch.brief,
+    desktop: launch.desktop === true,
   };
 };
 
 export function Component() {
-  const { session, token, botUsername, code, channel, agentName, customerEmail, brief } =
+  const { session, token, botUsername, code, channel, agentName, customerEmail, brief, desktop } =
     useLoaderData<typeof loader>();
   const link = `https://t.me/${botUsername}?start=${code}`;
   const chatLink = `/chat/${session}?token=${token}`;
@@ -121,6 +175,9 @@ export function Component() {
                 )}
               </div>
             </div>
+          )}
+          {desktop && (
+            <DesktopDownloadBlock agentName={agentName} />
           )}
           {channel === "web" ? (
             <>
