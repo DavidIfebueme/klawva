@@ -172,16 +172,16 @@ export const approveListing = (
       return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
     }
     yield* db
-      .run(
-        "UPDATE listing_versions SET status = 'superseded', superseded_at = ? WHERE listing_id = ? AND status = 'published'",
-        [now, listingId],
-      )
-      .pipe(Effect.orDie);
-    yield* db
-      .run(
-        "UPDATE listing_versions SET status = 'published', published_at = ?, reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
-        [now, actorEmail, now, listingId, listingId],
-      )
+      .batch([
+        {
+          sql: "UPDATE listing_versions SET status = 'superseded', superseded_at = ? WHERE listing_id = ? AND status = 'published'",
+          params: [now, listingId],
+        },
+        {
+          sql: "UPDATE listing_versions SET status = 'published', published_at = ?, reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
+          params: [now, actorEmail, now, listingId, listingId],
+        },
+      ])
       .pipe(Effect.orDie);
     yield* recordAudit(db, actorEmail, "listing.approve", listingId, "{}");
     yield* notifyOwner(
