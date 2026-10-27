@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { dohResponse } from "./doh.ts";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param } from "../src/db/database.ts";
 import { ingestArtifact } from "../src/hosted/ingest.ts";
@@ -27,7 +28,7 @@ const manifest = {
 } as unknown as Manifest;
 
 const base = { sessionId: "s1", taskId: "tsk_1", briefHash: "bh", manifest };
-const okFetch = vi.fn(async () => new Response("page", { status: 200 }));
+const okFetch = vi.fn(async (url: string) => url.includes("dns-query") ? dohResponse() : new Response("page", { status: 200 }));
 
 describe("artifact ingest", () => {
   it("files a complete report with evidence and marks the task completed", async () => {
@@ -178,7 +179,7 @@ describe("dispatch hands the artifact to ingest", () => {
         },
         {
           fetchText: async (url: string) =>
-            url.endsWith("/card")
+            url.includes("dns-query") ? dohResponse() : url.endsWith("/card")
               ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
               : new Response(sse, { status: 200 }),
           ingest: (input) => {
