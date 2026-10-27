@@ -7,6 +7,7 @@ import { shiftStartedEmail } from "../email/templates.ts";
 import { sessionReplyAddress } from "../channels/email.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 import { dispatchTask } from "../hosted/dispatch.ts";
+import { ingestArtifact } from "../hosted/ingest.ts";
 import { Brief, BriefRecord, manifestOf } from "../db/schema.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
@@ -188,6 +189,9 @@ export const handlePaystackWebhook = (
           manifest,
           brief: parsedBrief._tag === "Some" ? parsedBrief.value : {},
           briefHash,
+        }, {
+          fetchText: (url, init) => fetch(url, init),
+          ingest: (input) => ingestArtifact(db, input),
         }).pipe(Effect.catch(() => Effect.void));
       }
     }
