@@ -33,6 +33,13 @@ const employeeDetail = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
+  lane: Schema.optional(Schema.String),
+  dataPolicy: Schema.optional(
+    Schema.Struct({
+      retentionDays: Schema.Number,
+      leavesCountry: Schema.Boolean,
+    }),
+  ),
   durations: Schema.Array(durationOption),
 });
 export type EmployeeDetail = typeof employeeDetail.Type;
