@@ -437,9 +437,10 @@ export function Component() {
               )}
 
               <p className="font-mono text-klawva-dim text-[11px] leading-relaxed">
-                Your brief goes to the employee's author to do the shift. Reports
-                and their evidence are kept for 90 days. Do not put passwords or
-                card numbers in a brief.
+                {employee.lane !== undefined && employee.lane !== "authored"
+                  ? `Your brief goes to the employee's author to do the shift. Reports and their evidence are kept for ${employee.dataPolicy?.retentionDays ?? 90} days.`
+                  : "Reports and their evidence are kept for 90 days."}{" "}
+                Do not put passwords or card numbers in a brief.
               </p>
 
               <div className="flex items-center justify-between pt-4 border-t border-klawva-border">
