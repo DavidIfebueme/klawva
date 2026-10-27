@@ -116,6 +116,59 @@ export default {
     ) {
       return ownerBlockedResponse();
     }
+    if (url.pathname.startsWith("/api/agent/")) {
+      const { claimTask, readTask, submitEvents, submitReport } = await import(
+        "./hosted/api.ts"
+      );
+      const db = makeDatabase(env.DB);
+      const auth = request.headers.get("authorization") ?? "";
+      const token = auth.toLowerCase().startsWith("bearer ")
+        ? auth.slice(7).trim()
+        : "";
+      const { rateLimited } = await import("./lib/guard.ts");
+      const limited = await Effect.runPromise(
+        rateLimited(env.PUBLIC_LIMITER, `agent:${token.slice(0, 24)}`),
+      );
+      if (limited) {
+        return new Response(JSON.stringify({ error: "rate_limited" }), {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "15" },
+        });
+      }
+      const segments = url.pathname.split("/").filter((part) => part.length > 0);
+      const taskId = segments[3] === undefined ? "" : segments[3];
+      const sub = segments[4];
+      const reply = (result: { status: number; body: unknown; retryAfter?: number }) => {
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (result.retryAfter !== undefined) {
+          headers["retry-after"] = String(result.retryAfter);
+        }
+        return new Response(result.body === null ? null : JSON.stringify(result.body), {
+          status: result.status,
+          headers,
+        });
+      };
+      if (segments[2] === "tasks" && segments[3] === "claim" && request.method === "POST") {
+        return reply(await Effect.runPromise(claimTask(db, token)));
+      }
+      if (segments[2] !== "tasks" || taskId === "") {
+        return new Response(null, { status: 404 });
+      }
+      if (sub === "events" && request.method === "POST") {
+        return reply(
+          await Effect.runPromise(submitEvents(db, taskId, token, await request.text())),
+        );
+      }
+      if (sub === "report" && request.method === "POST") {
+        return reply(
+          await Effect.runPromise(submitReport(db, taskId, token, await request.text())),
+        );
+      }
+      if (sub === undefined && request.method === "GET") {
+        return reply(await Effect.runPromise(readTask(db, taskId, token)));
+      }
+      return new Response(null, { status: 405 });
+    }
     if (url.pathname === "/api/voice/twiml" && request.method === "GET") {
       const { clampRelaySeconds, twimlForCall } = await import("./voice/twiml.ts");
       const seconds = clampRelaySeconds(url.searchParams.get("maxSeconds"));
