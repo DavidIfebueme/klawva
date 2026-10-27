@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { dohResponse } from "./doh.ts";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param } from "../src/db/database.ts";
 import { probeLiveness } from "../src/hosted/liveness.ts";
@@ -72,7 +73,7 @@ describe("liveness probe", () => {
     const deps = {
       fetchText: async (url: string) => {
         calls.push(url);
-        return url.endsWith("/card")
+        return url.includes("dns-query") ? dohResponse() : url.endsWith("/card")
           ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
           : new Response("", { status: 503 });
       },
