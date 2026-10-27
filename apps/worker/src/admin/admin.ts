@@ -150,10 +150,22 @@ export const approveListing = (
   Effect.gen(function* () {
     const listing = yield* loadOwner(db, listingId);
     const now = new Date().toISOString();
+    const pending = yield* db
+      .first(
+        "SELECT version AS version FROM listing_versions WHERE listing_id = ? AND status = 'in_review' ORDER BY version DESC LIMIT 1",
+        [listingId],
+      )
+      .pipe(Effect.orDie);
     const updated = yield* db
       .first(
-        "UPDATE agent_listings SET status = 'published', updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
-        [now, listingId],
+        "UPDATE agent_listings SET status = 'published', current_version = COALESCE(?, current_version), price_minor = COALESCE((SELECT price_minor FROM listing_versions WHERE listing_id = ? AND version = COALESCE(?, current_version)), price_minor), updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
+        [
+          pending === null ? null : Number(pending.version),
+          listingId,
+          pending === null ? null : Number(pending.version),
+          now,
+          listingId,
+        ],
       )
       .pipe(Effect.orDie);
     if (updated === null) {
@@ -161,8 +173,14 @@ export const approveListing = (
     }
     yield* db
       .run(
-        "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
-        [actorEmail, now, listingId, listingId],
+        "UPDATE listing_versions SET status = 'superseded', superseded_at = ? WHERE listing_id = ? AND status = 'published'",
+        [now, listingId],
+      )
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE listing_versions SET status = 'published', published_at = ?, reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
+        [now, actorEmail, now, listingId, listingId],
       )
       .pipe(Effect.orDie);
     yield* recordAudit(db, actorEmail, "listing.approve", listingId, "{}");
@@ -197,8 +215,8 @@ export const rejectListing = (
     }
     yield* db
       .run(
-        "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
-        [actorEmail, now, listingId, listingId],
+        "UPDATE listing_versions SET status = 'rejected', reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND status = 'in_review'",
+        [actorEmail, now, listingId],
       )
       .pipe(Effect.orDie);
     yield* recordAudit(
