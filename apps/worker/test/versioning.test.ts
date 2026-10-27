@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
+import { validateManifest } from "../src/listings/manifest.ts";
 import { reviseListing } from "../src/studio/studio.ts";
 
 const fakeDb = (
@@ -66,7 +67,6 @@ describe("revising a published listing", () => {
   });
 });
 
-<<<<<<< HEAD
 describe("a revision can go back through review", () => {
   it("a published listing still publishes its approved revision and moves the pointer", async () => {
     const { db, writes } = (() => {
@@ -90,7 +90,9 @@ describe("a revision can go back through review", () => {
     const result = await Effect.runPromise(reviseListing(db, "u1", "l1", input));
     expect(result.version).toBe(4);
     expect(writes.some((w) => w.sql.includes("INSERT INTO listing_versions"))).toBe(true);
-=======
+  });
+});
+
 describe("manifest v2 lanes", () => {
   const authored = {
     schema: 2,
@@ -188,7 +190,6 @@ describe("manifest v2 lanes", () => {
   it("refuses an unknown key", () => {
     const verdict = validateManifest({ ...hosted, smuggled: true } as never);
     expect(verdict.ok).toBe(false);
->>>>>>> ca2d2b2 (feat(marketplace): the author data schedule in product form)
   });
 
   it("third-party lanes need a data policy with a dpia", () => {
