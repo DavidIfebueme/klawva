@@ -102,6 +102,13 @@ const PublicListingDetail = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
+  lane: Schema.optionalKey(Schema.String),
+  dataPolicy: Schema.optionalKey(
+    Schema.Struct({
+      retentionDays: Schema.Number,
+      leavesCountry: Schema.Boolean,
+    }),
+  ),
   durations: Schema.Array(
     Schema.Struct({
       days: Schema.Number,
@@ -112,6 +119,7 @@ const PublicListingDetail = Schema.Struct({
 import { WorkerEnv } from "./env.ts";
 import type { Env } from "./env.ts";
 import { ListingConflict, ListingNotFound } from "./errors.ts";
+import { notifyOwner } from "./admin/admin.ts";
 import { rateLimited } from "./lib/guard.ts";
 import { constantTimeEqual } from "./lib/secure.ts";
 
@@ -196,6 +204,17 @@ const connectorsEndpoint = HttpApiEndpoint.get("connectors", "/api/connectors", 
     }),
   ),
 });
+
+const deleteMyDataEndpoint = HttpApiEndpoint.post(
+  "deleteMyData",
+  "/api/sessions/:id/delete-my-data",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    query: Schema.Struct({ token: Schema.optionalKey(Schema.String) }),
+    success: Schema.Struct({ deadline: Schema.String }),
+    error: ListingNotFound,
+  },
+);
 
 const sessionLaunchEndpoint = HttpApiEndpoint.get(
   "sessionLaunch",
@@ -335,6 +354,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(telegramWebhook)
   .add(listListingsEndpoint)
   .add(listingDetailBySlugEndpoint)
+  .add(deleteMyDataEndpoint)
   .add(configEndpoint)
   .add(connectorsEndpoint)
   .add(sessionLaunchEndpoint)
@@ -510,7 +530,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const row = yield* db
             .first(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.brief_fields AS briefFields FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.brief_fields AS briefFields, v.manifest AS manifest FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
               [params.slug],
             )
             .pipe(Effect.orDie);
@@ -522,7 +542,67 @@ const rootGroup = HttpApiBuilder.group(
             const priceMinor = priceForDays(base.priceMinor, days);
             return priceMinor === null ? [] : [{ days, priceMinor }];
           });
-          return { ...base, durations };
+          const manifest = manifestOf({
+            soul: "",
+            manifest: typeof row.manifest === "string" ? row.manifest : null,
+          });
+          const lane = manifest.runtime?.kind ?? "authored";
+          const dataPolicy =
+            manifest.data === undefined
+              ? undefined
+              : {
+                  retentionDays: manifest.data.retentionDays,
+                  leavesCountry: manifest.data.leavesCountry,
+                };
+          return { ...base, durations, lane, dataPolicy };
+        }),
+      )
+      .handle("deleteMyData", ({ params, query }) =>
+        Effect.gen(function* () {
+          const allowed = yield* authorizeSession(params.id, query.token);
+          if (!allowed) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          const session = yield* db
+            .first(
+              "SELECT listing_id AS listingId FROM sessions WHERE id = ?",
+              [params.id],
+            )
+            .pipe(Effect.orDie);
+          if (session === null) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          const now = new Date();
+          const deadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000).toISOString();
+          yield* db
+            .run(
+              "INSERT INTO data_deletions (id, session_id, listing_id, requested_at, deadline, status, created_at) VALUES (?, ?, ?, ?, ?, 'open', ?)",
+              [
+                crypto.randomUUID(),
+                params.id,
+                String(session.listingId),
+                now.toISOString(),
+                deadline,
+                now.toISOString(),
+              ],
+            )
+            .pipe(Effect.orDie);
+          const owner = yield* db
+            .first(
+              "SELECT owner_id AS ownerId, name AS name FROM agent_listings WHERE id = ?",
+              [String(session.listingId)],
+            )
+            .pipe(Effect.orDie);
+          if (owner !== null) {
+            yield* notifyOwner(
+              db,
+              env,
+              String(owner.ownerId),
+              "A customer asked for their data back",
+              `A customer deleted their hire of ${String(owner.name)}. Delete any briefs, transcripts and artifacts you kept for that shift within 7 days (${deadline}).`,
+            ).pipe(Effect.catch(() => Effect.void));
+          }
+          return { deadline };
         }),
       )
       .handle("config", () =>
