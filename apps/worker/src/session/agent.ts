@@ -488,9 +488,22 @@ export const completeShift = (
         : report.stats;
     const shareToken = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
+    const briefHash = yield* Effect.tryPromise({
+      try: async () => {
+        const digest = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(briefRaw),
+        );
+        return Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      },
+      catch: (cause) => new Error(String(cause)),
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
+    const outcome = history.length === 0 ? "failed" : (report.outcome ?? "complete");
     yield* db
       .run(
-        "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) WHERE transport_id IS NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
+        "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at, outcome, evidence, limitations, brief_hash) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) WHERE transport_id IS NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, outcome = excluded.outcome, evidence = excluded.evidence, limitations = excluded.limitations, brief_hash = excluded.brief_hash, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
         [
           crypto.randomUUID(),
           sessionId,
@@ -500,6 +513,10 @@ export const completeShift = (
           now,
           now,
           now,
+          outcome,
+          JSON.stringify(report.evidence ?? []),
+          JSON.stringify(report.limitations ?? []),
+          briefHash,
         ],
       )
       .pipe(Effect.orDie);
