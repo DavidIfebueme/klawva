@@ -262,7 +262,8 @@ export default {
       const { sessionTaskState } = await import("./hosted/events.ts");
       const sessionId = decodeURIComponent(taskStateMatch[1]!);
       const db = makeDatabase(env.DB);
-      const token = url.searchParams.get("token") ?? "";
+      const token =
+        request.headers.get("x-auth-token") ?? url.searchParams.get("token") ?? "";
       const allowed = await Effect.runPromise(
         sessionTokenMatches(db, sessionId, token).pipe(
           Effect.catch(() => Effect.succeed(false)),
@@ -296,7 +297,22 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
-  async scheduled(_event: unknown, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
+  async scheduled(event: { cron: string }, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { pollWorkingTasks } = await import("./hosted/poller.ts");
+        await Effect.runPromise(
+          pollWorkingTasks(db, env, (url, init) => fetch(url, init)).pipe(
+            Effect.catch(() => Effect.succeed([])),
+          ),
+        );
+        return undefined;
+      })(),
+    );
+    if (event.cron !== "0 * * * *") {
+      return;
+    }
     ctx.waitUntil(
       Effect.runPromise(sweep(env))
         .then(() => undefined)
