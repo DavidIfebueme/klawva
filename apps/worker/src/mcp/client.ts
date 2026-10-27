@@ -1,5 +1,21 @@
 import * as Effect from "effect/Effect";
+import { isBlockedHost } from "../lib/ip-guard.ts";
 import * as Schema from "effect/Schema";
+
+const assertPublicUrl = (raw: string): string | null => {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return "scheme_not_allowed";
+    }
+    if (isBlockedHost(url.hostname)) {
+      return "host_not_allowed";
+    }
+    return null;
+  } catch {
+    return "url_unparseable";
+  }
+};
 
 export interface McpTool {
   readonly name: string;
@@ -34,6 +50,10 @@ export const listTools = (
 ): Effect.Effect<ReadonlyArray<McpTool>> =>
   Effect.tryPromise({
     try: async () => {
+      const guard = assertPublicUrl(serverUrl);
+      if (guard !== null) {
+        return [];
+      }
       const response = await fetch(serverUrl, {
         method: "POST",
         headers: headers(token),
@@ -60,6 +80,10 @@ export const callTool = (
 ): Effect.Effect<string> =>
   Effect.tryPromise({
     try: async () => {
+      const guard = assertPublicUrl(serverUrl);
+      if (guard !== null) {
+        return "";
+      }
       const response = await fetch(serverUrl, {
         method: "POST",
         headers: headers(token),
