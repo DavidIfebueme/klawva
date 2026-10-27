@@ -815,11 +815,16 @@ const rootGroup = HttpApiBuilder.group(
           }
           const listing = yield* db
             .first(
-              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor, v.tool_allowlist AS toolAllowlist, v.model AS model, v.soul AS soul, v.manifest AS manifest FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
+              "SELECT l.current_version AS version, l.name AS name, v.budget_minor AS budgetMinor, v.tool_allowlist AS toolAllowlist, v.model AS model, v.soul AS soul, v.manifest AS manifest, l.status AS listingStatus FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ? AND l.status = 'published'",
               [payload.listingId],
             )
             .pipe(Effect.orDie);
-          const listingVersion = listing === null ? 1 : Number(listing.version);
+          if (listing === null) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "listing_not_hireable" }),
+            );
+          }
+          const listingVersion = Number(listing.version);
           const budgetMinor =
             (listing === null ? defaultBudgetMinor : Number(listing.budgetMinor)) *
             durationDays;
