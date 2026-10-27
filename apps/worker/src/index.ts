@@ -148,6 +148,14 @@ export default {
           headers,
         });
       };
+      if (segments[2] === "kit" && request.method === "POST") {
+        const { runContractKit } = await import("./hosted/kit.ts");
+        const result = await Effect.runPromise(runContractKit(db, token));
+        return new Response(JSON.stringify(result.result ?? { error: result.error }), {
+          status: result.status,
+          headers: { "content-type": "application/json" },
+        });
+      }
       if (segments[2] === "tasks" && segments[3] === "claim" && request.method === "POST") {
         return reply(await Effect.runPromise(claimTask(db, token)));
       }
