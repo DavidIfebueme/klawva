@@ -1,6 +1,13 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://klawva.klawva.workers.dev/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+    {
+      "source": "/api/(.*)",
+      "destination": "https://klawva.klawva.workers.dev/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "ignoreCommand": "git diff --quiet \"origin/$VERCEL_GIT_COMMIT_REF\"...HEAD -- . && exit 1 || exit 0"
 }
