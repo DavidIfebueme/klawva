@@ -67,7 +67,7 @@ describe("contract kit", () => {
     const { db } = fakeDb(listingRows);
     const outcome = await Effect.runPromise(
       runContractKit(db, "al_ok", async (url) =>
-        url.includes("dns-query") ? dohResponse() : url.endsWith("/card") ? new Response("{}", { status: 200 }) : new Response("", { status: 500 }),
+        url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.endsWith("/card") ? new Response("{}", { status: 200 }) : new Response("", { status: 500 }),
       ),
     );
     expect(outcome.result?.ok).toBe(false);
