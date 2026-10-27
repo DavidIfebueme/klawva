@@ -67,6 +67,21 @@ export const bindTransport = (
       )
       .pipe(Effect.orDie);
     const now = new Date().toISOString();
+    const alreadyBound = yield* db
+      .first(
+        "SELECT id AS id FROM session_transports WHERE session_id = ? AND type = ? AND carrier_ref = ? LIMIT 1",
+        [sessionId, type, carrierRef],
+      )
+      .pipe(Effect.orDie);
+    if (alreadyBound !== null) {
+      yield* db
+        .run("UPDATE session_transports SET state = 'bound', updated_at = ? WHERE id = ?", [
+          now,
+          String(alreadyBound.id),
+        ])
+        .pipe(Effect.orDie);
+      return;
+    }
     if (row === null) {
       yield* db
         .run(
@@ -76,8 +91,11 @@ export const bindTransport = (
         .pipe(Effect.orDie);
       return;
     }
-    const from = Schema.decodeUnknownSync(TransportState)(row.state);
-    yield* transitionTransport(from, "bound");
+    const decoded = Schema.decodeUnknownOption(TransportState)(row.state);
+    if (decoded._tag === "None") {
+      return;
+    }
+    yield* transitionTransport(decoded.value, "bound");
     yield* db
       .run(
         "UPDATE session_transports SET state = 'bound', carrier = ?, carrier_ref = ?, updated_at = ? WHERE session_id = ? AND type = ? AND carrier_ref IS NULL",
