@@ -140,6 +140,7 @@ export const createAuthorDraft = (
           JSON.stringify(defaultToolAllowlist),
           defaultModel,
           input.budgetMinor,
+          input.priceMinor,
           now,
         ],
       )
@@ -244,6 +245,73 @@ export const updateAuthorDraft = (
       .pipe(Effect.orDie);
   });
 
+export const reviseListing = (
+  db: DatabaseImpl,
+  userId: string,
+  listingId: string,
+  input: UpdateInput,
+): Effect.Effect<{ version: number }, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    const listing = yield* ownedListing(db, userId, listingId);
+    if (listing === null) {
+      return yield* Effect.fail(new ListingNotFound({}));
+    }
+    const status = String(listing.status);
+    if (status !== "published") {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: `not_revisable:${status}` }),
+      );
+    }
+    const slug = String(listing.slug);
+    const current = Number(listing.version);
+    const next = current + 1;
+    const now = new Date().toISOString();
+    const definition: ListingDefinition = {
+      slug,
+      name: input.name,
+      tagline: input.tagline,
+      category: input.category,
+      agentId: `author:${slug}`,
+      briefFields: input.briefFields,
+      priceMinor: input.priceMinor,
+      budgetMinor: input.budgetMinor,
+    };
+    const manifest = manifestFor(definition, input.soul);
+    const hash = yield* manifestHash({
+      manifest,
+      briefFields: input.briefFields,
+      toolAllowlist: defaultToolAllowlist,
+      model: defaultModel,
+      budgetMinor: input.budgetMinor,
+    }).pipe(Effect.orDie);
+    yield* db
+      .run(
+        "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, 'draft')",
+        [
+          crypto.randomUUID(),
+          listingId,
+          next,
+          hash,
+          input.soul,
+          encodeManifest(manifest),
+          JSON.stringify(input.briefFields),
+          JSON.stringify(defaultToolAllowlist),
+          defaultModel,
+          input.budgetMinor,
+          input.priceMinor,
+          now,
+        ],
+      )
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE agent_listings SET name = ?, tagline = ?, category = ?, price_minor = ?, updated_at = ? WHERE id = ?",
+        [input.name, input.tagline, input.category, input.priceMinor, now, listingId],
+      )
+      .pipe(Effect.orDie);
+    return { version: next };
+  });
+
 export const runsToday = (
   db: DatabaseImpl,
   listingId: string,
@@ -308,14 +376,18 @@ const loadVersion = (
   Effect.gen(function* () {
     const row = yield* db
       .first(
-        "SELECT l.current_version AS version, v.soul AS soul FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
+        "SELECT v.version AS version, v.soul AS soul FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id WHERE l.id = ? AND v.version = COALESCE((SELECT MAX(version) FROM listing_versions WHERE listing_id = l.id AND status = 'draft'), l.current_version)",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (row === null) {
       return null;
     }
-    return { version: Number(row.version), soul: String(row.soul) };
+    return {
+      version: Number(row.version),
+      soul: String(row.soul),
+      manifest: null as string | null,
+    };
   });
 
 export const sandbox = (
@@ -354,9 +426,11 @@ export const submit = (
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
     }
-    if (String(listing.status) !== "draft" && String(listing.status) !== "rejected") {
+    const listingStatus = String(listing.status);
+    const revising = listingStatus === "published";
+    if (!revising && listingStatus !== "draft" && listingStatus !== "rejected") {
       return yield* Effect.fail(
-        new ListingConflict({ reason: `not_submittable:${String(listing.status)}` }),
+        new ListingConflict({ reason: `not_submittable:${listingStatus}` }),
       );
     }
     const version = yield* loadVersion(db, listingId);
@@ -383,11 +457,16 @@ export const submit = (
       )
       .pipe(Effect.orDie);
     yield* db
-      .run("UPDATE agent_listings SET status = ?, updated_at = ? WHERE id = ?", [
-        status,
-        now,
-        listingId,
-      ])
+      .run(
+        "UPDATE agent_listings SET status = CASE WHEN ? = 'published' AND ? = 'in_review' THEN status ELSE ? END, updated_at = ? WHERE id = ?",
+        [listingStatus, status, status, now, listingId],
+      )
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE listing_versions SET status = ? WHERE listing_id = ? AND version = ?",
+        [status, listingId, version.version],
+      )
       .pipe(Effect.orDie);
     return { ...outcome, status };
   });
