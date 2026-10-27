@@ -1,4 +1,5 @@
 import { newPairCode, waitForClaim } from "./client/pairing.ts";
+import { verifyMode, workerBaseUrl } from "./client/config.ts";
 import { listHiredSessions, type HiredSession } from "./client/session.ts";
 import { runEmployee } from "./client/loop.ts";
 import type { SessionEvent } from "./client/session.ts";
@@ -95,4 +96,33 @@ if (stored !== null) {
   } else {
     localStorage.removeItem("klawva.device");
   }
+}
+
+
+const reportVerify = async (line: string, exitCode?: number): Promise<void> => {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("verify_report", { line, exitCode: exitCode ?? null });
+  } catch {
+    console.log(line);
+  }
+  if (exitCode !== undefined) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("verify_exit", { code: exitCode });
+  }
+};
+
+if (verifyMode(window.location.search)) {
+  void (async () => {
+    await reportVerify(`worker=${workerBaseUrl}`);
+    const code = newPairCode();
+    await reportVerify(`code=${code}`);
+    try {
+      const claimed = await waitForClaim(code, () => {}, 120);
+      await reportVerify(`paired=${claimed.deviceId}`);
+      await reportVerify("verify ok", 0);
+    } catch (cause) {
+      await reportVerify(`verify failed: ${String(cause)}`, 1);
+    }
+  })();
 }
