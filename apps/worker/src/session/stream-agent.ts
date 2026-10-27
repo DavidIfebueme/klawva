@@ -15,9 +15,10 @@ import {
 import { createWorkersAI } from "workers-ai-provider";
 import type { Env } from "../env.ts";
 import { make as makeDatabase } from "../db/database.ts";
+import { bindTransport } from "./transports.ts";
 import {
   admitTurn,
-  authorizeStream,
+  streamIdentity,
   budgetReply,
   capacityReply,
   completeShift,
@@ -76,18 +77,31 @@ export class SessionAgent extends AIChatAgent<Env> {
 
   async onConnect(connection: Connection, ctx: ConnectionContext): Promise<void> {
     const url = new URL(ctx.request.url);
-    const allowed = await Effect.runPromise(
-      authorizeStream(
+    const db = makeDatabase(this.env.DB);
+    const identity = await Effect.runPromise(
+      streamIdentity(
         this.env,
-        makeDatabase(this.env.DB),
+        db,
         this.name,
         url.searchParams.get("token"),
         ctx.request.headers.get("authorization") ??
           ctx.request.headers.get("x-auth-token"),
       ),
-    ).catch(() => false);
-    if (!allowed) {
+    ).catch(() => null);
+    if (identity === null) {
       connection.close(4001, "Unauthorized");
+      return;
+    }
+    if (identity.kind === "device") {
+      const bound = await Effect.runPromise(
+        bindTransport(db, this.name, "desktop", "device", identity.deviceId).pipe(
+          Effect.catch(() => Effect.succeed(false as const)),
+          Effect.map(() => true as const),
+        ),
+      ).catch(() => false);
+      if (!bound) {
+        console.warn("desktop transport did not bind", identity.deviceId);
+      }
     }
   }
 
