@@ -246,7 +246,34 @@ fn bundle_spawn(entrypoint: String, port: u16, nonce: String, bundle_id: String)
         let _ = child.kill();
         return Err("bundle did not echo the nonce".to_string());
     }
+    BUNDLE_CHILD
+        .lock()
+        .map_err(|e| e.to_string())?
+        .replace(child);
     Ok(trimmed)
+}
+
+static BUNDLE_CHILD: std::sync::Mutex<Option<std::process::Child>> =
+    std::sync::Mutex::new(None);
+
+#[tauri::command]
+fn bundle_kill() -> Result<bool, String> {
+    let mut guard = BUNDLE_CHILD.lock().map_err(|e| e.to_string())?;
+    match guard.take() {
+        Some(mut child) => {
+            let pid = child.id();
+            let _ = child.kill();
+            let _ = child.wait();
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/T", "/F", "/PID", &pid.to_string()])
+                    .output();
+            }
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 #[tauri::command]
@@ -360,7 +387,8 @@ fn main() {
             verify_exit,
             purge_bundle_data,
             bundle_spawn_plan,
-            bundle_spawn
+            bundle_spawn,
+            bundle_kill
         ])
         .run(tauri::generate_context!())
         .expect("error while running klawva desktop");
