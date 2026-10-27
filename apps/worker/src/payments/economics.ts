@@ -54,6 +54,11 @@ export const unitEconomics = (params: {
   };
 };
 
+export const MINIMUM_INTERNATIONAL_PRICE_MINOR = 200_000;
+
+export const minimumPriceForCorridor = (international: boolean): number | null =>
+  international ? MINIMUM_INTERNATIONAL_PRICE_MINOR : null;
+
 export const corridors = (grossMinor: number): ReadonlyArray<UnitEconomicsRow> => [
   unitEconomics({ label: "domestic", grossMinor, commissionRate: 0.2, whtRate: 0, international: false }),
   unitEconomics({
@@ -63,10 +68,34 @@ export const corridors = (grossMinor: number): ReadonlyArray<UnitEconomicsRow> =
     whtRate: WHT_NON_RESIDENT,
     international: true,
   }),
+  unitEconomics({
+    label: "non-resident-cheapest-international",
+    grossMinor,
+    commissionRate: 0.2,
+    whtRate: WHT_NON_RESIDENT,
+    international: true,
+  }),
 ];
 
 export const corridorBlocked = (rows: ReadonlyArray<UnitEconomicsRow>): ReadonlyArray<string> =>
   rows.filter((row) => row.negative).map((row) => row.label);
+
+export const listingPriceBlocked = (params: {
+  readonly priceMinor: number;
+  readonly international: boolean;
+}): ReadonlyArray<string> => {
+  const rows = corridors(params.priceMinor).filter(
+    (row) => (params.international ? row.label !== "domestic" : row.label === "domestic"),
+  );
+  const blocked = corridorBlocked(rows);
+  if (blocked.length > 0) {
+    return blocked;
+  }
+  if (params.international && params.priceMinor < MINIMUM_INTERNATIONAL_PRICE_MINOR) {
+    return ["minimum_price"];
+  }
+  return blocked;
+};
 
 export const lastPeriod = (now: Date = new Date()): string => {
   const year = now.getUTCFullYear();
@@ -91,4 +120,26 @@ export const ledgerTotals = (
         commissionMinor: row === null ? 0 : Number(row.commissionMinor),
         netMinor: row === null ? 0 : Number(row.netMinor),
       })),
+    );
+
+export const reserveFromLedger = (db: DatabaseImpl, period: string): Effect.Effect<number> =>
+  db
+    .first(
+      "SELECT COALESCE(SUM(reserved_minor),0) AS reserved FROM refund_reserve WHERE period = ?",
+      [period],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => (row === null ? 0 : Number(row.reserved))),
+    );
+
+export const platformFundedFromLedger = (db: DatabaseImpl, period: string): Effect.Effect<number> =>
+  db
+    .first(
+      "SELECT COALESCE(SUM(refund_minor),0) AS funded FROM payments WHERE refund_source = 'platform_funded' AND substr(refunded_at, 1, 7) = ?",
+      [period],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => (row === null ? 0 : Number(row.funded))),
     );
