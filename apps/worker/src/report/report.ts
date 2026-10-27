@@ -21,17 +21,60 @@ export class ReportNotFound extends Schema.TaggedError<ReportNotFound>()(
   { httpApiStatus: 404 },
 ) {}
 
+export type ReportOutcome = "complete" | "partial" | "failed";
+
 export interface Report {
+  readonly outcome?: ReportOutcome;
   readonly summary: string;
   readonly stats: ReadonlyArray<{
     readonly label: string;
     readonly value: string;
   }>;
+  readonly evidence?: ReadonlyArray<string>;
+  readonly limitations?: ReadonlyArray<string>;
 }
 
+export interface ReportProvenance {
+  readonly taskId?: string;
+  readonly briefHash?: string;
+  readonly artifactHash?: string;
+}
+
+const evidenceLimit = 20;
+const limitationLimit = 20;
+
+export const validateReport = (
+  report: Report,
+  provenance: ReportProvenance,
+): { readonly ok: true } | { readonly ok: false; readonly reason: string } => {
+  if (report.summary.trim().length === 0) {
+    return { ok: false, reason: "empty_summary" };
+  }
+  const taskBound =
+    provenance.taskId !== undefined || provenance.artifactHash !== undefined;
+  if (taskBound && report.outcome === undefined) {
+    return { ok: false, reason: "missing_outcome" };
+  }
+  if ((report.evidence?.length ?? 0) > evidenceLimit) {
+    return { ok: false, reason: "too_much_evidence" };
+  }
+  if ((report.limitations?.length ?? 0) > limitationLimit) {
+    return { ok: false, reason: "too_many_limitations" };
+  }
+  for (const url of report.evidence ?? []) {
+    if (!url.startsWith("https://") && !url.startsWith("http://")) {
+      return { ok: false, reason: "evidence_not_url" };
+    }
+  }
+  return { ok: true };
+};
+
 export const zeroTurnReport: Report = {
+  outcome: "failed",
   summary: "Nothing happened. No turns were mirrored to this shift.",
   stats: [],
+  evidence: [],
+  limitations: ["no turns were mirrored, so nothing could be done"],
 };
 
 export const fileCallReport = (
@@ -39,10 +82,15 @@ export const fileCallReport = (
   sessionId: string,
   transportId: string,
   report: Report,
-): Effect.Effect<void> =>
-  db
+  provenance: ReportProvenance = {},
+): Effect.Effect<void> => {
+  const valid = validateReport(report, provenance);
+  if (!valid.ok) {
+    return Effect.die(new Error(`invalid_report:${valid.reason}`));
+  }
+  return db
     .run(
-      "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(session_id, transport_id) WHERE transport_id IS NOT NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, updated_at = excluded.updated_at",
+      "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at, outcome, evidence, limitations, brief_hash, artifact_hash, task_id) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id, transport_id) WHERE transport_id IS NOT NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, outcome = excluded.outcome, evidence = excluded.evidence, limitations = excluded.limitations, brief_hash = excluded.brief_hash, artifact_hash = excluded.artifact_hash, task_id = excluded.task_id, updated_at = excluded.updated_at",
       [
         crypto.randomUUID(),
         sessionId,
@@ -52,9 +100,16 @@ export const fileCallReport = (
         crypto.randomUUID().replace(/-/g, ""),
         new Date().toISOString(),
         new Date().toISOString(),
+        report.outcome ?? null,
+        JSON.stringify(report.evidence ?? []),
+        JSON.stringify(report.limitations ?? []),
+        provenance.briefHash ?? null,
+        provenance.artifactHash ?? null,
+        provenance.taskId ?? null,
       ],
     )
     .pipe(Effect.orDie);
+};
 
 export const fallbackReport = (
   history: ReadonlyArray<ChatMessage>,
