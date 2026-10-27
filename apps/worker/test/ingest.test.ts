@@ -179,7 +179,7 @@ describe("dispatch hands the artifact to ingest", () => {
         },
         {
           fetchText: async (url: string) =>
-            url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.endsWith("/card")
+            url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.endsWith("/card")
               ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
               : new Response(sse, { status: 200 }),
           ingest: (input) => {
