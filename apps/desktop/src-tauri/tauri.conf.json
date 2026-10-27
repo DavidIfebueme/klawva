@@ -18,12 +18,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://klawva.xyz wss://klawva.xyz https://gmail.googleapis.com https://oauth2.googleapis.com"
+      "csp": "default-src 'self'; connect-src 'self' https://klawva.xyz wss://klawva.xyz http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* https://gmail.googleapis.com https://oauth2.googleapis.com"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
