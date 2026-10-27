@@ -22,6 +22,12 @@ const OverviewResponse = Schema.Struct({
   listingsByStatus: Schema.Array(
     Schema.Struct({ status: Schema.String, count: Schema.Number }),
   ),
+  clock: Schema.Struct({
+    medianMinutes: Schema.NullOr(Schema.Number),
+    within: Schema.Number,
+    over: Schema.Number,
+    unknown: Schema.Number,
+  }),
 });
 
 const ReviewItem = Schema.Struct({

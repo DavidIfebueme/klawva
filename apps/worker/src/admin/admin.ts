@@ -37,6 +37,12 @@ export interface Overview {
     readonly status: string;
     readonly count: number;
   }>;
+  readonly clock: {
+    readonly medianMinutes: number | null;
+    readonly within: number;
+    readonly over: number;
+    readonly unknown: number;
+  };
 }
 
 export const overview = (db: DatabaseImpl): Effect.Effect<Overview> =>
@@ -54,11 +60,13 @@ export const overview = (db: DatabaseImpl): Effect.Effect<Overview> =>
         [],
       )
       .pipe(Effect.orDie);
+    const clock = yield* clockSummary(db);
     return {
       users,
       authors,
       sessions,
       pendingReviews,
+      clock,
       listingsByStatus: rows.map((row) => ({
         status: String(row.status),
         count: Number(row.count),
@@ -325,6 +333,22 @@ export const revokeListing = (
     return {
       status: "unpublished",
       cancelled: cancelled === null ? 0 : Number(cancelled.count ?? 0),
+    };
+  });
+
+export const clockSummary = (
+  db: DatabaseImpl,
+): Effect.Effect<{ medianMinutes: number | null; within: number; over: number; unknown: number }> =>
+  Effect.gen(function* () {
+    const { onboardingClock, medianMinutes } = yield* Effect.promise(() =>
+      import("../marketplace/clock.ts"),
+    );
+    const rows = yield* onboardingClock(db, 50);
+    return {
+      medianMinutes: medianMinutes(rows.map((row) => row.minutes)),
+      within: rows.filter((row) => row.verdict === "within").length,
+      over: rows.filter((row) => row.verdict === "over").length,
+      unknown: rows.filter((row) => row.verdict === "unknown").length,
     };
   });
 
