@@ -221,6 +221,35 @@ fn list_workspace_files(slug: String, relative_dir: String) -> Result<Vec<String
 }
 
 #[tauri::command]
+fn bundle_spawn(entrypoint: String, port: u16, nonce: String, bundle_id: String) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    if port < 1024 || nonce.len() < 32 {
+        return Err("bad spawn plan".to_string());
+    }
+    let mut child = Command::new(&entrypoint)
+        .env("KLAWVA_BUNDLE_ID", &bundle_id)
+        .env("KLAWVA_A2A_PORT", port.to_string())
+        .env("KLAWVA_A2A_NONCE", &nonce)
+        .env("KLAWVA_A2A_TRANSPORT", "a2a-loopback")
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    if reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
+        return Err("bundle produced no handshake line".to_string());
+    }
+    let trimmed = line.trim().to_string();
+    if !trimmed.contains(&nonce) {
+        let _ = child.kill();
+        return Err("bundle did not echo the nonce".to_string());
+    }
+    Ok(trimmed)
+}
+
+#[tauri::command]
 fn bundle_spawn_plan(port: u16, nonce: String, bundle_id: String) -> Result<String, String> {
     if port < 1024 {
         return Err("port must be unprivileged".to_string());
@@ -330,7 +359,8 @@ fn main() {
             verify_report,
             verify_exit,
             purge_bundle_data,
-            bundle_spawn_plan
+            bundle_spawn_plan,
+            bundle_spawn
         ])
         .run(tauri::generate_context!())
         .expect("error while running klawva desktop");
