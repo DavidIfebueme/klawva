@@ -322,6 +322,21 @@ fn purge_bundle_data(dirs: Vec<String>, allowed_root: String) -> Result<Vec<Stri
 }
 
 #[tauri::command]
+fn purge_workspace(slug: String) -> Result<String, String> {
+    let clean: String = slug
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let home = dirs_next_home().ok_or_else(|| "home directory not found".to_string())?;
+    let path = home.join("klawva").join("employees").join(&clean);
+    if !path.exists() {
+        return Ok("nothing to remove".to_string());
+    }
+    fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    Ok(format!("removed {}", clean))
+}
+
+#[tauri::command]
 fn verify_report(line: String, exit_code: Option<i32>) {
     println!("{line}");
     if let Some(code) = exit_code {
@@ -386,6 +401,7 @@ fn main() {
             verify_report,
             verify_exit,
             purge_bundle_data,
+            purge_workspace,
             bundle_spawn_plan,
             bundle_spawn,
             bundle_kill

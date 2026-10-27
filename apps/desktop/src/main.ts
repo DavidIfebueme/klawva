@@ -2,6 +2,7 @@ import { newPairCode, waitForClaim } from "./client/pairing.ts";
 import { verifyMode, workerBaseUrl } from "./client/config.ts";
 import { listHiredSessions, type HiredSession } from "./client/session.ts";
 import { runEmployee } from "./client/loop.ts";
+import { purgeWorkspace } from "./client/workspace.ts";
 import type { SessionEvent } from "./client/session.ts";
 
 const statusEl = document.getElementById("status");
@@ -38,6 +39,15 @@ const showSessions = (sessions: ReadonlyArray<HiredSession>, token: string): voi
       });
     });
     item.appendChild(button);
+
+    const remove = document.createElement("button");
+    remove.textContent = "remove its data";
+    remove.addEventListener("click", () => {
+      void purgeWorkspace(session.listingName ?? session.id)
+        .then((line) => say(line))
+        .catch((error: unknown) => say(`remove failed: ${String(error)}`));
+    });
+    item.appendChild(remove);
     sessionsList.appendChild(item);
   }
 };

@@ -31,3 +31,9 @@ export const purgeBundle = async (
     allowedRoot,
   });
 };
+
+
+export const purgeWorkspace = async (slug: string): Promise<string> => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("purge_workspace", { slug });
+};

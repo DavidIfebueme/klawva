@@ -46,6 +46,10 @@ case "$rung" in
     echo "L4 ci"
     echo "runs on github: .github/workflows/worker.yml and desktop.yml"
     ;;
+  gates)
+    echo "the pilot checklist, gate by gate"
+    "$root/tools/verify-gates.mjs"
+    ;;
   l5)
     echo "L5 live probes"
     "$root/tools/verify-live.sh"
@@ -54,7 +58,7 @@ case "$rung" in
     for step in l0 l1 gates; do "$0" "$step"; done
     ;;
   *)
-    echo "unknown rung: $rung (l0 l1 l2 l3 l4 l5 all)" >&2
+    echo "unknown rung: $rung (l0 l1 l2 l3 l4 l5 gates all)" >&2
     exit 2
     ;;
 esac
