@@ -6,6 +6,7 @@ import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { identityFromToken, tokenFromHeaders } from "./auth.ts";
+import { bundleAllowed, grantBundle } from "../desktop/bundles.ts";
 import { AuthError } from "./tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
@@ -107,6 +108,25 @@ const deviceSessions = HttpApiEndpoint.get(
   },
 );
 
+const bundleAllowedRow = Schema.Struct({
+  allowed: Schema.Boolean,
+  reason: Schema.optional(Schema.String),
+});
+
+const deviceBundleAllowed = HttpApiEndpoint.get(
+  "deviceBundleAllowed",
+  "/api/device/bundles/:bundleId/allowed",
+  {
+    params: Schema.Struct({ bundleId: Schema.String }),
+    query: Schema.Struct({
+      version: Schema.String,
+      sha256: Schema.String,
+    }),
+    success: bundleAllowedRow,
+    error: AuthError,
+  },
+);
+
 class DevicesGroup extends HttpApiGroup.make("Devices")
   .add(deviceCreate)
   .add(deviceList)
@@ -115,7 +135,8 @@ class DevicesGroup extends HttpApiGroup.make("Devices")
   .add(deviceScope)
   .add(pairCodeApprove)
   .add(pairCodeClaim)
-  .add(deviceSessions) {}
+  .add(deviceSessions)
+  .add(deviceBundleAllowed) {}
 
 export class DevicesApi extends HttpApi.make("DevicesApi").add(DevicesGroup) {}
 
@@ -245,6 +266,31 @@ export const devicesGroup = HttpApiBuilder.group(
             return yield* Effect.fail(new AuthError({ reason: "bad_device_token" }));
           }
           return yield* sessionsForDevice(db, deviceId);
+        }),
+      )
+      .handle("deviceBundleAllowed", ({ params, query }) =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const token = tokenFromHeaders(request.headers);
+          if (token === null) {
+            return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
+          }
+          const deviceId = yield* deviceIdForRawToken(db, token).pipe(
+            Effect.catch(() => Effect.succeed(null)),
+          );
+          if (deviceId === null) {
+            return yield* Effect.fail(new AuthError({ reason: "bad_device_token" }));
+          }
+          const decision = yield* bundleAllowed(db, {
+            bundleId: params.bundleId,
+            version: query.version,
+            sha256: query.sha256,
+          });
+          if (!decision.allowed) {
+            return { allowed: false, reason: decision.reason };
+          }
+          yield* grantBundle(db, deviceId, params.bundleId, query.version);
+          return { allowed: true };
         }),
       );
   }),
