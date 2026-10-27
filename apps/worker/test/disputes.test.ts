@@ -20,7 +20,12 @@ const fakeDb = (rows: ReadonlyArray<{ prefix: string; row: Row | null }> = []) =
       writes.push({ sql: String(sql), params: params ?? [] });
       return Effect.void;
     },
-    batch: () => Effect.void,
+    batch: (statements) => {
+      for (const statement of statements) {
+        writes.push({ sql: statement.sql, params: statement.params ?? [] });
+      }
+      return Effect.void;
+    },
     changed: () => Effect.succeed(0),
   };
   return { db, writes };
