@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { splitPayment } from "./split.ts";
 import { windowEndFor } from "./pricing.ts";
 import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
@@ -142,11 +143,42 @@ export const handlePaystackWebhook = (
       Number(decoded.duration_days ?? 1),
     );
     if (decoded.status !== "confirmed") {
-      const confirmed = yield* db
+      const owner = yield* db
         .first(
-          "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending' RETURNING id AS id",
-          [now, reference],
+          "SELECT l.owner_id AS ownerId FROM payments p JOIN sessions s ON s.id = p.session_id JOIN agent_listings l ON l.id = s.listing_id WHERE p.provider_reference = ?",
+          [reference],
         )
+        .pipe(Effect.orDie);
+      const splitRow =
+        owner !== null && String(owner.ownerId) !== "system"
+          ? splitPayment(Number(decoded.amount_minor))
+          : null;
+      const statements = [
+        {
+          sql: "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending'",
+          params: [now, reference],
+        },
+        ...(splitRow === null || owner === null
+          ? []
+          : [
+              {
+                sql: "INSERT INTO payment_splits (id, payment_id, author_id, gross_minor, commission_minor, net_minor, commission_rate, created_at) SELECT ?, p.id, ?, ?, ?, ?, ?, ? FROM payments p WHERE p.provider_reference = ? ON CONFLICT(payment_id) DO NOTHING",
+                params: [
+                  crypto.randomUUID(),
+                  String(owner.ownerId),
+                  splitRow.grossMinor,
+                  splitRow.commissionMinor,
+                  splitRow.netMinor,
+                  splitRow.commissionRate,
+                  now,
+                  reference,
+                ],
+              },
+            ]),
+      ];
+      yield* db.batch(statements).pipe(Effect.orDie);
+      const confirmed = yield* db
+        .first("SELECT id AS id FROM payments WHERE provider_reference = ?", [reference])
         .pipe(Effect.orDie);
       if (confirmed === null) {
         return Response.json({ ok: true });
@@ -299,6 +331,8 @@ export const initializePayment = (params: {
   readonly amountMinor: number;
   readonly callbackUrl: string;
   readonly email: string;
+  readonly subaccount?: string;
+  readonly commissionMinor?: number;
 }): Effect.Effect<{ reference: string; checkoutUrl: string }, PaystackError> =>
   Effect.gen(function* () {
     const reference = `klawva_${params.sessionId}_${Date.now()}`;
@@ -322,6 +356,13 @@ export const initializePayment = (params: {
             amount: params.amountMinor,
             reference,
             callback_url: params.callbackUrl,
+            ...(params.subaccount === undefined
+              ? {}
+              : {
+                  subaccount: params.subaccount,
+                  transaction_charge: params.commissionMinor ?? 0,
+                  bearer: "account",
+                }),
           }),
         }),
       catch: (cause) => new PaystackError({ reason: String(cause) }),
