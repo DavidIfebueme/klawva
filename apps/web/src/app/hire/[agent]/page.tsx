@@ -66,6 +66,19 @@ export function Component() {
             {employee.name.split(" ").pop()} entirely through Telegram from the
             moment your payment clears.
           </p>
+          {(employee.lane ?? "authored") !== "authored" && (
+            <div className="border border-klawva-border rounded p-4 font-mono text-xs text-klawva-dim leading-relaxed">
+              <p className="text-klawva-muted mb-2">Data schedule</p>
+              <p>
+                Your brief goes to the employee's author to do the shift.
+                {employee.dataPolicy
+                  ? ` Reports and evidence are kept ${employee.dataPolicy.retentionDays} days.`
+                  : ""}{" "}
+                You can ask for your data back from the session page at any
+                time; the author has 7 days to delete it.
+              </p>
+            </div>
+          )}
         </div>
         <div className="lg:col-span-5 relative">
           <div className="sticky top-32 bg-klawva-surface border border-klawva-accent rounded-xl p-8">
