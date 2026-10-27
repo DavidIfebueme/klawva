@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { withDoh } from "./doh.ts";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
 import { deterministicTaskId, dispatchTask, parseSse } from "../src/hosted/dispatch.ts";
@@ -45,7 +46,7 @@ const input = {
 const cardBody = JSON.stringify({ name: "cellar", version: "1.0.0" });
 
 const okDeps = (sse: string) => ({
-  fetchText: vi.fn(async (url: string) =>
+  fetchText: withDoh((url: string) =>
     url.includes("agent-card")
       ? new Response(cardBody, { status: 200 })
       : new Response(sse, { status: 200 }),
@@ -98,7 +99,7 @@ describe("dispatch", () => {
   it("fails on a card that does not parse as an agent card", async () => {
     const { db, writes } = fakeDb();
     const deps = {
-      fetchText: vi.fn(async () => new Response("not json", { status: 200 })),
+      fetchText: withDoh(async () => new Response("not json", { status: 200 })),
     };
     await expect(
       Effect.runPromise(dispatchTask(db, input, deps)),
@@ -133,10 +134,11 @@ describe("brief and post safety", () => {
   it("a posted redirect into a private address fails the task instead of being followed", async () => {
     const { db, writes } = fakeDb();
     const deps = {
-      fetchText: async (url: string) =>
+      fetchText: withDoh((url: string) =>
         url.includes("agent-card")
           ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
           : new Response(null, { status: 307, headers: { location: "http://10.0.0.5/x" } }),
+      ),
     };
     const exit = await Effect.runPromiseExit(
       dispatchTask(
@@ -153,13 +155,13 @@ describe("brief and post safety", () => {
     const { db } = fakeDb();
     const sent: string[] = [];
     const deps = {
-      fetchText: async (url: string, init?: RequestInit) => {
+      fetchText: withDoh((url: string, init?: RequestInit) => {
         if (url.includes("agent-card")) {
           return new Response(JSON.stringify({ name: "a" }), { status: 200 });
         }
         sent.push(String(init?.body ?? ""));
         return new Response("", { status: 200 });
-      },
+      }),
     };
     await Effect.runPromise(
       dispatchTask(db, { ...input, sessionId: "s-brief", brief: { task: "do the thing" } }, deps),
@@ -185,10 +187,11 @@ describe("cancel stops the stream", () => {
       "",
     ].join("\n");
     const deps = {
-      fetchText: async (url: string) =>
+      fetchText: withDoh((url: string) =>
         url.includes("agent-card")
           ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
           : new Response(sse, { status: 200 }),
+      ),
     };
     const result = await Effect.runPromise(
       dispatchTask(db, { ...input, sessionId: "s-cancel" }, deps),
