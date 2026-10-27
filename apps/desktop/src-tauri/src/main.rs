@@ -220,13 +220,59 @@ fn list_workspace_files(slug: String, relative_dir: String) -> Result<Vec<String
     Ok(names)
 }
 
+#[tauri::command]
+fn verify_report(line: String, exit_code: Option<i32>) {
+    println!("{line}");
+    if let Some(code) = exit_code {
+        std::process::exit(code);
+    }
+}
+
+#[tauri::command]
+fn verify_exit(code: i32) {
+    std::process::exit(code);
+}
+
+use tauri::Manager;
+
 fn main() {
     if std::env::args().any(|arg| arg == "--smoke") {
         println!("klawva desktop smoke ok");
         return;
     }
+    let verifying = std::env::args().any(|arg| arg == "--verify");
+    if verifying {
+        match std::env::var("KLAWVA_WORKER_URL") {
+            Ok(url) if !url.contains("klawva.xyz") => {}
+            _ => {
+                eprintln!("--verify needs KLAWVA_WORKER_URL pointing at a non-production worker");
+                std::process::exit(2);
+            }
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_websocket::init())
+        .setup(move |app| {
+            if verifying {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(800));
+                    match handle.get_webview_window("main") {
+                        Some(window) => {
+                            let _ = window.eval("location.replace('index.html?verify=1')");
+                        }
+                        None => {
+                            eprintln!("verify: no webview to drive");
+                            std::process::exit(1);
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(180));
+                    eprintln!("verify: timed out waiting for the pairing loop");
+                    std::process::exit(1);
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ensure_workspace,
             write_note,
@@ -235,7 +281,9 @@ fn main() {
             start_loopback,
             take_loopback_result,
             store_secret,
-            read_secret
+            read_secret,
+            verify_report,
+            verify_exit
         ])
         .run(tauri::generate_context!())
         .expect("error while running klawva desktop");
