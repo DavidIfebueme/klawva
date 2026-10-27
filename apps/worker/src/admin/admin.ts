@@ -173,6 +173,12 @@ export const approveListing = (
     }
     yield* db
       .run(
+        "UPDATE agent_listings SET author_display = CASE WHEN owner_id = 'system' THEN 'klawva' ELSE COALESCE(NULLIF((SELECT display_name FROM author_profiles WHERE user_id = agent_listings.owner_id), ''), 'author') END WHERE id = ?",
+        [listingId],
+      )
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
         "UPDATE listing_versions SET status = 'superseded', superseded_at = ? WHERE listing_id = ? AND status = 'published'",
         [now, listingId],
       )
