@@ -4,6 +4,7 @@ import { sendEmail } from "../email/brevo.ts";
 import { listingApprovedEmail, listingRejectedEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
+import { listingPriceBlocked } from "../payments/economics.ts";
 import { seedListings } from "../listings/listings.ts";
 
 const scalar = (
@@ -127,18 +128,22 @@ export const notifyOwner = (
 const loadOwner = (
   db: DatabaseImpl,
   listingId: string,
-): Effect.Effect<{ ownerId: string; name: string }, ListingNotFound> =>
+): Effect.Effect<{ ownerId: string; name: string; priceMinor: number }, ListingNotFound> =>
   Effect.gen(function* () {
     const listing = yield* db
       .first(
-        "SELECT owner_id AS ownerId, name AS name FROM agent_listings WHERE id = ?",
+        "SELECT owner_id AS ownerId, name AS name, price_minor AS priceMinor FROM agent_listings WHERE id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
     }
-    return { ownerId: String(listing.ownerId), name: String(listing.name) };
+    return {
+      ownerId: String(listing.ownerId),
+      name: String(listing.name),
+      priceMinor: Number(listing.priceMinor),
+    };
   });
 
 export const approveListing = (
@@ -170,6 +175,24 @@ export const approveListing = (
       .pipe(Effect.orDie);
     if (updated === null) {
       return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
+    }
+    const corridor = yield* db
+      .first(
+        "SELECT psp AS psp FROM payout_accounts WHERE author_id = ? AND status = 'active' LIMIT 1",
+        [listing.ownerId],
+      )
+      .pipe(Effect.orDie);
+    const international = corridor !== null && String(corridor.psp) === "flutterwave";
+    if (international) {
+      const blocked = listingPriceBlocked({
+        priceMinor: listing.priceMinor,
+        international: true,
+      });
+      if (blocked.length > 0) {
+        return yield* Effect.fail(
+          new ListingConflict({ reason: `corridor_blocked:${blocked[0]}` }),
+        );
+      }
     }
     yield* db
       .batch([
