@@ -371,9 +371,27 @@ export default {
         return undefined;
       })(),
     );
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { runDueShoppers } = await import("./marketplace/shopper.ts");
+        await Effect.runPromise(
+          runDueShoppers(db, env).pipe(Effect.catch(() => Effect.succeed({ shopped: 0, verdicts: 0, capped: false }))),
+        );
+        return undefined;
+      })(),
+    );
     if (event.cron !== "0 * * * *") {
       return;
     }
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { applyTripwire } = await import("./payments/reserve.ts");
+        await Effect.runPromise(applyTripwire(db, new Date()).pipe(Effect.catch(() => Effect.succeed(false))));
+        return undefined;
+      })(),
+    );
     ctx.waitUntil(
       Effect.runPromise(sweep(env))
         .then(() => undefined)

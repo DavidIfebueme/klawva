@@ -191,10 +191,9 @@ export const createRerunSession = (
       version === null ? 0 : Number(version.budgetMinor) * durationDays;
     yield* db
       .run(
-        "INSERT INTO sessions (id, user_id, listing_id, listing_version, agent_id, channel, brief, budget_minor, status, claim_token_id, window_start, window_end, created_at, updated_at) VALUES (?, ?, ?, ?, 'rerun', 'web', ?, ?, 'pending', NULL, NULL, NULL, ?, ?)",
+        "INSERT INTO sessions (id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, created_at, updated_at) VALUES (?, ?, ?, 'rerun', 'web', ?, 'pending', NULL, NULL, NULL, ?, ?, ?)",
         [
           rerunId,
-          String(original.userId),
           String(authored.id),
           version === null ? 1 : Number(version.version),
           typeof original.brief === "string" ? original.brief : "{}",
