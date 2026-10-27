@@ -47,7 +47,7 @@ const cardBody = JSON.stringify({ name: "cellar", version: "1.0.0" });
 
 const okDeps = (sse: string) => ({
   fetchText: withDoh((url: string) =>
-    url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")
+    url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")
       ? new Response(cardBody, { status: 200 })
       : new Response(sse, { status: 200 }),
   ),
@@ -134,7 +134,7 @@ describe("brief and post safety", () => {
     const { db, writes } = fakeDb();
     const deps = {
       fetchText: withDoh((url: string) =>
-        url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")
+        url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")
           ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
           : new Response(null, { status: 307, headers: { location: "http://10.0.0.5/x" } }),
       ),
@@ -155,7 +155,7 @@ describe("brief and post safety", () => {
     const sent: string[] = [];
     const deps = {
       fetchText: withDoh((url: string, init?: RequestInit) => {
-        if (url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")) {
+        if (url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")) {
           return new Response(JSON.stringify({ name: "a" }), { status: 200 });
         }
         sent.push(String(init?.body ?? ""));
@@ -187,7 +187,7 @@ describe("cancel stops the stream", () => {
     ].join("\n");
     const deps = {
       fetchText: withDoh((url: string) =>
-        url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")
+        url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("dns-query") ? dohResponse() : url.includes("agent-card")
           ? new Response(JSON.stringify({ name: "a" }), { status: 200 })
           : new Response(sse, { status: 200 }),
       ),
