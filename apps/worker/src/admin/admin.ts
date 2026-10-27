@@ -96,7 +96,7 @@ const recordAudit = (
     )
     .pipe(Effect.orDie);
 
-const notifyOwner = (
+export const notifyOwner = (
   db: DatabaseImpl,
   env: Env,
   ownerId: string,
