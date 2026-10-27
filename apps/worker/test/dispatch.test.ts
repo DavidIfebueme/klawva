@@ -78,6 +78,7 @@ describe("dispatch", () => {
     const inserts = writes.filter((w) => w.sql.includes("INSERT INTO session_tasks"));
     expect(inserts.length).toBe(1);
     const events = writes.filter((w) => w.sql.includes("INSERT INTO task_events"));
+    if (process.env.DEBUG_DISPATCH) console.log("WRITES", writes.map((w) => w.sql.slice(0, 70)));
     expect(events.length).toBe(2);
 
 
