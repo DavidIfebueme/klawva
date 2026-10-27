@@ -262,6 +262,49 @@ export const unpublishListing = (
     return { status: "unpublished" };
   });
 
+export const revokeListing = (
+  db: DatabaseImpl,
+  actorEmail: string,
+  listingId: string,
+  reason: string,
+): Effect.Effect<{ status: string; cancelled: number }, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    yield* loadOwner(db, listingId);
+    const now = new Date().toISOString();
+    const updated = yield* db
+      .first(
+        "UPDATE agent_listings SET status = 'unpublished', updated_at = ? WHERE id = ? AND status = 'published' RETURNING id AS id",
+        [now, listingId],
+      )
+      .pipe(Effect.orDie);
+    if (updated === null) {
+      return yield* Effect.fail(new ListingConflict({ reason: "not_published" }));
+    }
+    yield* db
+      .run(
+        "UPDATE session_tasks SET cancel_requested_at = ?, updated_at = ? WHERE listing_id = ? AND state IN ('dispatched','working') AND cancel_requested_at IS NULL",
+        [now, now, listingId],
+      )
+      .pipe(Effect.orDie);
+    const cancelled = yield* db
+      .first(
+        "SELECT COUNT(*) AS count FROM session_tasks WHERE listing_id = ? AND cancel_requested_at >= ?",
+        [listingId, now],
+      )
+      .pipe(Effect.orDie);
+    yield* recordAudit(
+      db,
+      actorEmail,
+      "listing.revoke",
+      listingId,
+      JSON.stringify({ reason }),
+    );
+    return {
+      status: "unpublished",
+      cancelled: cancelled === null ? 0 : Number(cancelled.count ?? 0),
+    };
+  });
+
 export const seed = (db: DatabaseImpl): Effect.Effect<number> =>
   seedListings(db).pipe(Effect.orDie);
 
