@@ -1,13 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { redirect, useLoaderData, type LoaderFunctionArgs } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
+import * as Schema from "effect/Schema";
 import type { UIMessage } from "ai";
+import { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
-import { useEffect, useState } from "react";
 import { getSessionLaunch } from "@/lib/employees-api";
 import { toolActivity } from "@/lib/chat-activity";
 import {
@@ -16,6 +17,62 @@ import {
   downloadOsFor,
   unavailableOsCopy,
 } from "@/lib/desktop-app";
+
+const TaskHealthBody = Schema.Struct({
+  health: Schema.optional(Schema.String),
+});
+
+const taskHealthStore = (() => {
+  let health: string | null = null;
+  let session: string | null = null;
+  let token: string | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const subscribers = new Set<() => void>();
+  const emit = () => subscribers.forEach((notify) => notify());
+  const poll = async () => {
+    if (session === null || token === null) return;
+    try {
+      const response = await fetch(
+        `/api/sessions/${encodeURIComponent(session)}/task`,
+        { headers: { "x-auth-token": token } },
+      );
+      if (!response.ok) return;
+      const body: unknown = await response.json();
+      const decoded = Schema.decodeUnknownOption(TaskHealthBody)(body);
+      const next = decoded._tag === "Some" ? (decoded.value.health ?? null) : null;
+      if (next !== health) {
+        health = next;
+        emit();
+      }
+    } catch {
+      return;
+    }
+  };
+  return {
+    retarget(nextSession: string, nextToken: string) {
+      if (session === nextSession) return;
+      session = nextSession;
+      token = nextToken;
+      health = null;
+      emit();
+    },
+    subscribe(notify: () => void) {
+      subscribers.add(notify);
+      if (timer === null && subscribers.size === 1) {
+        void poll();
+        timer = setInterval(poll, 60_000);
+      }
+      return () => {
+        subscribers.delete(notify);
+        if (subscribers.size === 0 && timer !== null) {
+          clearInterval(timer);
+          timer = null;
+        }
+      };
+    },
+    snapshot: () => health,
+  };
+})();
 
 function DesktopDownloadBlock({ agentName }: { readonly agentName: string }) {
   const visitor = useMemo(() => detectVisitorOs(navigator.userAgent), []);
@@ -86,28 +143,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
 };
 
 function TaskBanner({ session, token }: { readonly session: string; readonly token: string }) {
-  const [health, setHealth] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const response = await fetch(
-          `/api/sessions/${encodeURIComponent(session)}/task?token=${encodeURIComponent(token)}`,
-        );
-        if (!response.ok) return;
-        const body = (await response.json()) as { health?: string };
-        if (alive) setHealth(body.health ?? null);
-      } catch {
-        // a banner is not worth breaking the page for
-      }
-    };
-    void poll();
-    const timer = setInterval(poll, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [session, token]);
+  useMemo(() => taskHealthStore.retarget(session, token), [session, token]);
+  const health = useSyncExternalStore(taskHealthStore.subscribe, taskHealthStore.snapshot);
 
   if (health !== "degraded" && health !== "paused") return null;
   return (
