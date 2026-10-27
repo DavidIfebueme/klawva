@@ -79,6 +79,8 @@ describe("dispatch", () => {
     expect(inserts.length).toBe(1);
     const events = writes.filter((w) => w.sql.includes("INSERT INTO task_events"));
     expect(events.length).toBe(2);
+
+
   });
 
   it("is a replay when a task row already exists", async () => {
