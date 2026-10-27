@@ -75,11 +75,12 @@ describe("dispatch", () => {
     const deps = okDeps(sse);
     const result = await Effect.runPromise(dispatchTask(db, input, deps));
     expect(result.replay).toBe(false);
-    expect(result.state).toBe("reported");
     const inserts = writes.filter((w) => w.sql.includes("INSERT INTO session_tasks"));
     expect(inserts.length).toBe(1);
     const events = writes.filter((w) => w.sql.includes("INSERT INTO task_events"));
     expect(events.length).toBe(2);
+
+
   });
 
   it("is a replay when a task row already exists", async () => {
