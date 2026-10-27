@@ -7,6 +7,7 @@ import type { UIMessage } from "ai";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
+import { useEffect, useState } from "react";
 import { getSessionLaunch } from "@/lib/employees-api";
 import { toolActivity } from "@/lib/chat-activity";
 import {
@@ -84,6 +85,40 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   };
 };
 
+function TaskBanner({ session, token }: { readonly session: string; readonly token: string }) {
+  const [health, setHealth] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/sessions/${encodeURIComponent(session)}/task?token=${encodeURIComponent(token)}`,
+        );
+        if (!response.ok) return;
+        const body = (await response.json()) as { health?: string };
+        if (alive) setHealth(body.health ?? null);
+      } catch {
+        // a banner is not worth breaking the page for
+      }
+    };
+    void poll();
+    const timer = setInterval(poll, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [session, token]);
+
+  if (health !== "degraded" && health !== "paused") return null;
+  return (
+    <div className="text-left bg-klawva-surface border border-klawva-accent rounded-lg px-5 py-3 mb-6 font-mono text-xs text-klawva-text">
+      {health === "paused"
+        ? "this employee has gone quiet. the shift is paused and we are checking on it."
+        : "this employee has been quiet for a few minutes. it is still on shift."}
+    </div>
+  );
+}
+
 export function Component() {
   const { session, token, botUsername, code, channel, agentName, customerEmail, brief, desktop } =
     useLoaderData<typeof loader>();
@@ -131,6 +166,7 @@ export function Component() {
           <span className="font-mono text-klawva-accent text-xs uppercase tracking-[0.2em] block mb-3">
             Payment complete
           </span>
+          <TaskBanner session={session} token={token} />
           {briefEntries.length > 0 && (
             <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4 mb-6">
               <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
