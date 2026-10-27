@@ -59,6 +59,21 @@ export function Component() {
               {employee.tagline}
             </p>
           </div>
+          {employee.capabilitySheet !== undefined && (
+            <div className="text-left bg-klawva-surface border border-klawva-border rounded-lg px-5 py-4">
+              <p className="font-mono text-klawva-dim text-[10px] uppercase tracking-wider mb-3">
+                What it can do on your machine
+              </p>
+              <ul className="font-mono text-klawva-text text-sm space-y-1.5 list-disc list-inside">
+                {employee.capabilitySheet.sentences.map((sentence) => (
+                  <li key={sentence}>{sentence}</li>
+                ))}
+              </ul>
+              <p className="font-mono text-klawva-muted text-xs mt-3">
+                {employee.capabilitySheet.privacyLine}
+              </p>
+            </div>
+          )}
           <div className="h-px w-full bg-klawva-border" />
           <p className="font-mono text-klawva-muted text-lg leading-relaxed">
             Hires run a 24-hour shift. You hand over a brief, then work with
