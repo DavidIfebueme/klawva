@@ -23,8 +23,8 @@ export function Component() {
     .sort((a, b) => {
       if (sort === "low") return a.priceMinor - b.priceMinor;
       if (sort === "high") return b.priceMinor - a.priceMinor;
-      const aFeatured = a.ownerId === "system" ? 0 : 1;
-      const bFeatured = b.ownerId === "system" ? 0 : 1;
+      const aFeatured = a.authorDisplay === "klawva" ? 0 : 1;
+      const bFeatured = b.authorDisplay === "klawva" ? 0 : 1;
       return aFeatured - bFeatured || a.name.localeCompare(b.name);
     });
 
@@ -104,7 +104,7 @@ export function Component() {
                     <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider">
                       {employee.category}
                     </span>
-                    {employee.ownerId === "system" ? (
+                    {employee.authorDisplay === "klawva" ? (
                       <Badge variant="active">By Klawva</Badge>
                     ) : (
                       <Badge variant="pending">By author</Badge>
