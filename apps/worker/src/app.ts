@@ -452,7 +452,7 @@ const rootGroup = HttpApiBuilder.group(
           }
           const session = yield* db
             .first(
-              "SELECT l.price_minor AS priceMinor, s.session_token AS sessionToken, s.duration_days AS durationDays FROM sessions s JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
+              "SELECT COALESCE(v.price_minor, l.price_minor) AS priceMinor, s.session_token AS sessionToken, s.duration_days AS durationDays FROM sessions s JOIN agent_listings l ON l.id = s.listing_id LEFT JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version WHERE s.id = ?",
               [payload.sessionId],
             )
             .pipe(Effect.orDie);
