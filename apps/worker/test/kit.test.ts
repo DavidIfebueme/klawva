@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { dohResponse } from "./doh.ts";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
 import { kitRunIsFresh, runContractKit } from "../src/hosted/kit.ts";
@@ -43,7 +44,8 @@ describe("contract kit", () => {
   it("passes when the card, the task and the artifact all answer", async () => {
     const { db, writes } = fakeDb(listingRows);
     const outcome = await Effect.runPromise(
-      runContractKit(db, "al_ok", async () =>
+      runContractKit(db, "al_ok", async (url: string) =>
+        url.includes("dns-query") ? dohResponse() :
         new Response(
           'data: {"artifactUpdate":{"artifact":{"parts":[{"text":"{\\"outcome\\":\\"complete\\"}"}]}}}',
           { status: 200 },
@@ -65,7 +67,7 @@ describe("contract kit", () => {
     const { db } = fakeDb(listingRows);
     const outcome = await Effect.runPromise(
       runContractKit(db, "al_ok", async (url) =>
-        url.endsWith("/card") ? new Response("{}", { status: 200 }) : new Response("", { status: 500 }),
+        url.includes("dns-query") ? dohResponse() : url.endsWith("/card") ? new Response("{}", { status: 200 }) : new Response("", { status: 500 }),
       ),
     );
     expect(outcome.result?.ok).toBe(false);
@@ -136,7 +138,7 @@ describe("pull mode", () => {
       { prefix: "SELECT v.manifest AS manifest", row: { manifest: pullManifest, soul: "x", version: 1 } },
     ]);
     const outcome = await Effect.runPromise(
-      runContractKit(db, "al_ok", async () => new Response("{}", { status: 200 })),
+      runContractKit(db, "al_ok", async (url: string) => url.includes("dns-query") ? dohResponse() : new Response("{}", { status: 200 })),
     );
     expect(outcome.result?.steps.map((step) => step.step)).toEqual([
       "card",
