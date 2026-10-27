@@ -20,13 +20,32 @@ const fakeDb = (rows: ReadonlyArray<{ prefix: string; row: Row | null }> = []) =
       writes.push({ sql: String(sql), params: params ?? [] });
       return Effect.void;
     },
-    batch: () => Effect.void,
+    batch: (statements) => {
+      for (const statement of statements) {
+        writes.push({ sql: statement.sql, params: statement.params ?? [] });
+      }
+      return Effect.void;
+    },
     changed: () => Effect.succeed(0),
   };
   return { db, writes };
 };
 
 const bytes = new TextEncoder().encode("clicky binary");
+
+const authorKeys = (await crypto.subtle.generateKey("Ed25519", true, [
+  "sign",
+  "verify",
+])) as CryptoKeyPair;
+const authorPublicJwk = (await crypto.subtle.exportKey(
+  "jwk",
+  authorKeys.publicKey,
+)) as JsonWebKey;
+const authorPublicKey = btoa(JSON.stringify(authorPublicJwk));
+const signBytes = async (payload: Uint8Array): Promise<string> => {
+  const signature = await crypto.subtle.sign("Ed25519", authorKeys.privateKey, payload);
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+};
 
 describe("version compare", () => {
   it("orders semver triples", () => {
@@ -37,21 +56,68 @@ describe("version compare", () => {
 });
 
 describe("publish", () => {
-  it("publishes a first version and records the hash", async () => {
+  it("publishes a signed first version, records the hash, and writes the countersignature", async () => {
     const { db, writes } = fakeDb();
     const result = await Effect.runPromise(
-      publishBundle(db, {
-        bundleId: "clicky",
-        authorId: "u1",
-        version: "1.0.0",
-        bytes,
-        signature: "sig",
-        capabilities: { screen: "read" },
-      }),
+      publishBundle(
+        db,
+        { AUTH_SECRET: "secret" },
+        {
+          bundleId: "clicky",
+          authorId: "u1",
+          version: "1.0.0",
+          bytes,
+          signature: await signBytes(bytes),
+          authorPublicKey,
+          capabilities: { screen: "read" },
+        },
+      ),
     );
     expect(result.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(writes.some((w) => w.sql.includes("INSERT INTO desktop_bundles"))).toBe(true);
-    expect(writes.some((w) => w.sql.includes("INSERT INTO bundle_versions"))).toBe(true);
+    const versionRow = writes.find((w) => w.sql.includes("INSERT INTO bundle_versions"));
+    expect(versionRow).toBeDefined();
+    expect(String(versionRow?.params[5] ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("refuses an unsigned bundle", async () => {
+    const { db } = fakeDb();
+    const exit = await Effect.runPromiseExit(
+      publishBundle(
+        db,
+        { AUTH_SECRET: "secret" },
+        {
+          bundleId: "clicky",
+          authorId: "u1",
+          version: "1.0.0",
+          bytes,
+          signature: "",
+          authorPublicKey: null,
+          capabilities: {},
+        },
+      ),
+    );
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("refuses a bundle whose signature does not match the bytes", async () => {
+    const { db } = fakeDb();
+    const exit = await Effect.runPromiseExit(
+      publishBundle(
+        db,
+        { AUTH_SECRET: "secret" },
+        {
+          bundleId: "clicky",
+          authorId: "u1",
+          version: "1.0.0",
+          bytes,
+          signature: await signBytes(new TextEncoder().encode("other bytes")),
+          authorPublicKey,
+          capabilities: {},
+        },
+      ),
+    );
+    expect(exit._tag).toBe("Failure");
   });
 
   it("refuses a version that does not move forward", async () => {
@@ -59,29 +125,81 @@ describe("publish", () => {
       { prefix: "SELECT latest_version AS latest", row: { latest: "1.2.0", minSupported: "1.0.0" } },
     ]);
     const exit = await Effect.runPromiseExit(
-      publishBundle(db, {
-        bundleId: "clicky",
-        authorId: "u1",
-        version: "1.2.0",
-        bytes,
-        signature: "sig",
-        capabilities: {},
-      }),
+      publishBundle(
+        db,
+        { AUTH_SECRET: "secret" },
+        {
+          bundleId: "clicky",
+          authorId: "u1",
+          version: "1.2.0",
+          bytes,
+          signature: await signBytes(bytes),
+          authorPublicKey,
+          capabilities: {},
+        },
+      ),
     );
     expect(exit._tag).toBe("Failure");
+  });
+
+  it("never lowers the version floor", async () => {
+    const writes: Array<{ sql: string; params: ReadonlyArray<Param> }> = [];
+    const db: DatabaseImpl = {
+      all: () => Effect.succeed([]),
+      first: (sql) =>
+        Effect.succeed(
+          String(sql).startsWith("SELECT latest_version AS latest")
+            ? { latest: "2.0.0", minSupported: "1.5.0" }
+            : null,
+        ),
+      run: (sql, params) => {
+        writes.push({ sql: String(sql), params: params ?? [] });
+        return Effect.void;
+      },
+      batch: (statements) => {
+        for (const statement of statements) {
+          writes.push({ sql: statement.sql, params: statement.params ?? [] });
+        }
+        return Effect.void;
+      },
+      changed: () => Effect.succeed(0),
+    };
+    await Effect.runPromise(
+      publishBundle(
+        db,
+        { AUTH_SECRET: "secret" },
+        {
+          bundleId: "clicky",
+          authorId: "u1",
+          version: "2.1.0",
+          bytes,
+          signature: await signBytes(bytes),
+          authorPublicKey,
+          capabilities: {},
+          minSupported: "0.0.1",
+        },
+      ),
+    );
+    const bundleWrite = writes.find((w) => w.sql.includes("UPDATE desktop_bundles"));
+    expect(bundleWrite?.params[1]).toBe("1.5.0");
   });
 
   it("refuses a malformed version", async () => {
     const { db } = fakeDb();
     const exit = await Effect.runPromiseExit(
-      publishBundle(db, {
-        bundleId: "clicky",
-        authorId: "u1",
-        version: "latest",
-        bytes,
-        signature: "sig",
-        capabilities: {},
-      }),
+      publishBundle(
+        db,
+        { AUTH_SECRET: "secret" },
+        {
+          bundleId: "clicky",
+          authorId: "u1",
+          version: "latest",
+          bytes,
+          signature: await signBytes(bytes),
+          authorPublicKey,
+          capabilities: {},
+        },
+      ),
     );
     expect(exit._tag).toBe("Failure");
   });
