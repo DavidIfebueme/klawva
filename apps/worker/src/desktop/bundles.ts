@@ -42,13 +42,15 @@ export const verifyAuthorSignature = (
 ): Effect.Effect<boolean> =>
   Effect.promise(async () => {
     try {
-      const jwk = JSON.parse(atob(publicKeyBase64)) as JsonWebKey;
+      const keyBytes = Uint8Array.from(atob(publicKeyBase64), (char) =>
+        char.charCodeAt(0),
+      );
       const signature = Uint8Array.from(atob(signatureBase64), (char) =>
         char.charCodeAt(0),
       );
       const key = await crypto.subtle.importKey(
-        "jwk",
-        jwk,
+        "raw",
+        keyBytes,
         { name: "Ed25519" },
         false,
         ["verify"],
@@ -67,32 +69,10 @@ export interface PublishBundleInput {
   readonly signature: string;
   readonly capabilities: unknown;
   readonly minSupported?: string;
-  readonly authorPublicKey: string | null;
 }
-
-export const countersign = (
-  authSecret: string,
-  sha256: string,
-): Effect.Effect<string, Error> =>
-  Effect.tryPromise(async () => {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(`klawva-countersign:${authSecret}`),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
-    const signature = await crypto.subtle.sign(
-      "HMAC",
-      key,
-      new TextEncoder().encode(sha256),
-    );
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
-  });
 
 export const publishBundle = (
   db: DatabaseImpl,
-  env: { AUTH_SECRET?: string },
   input: PublishBundleInput,
 ): Effect.Effect<{ version: string; sha256: string }, Error> =>
   Effect.gen(function* () {
@@ -100,25 +80,7 @@ export const publishBundle = (
     if (parts === null) {
       return yield* Effect.fail(new Error("bad_version"));
     }
-    if (input.authorPublicKey === null || input.authorPublicKey.length === 0) {
-      return yield* Effect.fail(new Error("bundle_unsigned"));
-    }
-    if (input.signature.length === 0) {
-      return yield* Effect.fail(new Error("bundle_unsigned"));
-    }
     const sha256 = yield* sha256Hex(input.bytes);
-    const signatureValid = yield* verifyAuthorSignature(
-      input.authorPublicKey,
-      input.signature,
-      input.bytes,
-    );
-    if (!signatureValid) {
-      return yield* Effect.fail(new Error("bundle_signature_invalid"));
-    }
-    const countersignature =
-      env.AUTH_SECRET === undefined
-        ? yield* Effect.fail(new Error("countersign_unavailable"))
-        : yield* countersign(env.AUTH_SECRET, sha256);
     const now = new Date().toISOString();
     const existing = yield* db
       .first(
@@ -129,38 +91,37 @@ export const publishBundle = (
     if (existing !== null && compareVersions(input.version, String(existing.latest)) <= 0) {
       return yield* Effect.fail(new Error("version_not_monotonic"));
     }
-    const floor =
-      existing !== null &&
-      input.minSupported !== undefined &&
-      compareVersions(input.minSupported, String(existing.minSupported)) > 0
-        ? input.minSupported
-        : String(existing?.minSupported ?? input.minSupported ?? input.version);
+    const minSupported = input.minSupported ?? String(existing?.minSupported ?? input.version);
+
+    if (existing === null) {
+      yield* db
+        .run(
+          "INSERT INTO desktop_bundles (id, author_id, latest_version, min_supported, created_at) VALUES (?, ?, ?, ?, ?)",
+          [input.bundleId, input.authorId, input.version, minSupported, now],
+        )
+        .pipe(Effect.orDie);
+    } else {
+      yield* db
+        .run(
+          "UPDATE desktop_bundles SET latest_version = ?, min_supported = ? WHERE id = ?",
+          [input.version, minSupported, input.bundleId],
+        )
+        .pipe(Effect.orDie);
+    }
 
     yield* db
-      .batch([
-        existing === null
-          ? {
-              sql: "INSERT INTO desktop_bundles (id, author_id, latest_version, min_supported, created_at) VALUES (?, ?, ?, ?, ?)",
-              params: [input.bundleId, input.authorId, input.version, floor, now],
-            }
-          : {
-              sql: "UPDATE desktop_bundles SET latest_version = ?, min_supported = ? WHERE id = ?",
-              params: [input.version, floor, input.bundleId],
-            },
-        {
-          sql: "INSERT INTO bundle_versions (id, bundle_id, version, sha256, signature, countersignature, capabilities, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?)",
-          params: [
-            crypto.randomUUID(),
-            input.bundleId,
-            input.version,
-            sha256,
-            input.signature,
-            countersignature,
-            JSON.stringify(input.capabilities),
-            now,
-          ],
-        },
-      ])
+      .run(
+        "INSERT INTO bundle_versions (id, bundle_id, version, sha256, signature, capabilities, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'published', ?)",
+        [
+          crypto.randomUUID(),
+          input.bundleId,
+          input.version,
+          sha256,
+          input.signature,
+          JSON.stringify(input.capabilities),
+          now,
+        ],
+      )
       .pipe(Effect.orDie);
 
     return { version: input.version, sha256 };
@@ -172,20 +133,12 @@ export const revokeBundleVersion = (
   version: string,
   reason: string,
 ): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const known = yield* db
-      .first(
-        "SELECT sha256 AS sha256 FROM bundle_versions WHERE bundle_id = ? AND version = ?",
-        [bundleId, version],
-      )
-      .pipe(Effect.orDie);
-    yield* db
-      .run(
-        "INSERT INTO bundle_revocations (bundle_id, version, sha256, reason, revoked_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(bundle_id, version) DO UPDATE SET reason = excluded.reason, sha256 = excluded.sha256, revoked_at = excluded.revoked_at",
-        [bundleId, version, known === null ? null : String(known.sha256), reason, new Date().toISOString()],
-      )
-      .pipe(Effect.orDie);
-  });
+  db
+    .run(
+      "INSERT INTO bundle_revocations (bundle_id, version, reason, revoked_at) VALUES (?, ?, ?, ?) ON CONFLICT(bundle_id, version) DO UPDATE SET reason = excluded.reason, revoked_at = excluded.revoked_at",
+      [bundleId, version, reason, new Date().toISOString()],
+    )
+    .pipe(Effect.orDie);
 
 export const bundleAllowed = (
   db: DatabaseImpl,
@@ -210,8 +163,8 @@ export const bundleAllowed = (
     }
     const revoked = yield* db
       .first(
-        "SELECT version AS version FROM bundle_revocations WHERE bundle_id = ? AND (version = ? OR sha256 = ?)",
-        [params.bundleId, params.version, params.sha256],
+        "SELECT version AS version FROM bundle_revocations WHERE bundle_id = ? AND version = ?",
+        [params.bundleId, params.version],
       )
       .pipe(Effect.orDie);
     if (revoked !== null) {
