@@ -40,7 +40,7 @@ export const ensureProfile = (
     yield* db
       .run(
         "INSERT INTO author_profiles (id, user_id, display_name, status, fee_paid_at, created_at, updated_at) VALUES (?, ?, ?, 'active', NULL, ?, ?)",
-        [crypto.randomUUID(), identity.userId, identity.email, now, now],
+        [crypto.randomUUID(), identity.userId, "", now, now],
       )
       .pipe(Effect.orDie);
   });
