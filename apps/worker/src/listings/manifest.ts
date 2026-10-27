@@ -24,7 +24,6 @@ const knownKeys = new Set([
   "runtime",
   "limits",
   "report",
-  "data",
 ]);
 
 const hostedAllowed = new Set(["cardUrl", "mode", "auth"]);
@@ -149,26 +148,6 @@ export const validateManifest = (manifest: Manifest): ManifestVerdict => {
 
   if (runtime === undefined && manifest.report !== undefined) {
     reasons.push("report_policy_without_runtime");
-  }
-
-  if (runtime !== undefined && runtime.kind !== "authored") {
-    if (manifest.data === undefined) {
-      reasons.push("data_policy_missing");
-    } else {
-      if (manifest.data.retentionDays <= 0) {
-        reasons.push("data_retention_missing");
-      }
-      if (!manifest.data.dpia) {
-        reasons.push("dpia_required");
-      }
-    }
-  }
-
-  if (
-    manifest.data !== undefined &&
-    manifest.data.retentionDays > 365
-  ) {
-    reasons.push("retention_too_long");
   }
 
   return reasons.length === 0 ? { ok: true } : { ok: false, reasons };
