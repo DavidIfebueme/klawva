@@ -19,6 +19,8 @@ import {
   listingsFor,
   sandbox,
   submit,
+  ownedListing,
+  reviseListing,
   updateAuthorDraft,
 } from "./studio.ts";
 
@@ -200,7 +202,15 @@ export const studioGroup = HttpApiBuilder.group(
       .handle("authorUpdateListing", ({ params, payload }) =>
         Effect.gen(function* () {
           const identity = yield* requireIdentity();
-          yield* updateAuthorDraft(db, identity.userId, params.id, payload);
+          const current = yield* ownedListing(db, identity.userId, params.id);
+          if (current === null) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          if (String(current.status) === "published") {
+            yield* reviseListing(db, identity.userId, params.id, payload);
+          } else {
+            yield* updateAuthorDraft(db, identity.userId, params.id, payload);
+          }
           return { ok: true };
         }),
       )
