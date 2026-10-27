@@ -1,0 +1,2 @@
+ALTER TABLE kit_runs ADD COLUMN version INTEGER;
+ALTER TABLE kit_runs ADD COLUMN card_hash TEXT;
