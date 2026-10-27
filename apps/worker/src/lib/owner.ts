@@ -21,7 +21,8 @@ export const signatureVerifiedApiPath = (pathname: string): boolean =>
   pathname === "/api/discord/interactions" ||
   pathname === "/api/slack/events" ||
   pathname === "/api/voice/bolna/webhook" ||
-  pathname === "/api/voice/twiml";
+  pathname === "/api/voice/twiml" ||
+  pathname.startsWith("/api/agent/");
 
 export const parseCookie = (
   header: string | null,
