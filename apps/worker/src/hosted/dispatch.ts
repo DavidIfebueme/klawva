@@ -88,8 +88,19 @@ const isA2aTaskFrame = (
 ): value is { task?: { id?: string; status?: { state?: string } } } =>
   typeof value === "object" && value !== null;
 
+export interface DispatchIngest {
+  readonly ingest: (input: {
+    readonly sessionId: string;
+    readonly taskId: string;
+    readonly briefHash: string;
+    readonly manifest: Manifest;
+    readonly raw: string;
+  }) => Effect.Effect<unknown>;
+}
+
 export interface DispatchDeps {
   readonly fetchText: (url: string, init: RequestInit) => Promise<Response>;
+  readonly ingest?: DispatchIngest["ingest"];
 }
 
 const defaultDeps: DispatchDeps = {
@@ -259,7 +270,18 @@ export const dispatchTask = (
       )
       .pipe(Effect.orDie);
 
-    return { taskId, state: artifact !== null ? "reported" : "working", replay: false };
+    if (artifact !== null && deps.ingest !== undefined) {
+      yield* deps.ingest({
+        sessionId: input.sessionId,
+        taskId,
+        briefHash: input.briefHash,
+        manifest: input.manifest,
+        raw: JSON.stringify(artifact),
+      }).pipe(Effect.catch(() => Effect.void));
+    }
+
+    const state = yield* taskState(db, taskId);
+    return { taskId, state: state ?? "working", replay: false };
   });
 
 export const taskState = (
