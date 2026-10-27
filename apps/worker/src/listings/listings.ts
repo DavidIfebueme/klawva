@@ -91,7 +91,7 @@ export const seedListings = (
       }
       yield* db
         .run(
-          "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, 'system', ?, ?) ON CONFLICT(listing_id, version) DO UPDATE SET manifest_hash = excluded.manifest_hash, soul = excluded.soul, manifest = excluded.manifest, brief_fields = excluded.brief_fields, tool_allowlist = excluded.tool_allowlist, model = excluded.model, budget_minor = excluded.budget_minor",
+          "INSERT INTO listing_versions (id, listing_id, version, manifest_hash, soul, manifest, brief_fields, tool_allowlist, model, budget_minor, score, reviewed_by, reviewed_at, created_at, manifest_schema_version) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, 'system', ?, ?, 1) ON CONFLICT(listing_id, version) DO UPDATE SET manifest_hash = excluded.manifest_hash, soul = excluded.soul, manifest = excluded.manifest, brief_fields = excluded.brief_fields, tool_allowlist = excluded.tool_allowlist, model = excluded.model, budget_minor = excluded.budget_minor",
           [
             crypto.randomUUID(),
             String(listing.id),
