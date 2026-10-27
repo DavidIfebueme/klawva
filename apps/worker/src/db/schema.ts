@@ -155,6 +155,13 @@ export const ReportPolicy = Schema.Struct({
 });
 export type ReportPolicy = typeof ReportPolicy.Type;
 
+export const DataPolicy = Schema.Struct({
+  retentionDays: Schema.Number,
+  leavesCountry: Schema.Boolean,
+  dpia: Schema.Boolean,
+});
+export type DataPolicy = typeof DataPolicy.Type;
+
 export const Manifest = Schema.Struct({
   schema: Schema.optional(Schema.Number),
   soul: Schema.String,
@@ -165,6 +172,7 @@ export const Manifest = Schema.Struct({
   runtime: Schema.optional(RuntimeManifest),
   limits: Schema.optional(LimitsManifest),
   report: Schema.optional(ReportPolicy),
+  data: Schema.optional(DataPolicy),
 });
 export type Manifest = typeof Manifest.Type;
 
