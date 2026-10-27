@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import { make as makeDatabase } from "../db/database.ts";
 import { liveSessionStates } from "../db/schema.ts";
 import { sendEmail } from "../email/brevo.ts";
+import type { DatabaseImpl, Row } from "../db/database.ts";
 import { shiftEndingEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 
@@ -26,6 +27,34 @@ const callSession = (
     catch: (cause) => new Error(String(cause)),
   }).pipe(Effect.catch(() => Effect.succeed(false)));
 
+export const pausedTasks = (
+  db: DatabaseImpl,
+  now: Date = new Date(),
+): Effect.Effect<
+  ReadonlyArray<{ taskId: string; sessionId: string; customerEmail: string }>
+> =>
+  db
+    .all(
+      "SELECT t.id AS taskId, t.session_id AS sessionId, t.last_event_at AS lastEventAt, s.customer_email AS customerEmail FROM session_tasks t JOIN sessions s ON s.id = t.session_id WHERE t.state IN ('dispatched','working') AND t.last_event_at IS NOT NULL",
+      [],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((rows: ReadonlyArray<Row>) =>
+        rows
+          .filter(
+            (row) =>
+              now.getTime() - Date.parse(String(row.lastEventAt)) >= 30 * 60 * 1_000,
+          )
+          .map((row) => ({
+            taskId: String(row.taskId),
+            sessionId: String(row.sessionId),
+            customerEmail:
+              row.customerEmail === null ? "" : String(row.customerEmail),
+          })),
+      ),
+    );
+
 export const sweep = (env: Env): Effect.Effect<SweepResult> =>
   Effect.gen(function* () {
     const db = makeDatabase(env.DB);
@@ -35,6 +64,31 @@ export const sweep = (env: Env): Effect.Effect<SweepResult> =>
     const reportCutoff = new Date(Date.now() - 90 * dayMs).toISOString();
     const live: ReadonlyArray<string> = [...liveSessionStates];
     const liveSlots = live.map(() => "?").join(", ");
+
+    const paused = yield* pausedTasks(db);
+    yield* Effect.forEach(
+      paused,
+      (task) =>
+        Effect.gen(function* () {
+          yield* db
+            .run(
+              "UPDATE session_tasks SET state = 'paused', updated_at = ? WHERE id = ?",
+              [now, task.taskId],
+            )
+            .pipe(Effect.orDie);
+          if (task.customerEmail.length > 0) {
+            yield* sendEmail({
+              apiKey: env.BREVO_API_KEY,
+              senderEmail: env.BREVO_SENDER_EMAIL,
+              senderName: "Klawva",
+              toEmail: task.customerEmail,
+              subject: "your employee has gone quiet",
+              html: "<p>your third-party employee stopped sending progress 30 minutes ago. the shift is paused and support can re-run it on a core employee.</p>",
+            }).pipe(Effect.catch(() => Effect.void));
+          }
+        }),
+      { concurrency: 3 },
+    );
 
     const unpaid = yield* db
       .all(
