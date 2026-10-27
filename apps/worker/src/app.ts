@@ -863,6 +863,14 @@ const rootGroup = HttpApiBuilder.group(
               new ListingConflict({ reason: "phone_path_not_live" }),
             );
           }
+          if (
+            manifest?.runtime?.kind === "hosted" &&
+            env.HOSTED_AGENTS_ENABLED !== "true"
+          ) {
+            return yield* Effect.fail(
+              new ListingConflict({ reason: "hosted_agents_disabled" }),
+            );
+          }
           yield* db.run(
             "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, duration_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
