@@ -12,7 +12,7 @@ const employeeSummary = Schema.Struct({
   priceMinor: Schema.Number,
   budgetMinor: Schema.Number,
   version: Schema.Number,
-  ownerId: Schema.String,
+  authorDisplay: Schema.String,
   avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
 });
