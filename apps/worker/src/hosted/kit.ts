@@ -76,6 +76,25 @@ export const runContractKit = (
           ],
         )
         .pipe(Effect.orDie);
+      if (ok) {
+        const { recordStage } = yield* Effect.promise(() =>
+          import("../marketplace/clock.ts"),
+        );
+        const owner = yield* db
+          .first(
+            "SELECT owner_id AS ownerId FROM agent_listings WHERE id = ?",
+            [listingId],
+          )
+          .pipe(Effect.orDie);
+        if (owner !== null) {
+          yield* recordStage(db, {
+            listingId,
+            authorId: String(owner.ownerId),
+            stage: "kit_green",
+            at: new Date(),
+          });
+        }
+      }
       return { status: 200, result: { ok, steps } };
     }
 

@@ -468,6 +468,13 @@ export const submit = (
         [status, listingId, version.version],
       )
       .pipe(Effect.orDie);
+    const { recordStage } = yield* Effect.promise(() => import("../marketplace/clock.ts"));
+    yield* recordStage(db, {
+      listingId,
+      authorId: String(listing.ownerId),
+      stage: "submitted",
+      at: new Date(),
+    });
     return { ...outcome, status };
   });
 

@@ -42,6 +42,7 @@ export interface Overview {
     readonly within: number;
     readonly over: number;
     readonly unknown: number;
+    readonly scope: string;
   };
 }
 
@@ -221,6 +222,13 @@ export const approveListing = (
       )
       .pipe(Effect.orDie);
     yield* recordAudit(db, actorEmail, "listing.approve", listingId, "{}");
+    const { recordStage } = yield* Effect.promise(() => import("../marketplace/clock.ts"));
+    yield* recordStage(db, {
+      listingId,
+      authorId: listing.ownerId,
+      stage: "reviewed",
+      at: new Date(),
+    });
     yield* notifyOwner(
       db,
       env,
@@ -338,7 +346,7 @@ export const revokeListing = (
 
 export const clockSummary = (
   db: DatabaseImpl,
-): Effect.Effect<{ medianMinutes: number | null; within: number; over: number; unknown: number }> =>
+): Effect.Effect<{ medianMinutes: number | null; within: number; over: number; unknown: number; scope: string }> =>
   Effect.gen(function* () {
     const { onboardingClock, medianMinutes } = yield* Effect.promise(() =>
       import("../marketplace/clock.ts"),
@@ -349,6 +357,7 @@ export const clockSummary = (
       within: rows.filter((row) => row.verdict === "within").length,
       over: rows.filter((row) => row.verdict === "over").length,
       unknown: rows.filter((row) => row.verdict === "unknown").length,
+      scope: "hire created to first report, third-party listings, shopper sessions excluded",
     };
   });
 

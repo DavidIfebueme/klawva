@@ -145,7 +145,7 @@ export const handlePaystackWebhook = (
     if (decoded.status !== "confirmed") {
       const owner = yield* db
         .first(
-          "SELECT l.owner_id AS ownerId FROM payments p JOIN sessions s ON s.id = p.session_id JOIN agent_listings l ON l.id = s.listing_id WHERE p.provider_reference = ?",
+          "SELECT l.owner_id AS ownerId, l.id AS listingId FROM payments p JOIN sessions s ON s.id = p.session_id JOIN agent_listings l ON l.id = s.listing_id WHERE p.provider_reference = ?",
           [reference],
         )
         .pipe(Effect.orDie);
@@ -177,6 +177,17 @@ export const handlePaystackWebhook = (
             ]),
       ];
       yield* db.batch(statements).pipe(Effect.orDie);
+      if (splitRow !== null && owner !== null) {
+        const { recordStage } = yield* Effect.promise(() =>
+          import("../marketplace/clock.ts"),
+        );
+        yield* recordStage(db, {
+          listingId: String(owner.listingId),
+          authorId: String(owner.ownerId),
+          stage: "split_visible",
+          at: new Date(),
+        }).pipe(Effect.catch(() => Effect.void));
+      }
       const confirmed = yield* db
         .first("SELECT id AS id FROM payments WHERE provider_reference = ?", [reference])
         .pipe(Effect.orDie);
