@@ -256,6 +256,26 @@ export default {
         ? exit.value
         : Response.json({ ok: false }, { status: 500 });
     }
+    const taskStateMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/task$/);
+    if (taskStateMatch !== null && request.method === "GET") {
+      const { sessionTokenMatches } = await import("./account/account.ts");
+      const { sessionTaskState } = await import("./hosted/events.ts");
+      const sessionId = decodeURIComponent(taskStateMatch[1]!);
+      const db = makeDatabase(env.DB);
+      const token = url.searchParams.get("token") ?? "";
+      const allowed = await Effect.runPromise(
+        sessionTokenMatches(db, sessionId, token).pipe(
+          Effect.catch(() => Effect.succeed(false)),
+        ),
+      );
+      if (!allowed) {
+        return new Response(null, { status: 403 });
+      }
+      const state = await Effect.runPromise(sessionTaskState(db, sessionId));
+      return new Response(JSON.stringify(state), {
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (url.pathname.startsWith("/api/") ||
       url.pathname.startsWith("/webhooks/") ||
       url.pathname.startsWith("/internal/") ||
