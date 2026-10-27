@@ -6,6 +6,8 @@ import { sendEmail } from "../email/brevo.ts";
 import { shiftStartedEmail } from "../email/templates.ts";
 import { sessionReplyAddress } from "../channels/email.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
+import { dispatchTask } from "../hosted/dispatch.ts";
+import { Brief, BriefRecord, manifestOf } from "../db/schema.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
   "PaystackError",
@@ -149,6 +151,47 @@ export const handlePaystackWebhook = (
         return Response.json({ ok: true });
       }
     }
+    const hosted = yield* db
+      .first(
+        "SELECT s.listing_id AS listingId, s.listing_version AS listingVersion, s.brief AS brief, v.manifest AS manifest, v.soul AS soul FROM sessions s JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version WHERE s.id = ?",
+        [decoded.session_id],
+      )
+      .pipe(Effect.orDie);
+    if (hosted !== null) {
+      const manifest = (() => {
+        try {
+          return manifestOf({
+            soul: String(hosted.soul ?? ""),
+            manifest: hosted.manifest === null ? null : String(hosted.manifest),
+          });
+        } catch {
+          return null;
+        }
+      })();
+      if (manifest !== null && manifest.runtime?.kind === "hosted") {
+        const briefHash = yield* Effect.promise(async () => {
+          const digest = await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(String(hosted.brief ?? "{}")),
+          );
+          return Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+        });
+        const parsedBrief = Schema.decodeUnknownOption(BriefRecord)(
+          String(hosted.brief ?? "{}"),
+        );
+        yield* dispatchTask(db, {
+          sessionId: String(decoded.session_id),
+          listingId: String(hosted.listingId),
+          listingVersion: Number(hosted.listingVersion),
+          manifest,
+          brief: parsedBrief._tag === "Some" ? parsedBrief.value : {},
+          briefHash,
+        }).pipe(Effect.catch(() => Effect.void));
+      }
+    }
+
     const newlyActivated = yield* Effect.tryPromise({
       try: async () => {
         const response = await env.SESSION.get(
