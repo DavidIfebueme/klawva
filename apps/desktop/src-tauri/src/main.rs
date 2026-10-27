@@ -221,6 +221,51 @@ fn list_workspace_files(slug: String, relative_dir: String) -> Result<Vec<String
 }
 
 #[tauri::command]
+fn bundle_spawn_plan(port: u16, nonce: String, bundle_id: String) -> Result<String, String> {
+    if port < 1024 {
+        return Err("port must be unprivileged".to_string());
+    }
+    if nonce.len() < 32 {
+        return Err("nonce too short".to_string());
+    }
+    Ok(serde_json::json!({
+        "port": port,
+        "nonce": nonce,
+        "env": {
+            "KLAWVA_BUNDLE_ID": bundle_id,
+            "KLAWVA_A2A_PORT": port.to_string(),
+            "KLAWVA_A2A_NONCE": nonce,
+            "KLAWVA_A2A_TRANSPORT": "a2a-loopback"
+        }
+    })
+    .to_string())
+}
+
+#[tauri::command]
+fn purge_bundle_data(dirs: Vec<String>, allowed_root: String) -> Result<Vec<String>, String> {
+    let root = std::path::PathBuf::from(&allowed_root);
+    let root_canon = root.canonicalize().map_err(|e| e.to_string())?;
+    let mut removed = Vec::new();
+    for dir in dirs {
+        let path = std::path::PathBuf::from(&dir);
+        if path.is_absolute() || dir.contains("..") {
+            return Err(format!("refusing to purge outside scope: {dir}"));
+        }
+        let full = root.join(&path);
+        if !full.exists() {
+            continue;
+        }
+        let canon = full.canonicalize().map_err(|e| e.to_string())?;
+        if !canon.starts_with(&root_canon) {
+            return Err(format!("refusing to purge outside scope: {dir}"));
+        }
+        fs::remove_dir_all(&canon).map_err(|e| e.to_string())?;
+        removed.push(dir);
+    }
+    Ok(removed)
+}
+
+#[tauri::command]
 fn verify_report(line: String, exit_code: Option<i32>) {
     println!("{line}");
     if let Some(code) = exit_code {
@@ -283,7 +328,9 @@ fn main() {
             store_secret,
             read_secret,
             verify_report,
-            verify_exit
+            verify_exit,
+            purge_bundle_data,
+            bundle_spawn_plan
         ])
         .run(tauri::generate_context!())
         .expect("error while running klawva desktop");
