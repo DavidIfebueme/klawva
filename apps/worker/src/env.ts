@@ -37,6 +37,10 @@ export interface Env {
   readonly AWS_BEDROCK_API_KEY?: string;
   readonly AWS_REGION?: string;
   readonly BEDROCK_ENABLED?: string;
+  readonly HOSTED_AGENTS_ENABLED?: string;
+  readonly DESKTOP_BUNDLES_ENABLED?: string;
+  readonly AUTHOR_PAYOUTS_ENABLED?: string;
+  readonly SHOPPER_AUDITS_ENABLED?: string;
   readonly BOLNA_API_KEY?: string;
   readonly TWILIO_ACCOUNT_SID?: string;
   readonly TWILIO_AUTH_TOKEN?: string;
