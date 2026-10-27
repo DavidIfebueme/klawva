@@ -60,7 +60,10 @@ export type LinkChannel = typeof LinkChannel.Type;
 export const MessageRole = Schema.Literals(["user", "assistant", "tool", "system"]);
 export type MessageRole = typeof MessageRole.Type;
 
-export const Brief = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
+export const BriefRecord = Schema.Record(Schema.String, Schema.String);
+export type BriefRecord = typeof BriefRecord.Type;
+
+export const Brief = Schema.fromJsonString(BriefRecord);
 export type Brief = typeof Brief.Type;
 
 export const VoiceManifest = Schema.Struct({
