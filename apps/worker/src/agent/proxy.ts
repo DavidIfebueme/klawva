@@ -63,5 +63,69 @@ export const resolveRuntime = (
       }).pipe(Effect.catch(() => Effect.void)),
     );
   }
-  return makeRuntime(env.AI, model, allowlist);
+  return withNeuronFallback(env, db, makeRuntime(env.AI, model, allowlist), allowlist);
+};
+
+const novaFallbackRuntime = (
+  env: Env,
+  db: DatabaseImpl,
+  allowlist: ReadonlyArray<string>,
+): AgentRuntimeImpl => {
+  const runtime = makeBedrockRuntime(
+    {
+      apiKey: env.AWS_BEDROCK_API_KEY,
+      accessKeyId: env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      region: typeof env.AWS_REGION === "string" && env.AWS_REGION.length > 0 ? env.AWS_REGION : "us-east-1",
+      model: "amazon.nova-micro-v1:0",
+    },
+    toolSpecsFor(allowlist),
+  );
+  return withAwsCap(db, runtime, "amazon.nova-micro-v1:0", () =>
+    sendEmail({
+      apiKey: env.BREVO_API_KEY,
+      senderEmail: env.BREVO_SENDER_EMAIL,
+      senderName: "Klawva",
+      toEmail: env.ADMIN_EMAILS.split(",")[0]?.trim() ?? "",
+      subject: "aws daily spend crossed the alarm line",
+      html: "<p>aws bedrock spend crossed the alarm line today (the nova fallback served turns).</p>",
+    }).pipe(Effect.catch(() => Effect.void)),
+  );
+};
+
+const neuronsSpent = (error: unknown): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current !== undefined && current !== null; depth += 1) {
+    const message = current instanceof Error ? current.message : String(current);
+    if (message.includes("neurons") || message.includes("free allocation")) {
+      return true;
+    }
+    current =
+      typeof current === "object" && current !== null && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : undefined;
+  }
+  return false;
+};
+
+const withNeuronFallback = (
+  env: Env,
+  db: DatabaseImpl,
+  primary: AgentRuntimeImpl,
+  allowlist: ReadonlyArray<string>,
+): AgentRuntimeImpl => {
+  let fallback: AgentRuntimeImpl | null = null;
+  return {
+    ...primary,
+    complete: (messages, withTools) =>
+      primary.complete(messages, withTools).pipe(
+        Effect.catch((error) => {
+          if (!neuronsSpent(error)) {
+            return Effect.fail(error);
+          }
+          fallback = fallback ?? novaFallbackRuntime(env, db, allowlist);
+          return fallback.complete(messages, withTools);
+        }),
+      ),
+  };
 };
