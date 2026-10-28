@@ -40,6 +40,12 @@ const employeeDetail = Schema.Struct({
       leavesCountry: Schema.Boolean,
     }),
   ),
+  capabilitySheet: Schema.optional(
+    Schema.Struct({
+      sentences: Schema.Array(Schema.String),
+      privacyLine: Schema.String,
+    }),
+  ),
   durations: Schema.Array(durationOption),
 });
 export type EmployeeDetail = typeof employeeDetail.Type;
