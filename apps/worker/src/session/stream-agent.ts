@@ -22,6 +22,7 @@ import {
   budgetReply,
   capacityReply,
   completeShift,
+  dailyAiReply,
   lastUserText,
   loadTurnConfig,
   makeStore,
@@ -33,8 +34,14 @@ import {
   serveRestApi,
   turnSucceeded,
 } from "./agent.ts";
-import { charsToTokens, recordAiUsage } from "../agent/meter.ts";
+import {
+  charsToTokens,
+  quotaSpentRecently,
+  recordAiUsage,
+  recordQuotaSpent,
+} from "../agent/meter.ts";
 import { ModelError, systemText } from "../agent/runtime.ts";
+import { neuronsSpent } from "../agent/proxy.ts";
 import { aiToolsFor } from "./stream-tools.ts";
 
 interface TurnUsage {
@@ -152,6 +159,11 @@ export class SessionAgent extends AIChatAgent<Env> {
       });
     }
     const config = admission.config;
+    if (await Effect.runPromise(quotaSpentRecently(db))) {
+      return new Response(dailyAiReply, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
     const inChars =
       systemText(config.soul, config.brief).length +
       this.messages.map(messageText).join("").length;
@@ -194,7 +206,19 @@ export class SessionAgent extends AIChatAgent<Env> {
     );
     if (setup._tag === "Failure") {
       usage.failed = true;
-      return new Response(modelRetryReply, {
+      const spent = neuronsSpent(setup.failure);
+      await Effect.runPromise(
+        Effect.all([
+          recordAiUsage(db, {
+            model: config.model,
+            inTokens: 0,
+            outTokens: 0,
+            ok: false,
+          }),
+          spent ? recordQuotaSpent(db) : Effect.void,
+        ]),
+      ).catch(() => undefined);
+      return new Response(spent ? dailyAiReply : modelRetryReply, {
         headers: { "Content-Type": "text/plain" },
       });
     }

@@ -124,6 +124,24 @@ export const screenBriefSemantic = (
 export const briefVerdict = (output: ClefBriefOutput): BriefVerdict =>
   output.answers.verdict.choice;
 
+export const screenBriefOnFallback = (
+  complete: (prompt: string) => Effect.Effect<string, ClefError>,
+  brief: Readonly<Record<string, string>>,
+): Effect.Effect<ClefBriefOutput, ClefError> =>
+  Effect.gen(function* () {
+    const prompt = `${briefState(brief)}\n\nAnswer with exactly one word: legit, abuse, or jailbreak.`;
+    const text = yield* complete(prompt);
+    const verdict = briefVerdicts.find((candidate) =>
+      text.toLowerCase().includes(candidate),
+    );
+    if (verdict === undefined) {
+      return yield* Effect.fail(
+        new ClefError({ cause: `unusable fallback verdict: ${text.slice(0, 80)}` }),
+      );
+    }
+    return { answers: { verdict: { type: "choice" as const, choice: verdict } } };
+  });
+
 export const shiftScoreLevels = [
   "Did not do the job",
   "Partial",

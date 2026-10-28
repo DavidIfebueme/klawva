@@ -64,6 +64,33 @@ export const recordAiUsage = (
   return db.batch(statements).pipe(Effect.catch(() => Effect.void));
 };
 
+const quotaKey = "ai:quota-spent-at";
+
+export const QUOTA_COOLDOWN_MS = 15 * 60_000;
+
+const setCounterSql =
+  "INSERT INTO counters (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at";
+
+export const recordQuotaSpent = (db: DatabaseImpl): Effect.Effect<void> =>
+  db
+    .run(setCounterSql, [quotaKey, Date.now(), new Date().toISOString()])
+    .pipe(Effect.catch(() => Effect.void));
+
+export const quotaSpentRecently = (
+  db: DatabaseImpl,
+  now: number = Date.now(),
+): Effect.Effect<boolean> =>
+  db.first("SELECT value AS value FROM counters WHERE key = ?", [quotaKey]).pipe(
+    Effect.map((row) => {
+      if (row === null) {
+        return false;
+      }
+      const at = Number(row.value);
+      return Number.isFinite(at) && now - at < QUOTA_COOLDOWN_MS;
+    }),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+
 export const NEURON_DAILY_CAP = 9000;
 
 export const dayNeurons = (

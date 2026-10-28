@@ -11,9 +11,11 @@ import {
 import {
   defaultToolAllowlist,
   makeRuntime,
+  ModelError,
   toolSpecsFor,
   type AgentRuntimeImpl,
 } from "./runtime.ts";
+import { quotaSpentRecently, recordQuotaSpent } from "./meter.ts";
 
 export const bedrockPrefix = "bedrock:";
 
@@ -93,7 +95,7 @@ const novaFallbackRuntime = (
   );
 };
 
-const neuronsSpent = (error: unknown): boolean => {
+export const neuronsSpent = (error: unknown): boolean => {
   let current: unknown = error;
   for (let depth = 0; depth < 5 && current !== undefined && current !== null; depth += 1) {
     const message = current instanceof Error ? current.message : String(current);
@@ -102,7 +104,7 @@ const neuronsSpent = (error: unknown): boolean => {
     }
     current =
       typeof current === "object" && current !== null && "cause" in current
-        ? (current as { cause?: unknown }).cause
+        ? current.cause
         : undefined;
   }
   return false;
@@ -115,17 +117,37 @@ const withNeuronFallback = (
   allowlist: ReadonlyArray<string>,
 ): AgentRuntimeImpl => {
   let fallback: AgentRuntimeImpl | null = null;
+  const nova = (): AgentRuntimeImpl => {
+    fallback = fallback ?? novaFallbackRuntime(env, db, allowlist);
+    return fallback;
+  };
   return {
-    ...primary,
     complete: (messages, withTools) =>
-      primary.complete(messages, withTools).pipe(
-        Effect.catch((error) => {
-          if (!neuronsSpent(error)) {
-            return Effect.fail(error);
+      Effect.gen(function* () {
+        if (yield* quotaSpentRecently(db)) {
+          if (bedrockEnabled(env)) {
+            return yield* nova().complete(messages, withTools);
           }
-          fallback = fallback ?? novaFallbackRuntime(env, db, allowlist);
-          return fallback.complete(messages, withTools);
-        }),
-      ),
+          return yield* Effect.fail(
+            new ModelError({
+              cause: new Error("workers ai daily neurons are spent"),
+            }),
+          );
+        }
+        return yield* primary.complete(messages, withTools).pipe(
+          Effect.catch((error) => {
+            if (!neuronsSpent(error)) {
+              return Effect.fail(error);
+            }
+            return recordQuotaSpent(db).pipe(
+              Effect.andThen(() =>
+                bedrockEnabled(env)
+                  ? nova().complete(messages, withTools)
+                  : Effect.fail(error),
+              ),
+            );
+          }),
+        );
+      }),
   };
 };
