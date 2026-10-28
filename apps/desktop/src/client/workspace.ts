@@ -19,3 +19,21 @@ export const listWorkspaceFiles = async (
   relativeDir: string,
 ): Promise<ReadonlyArray<string>> =>
   invoke("list_workspace_files", { slug, relativeDir });
+
+
+export const purgeBundle = async (
+  dirs: ReadonlyArray<string>,
+  allowedRoot: string,
+): Promise<ReadonlyArray<string>> => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<ReadonlyArray<string>>("purge_bundle_data", {
+    dirs,
+    allowedRoot,
+  });
+};
+
+
+export const purgeWorkspace = async (slug: string): Promise<string> => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("purge_workspace", { slug });
+};

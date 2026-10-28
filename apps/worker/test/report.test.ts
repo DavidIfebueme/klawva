@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import {
   fallbackReport,
   fileCallReport,
+  validateReport,
   generateReport,
   parseReport,
   zeroTurnReport,
@@ -108,5 +109,33 @@ describe("report layers", () => {
     const digest = writes[2];
     expect(digest.sql.toUpperCase()).toContain("CONFLICT");
     expect(digest.params[3]).toContain("shift digest");
+  });
+});
+
+describe("report validation", () => {
+  const base = { summary: "done", stats: [] };
+  it("rejects an empty summary", () => {
+    expect(validateReport({ summary: "  ", stats: [] }, {}).ok).toBe(false);
+  });
+
+  it("requires an outcome once the report is task-bound", () => {
+    const verdict = validateReport(base, { taskId: "tsk_1" });
+    expect(verdict).toEqual({ ok: false, reason: "missing_outcome" });
+  });
+
+  it("accepts a complete task-bound report with evidence", () => {
+    const verdict = validateReport(
+      { outcome: "complete", summary: "done", stats: [], evidence: ["https://x.dev/a"] },
+      { taskId: "tsk_1", briefHash: "b", artifactHash: "a" },
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("refuses non-url evidence", () => {
+    const verdict = validateReport(
+      { outcome: "partial", summary: "done", stats: [], evidence: ["not a url"] },
+      { taskId: "tsk_1" },
+    );
+    expect(verdict).toEqual({ ok: false, reason: "evidence_not_url" });
   });
 });

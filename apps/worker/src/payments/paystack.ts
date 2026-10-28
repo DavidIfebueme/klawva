@@ -1,11 +1,15 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { splitPayment } from "./split.ts";
 import { windowEndFor } from "./pricing.ts";
 import type { DatabaseImpl } from "../db/database.ts";
 import { sendEmail } from "../email/brevo.ts";
 import { shiftStartedEmail } from "../email/templates.ts";
 import { sessionReplyAddress } from "../channels/email.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
+import { dispatchTask } from "../hosted/dispatch.ts";
+import { ingestArtifact } from "../hosted/ingest.ts";
+import { Brief, BriefRecord, manifestOf } from "../db/schema.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
   "PaystackError",
@@ -139,16 +143,102 @@ export const handlePaystackWebhook = (
       Number(decoded.duration_days ?? 1),
     );
     if (decoded.status !== "confirmed") {
-      const confirmed = yield* db
+      const owner = yield* db
         .first(
-          "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending' RETURNING id AS id",
-          [now, reference],
+          "SELECT l.owner_id AS ownerId, l.id AS listingId FROM payments p JOIN sessions s ON s.id = p.session_id JOIN agent_listings l ON l.id = s.listing_id WHERE p.provider_reference = ?",
+          [reference],
         )
+        .pipe(Effect.orDie);
+      const splitRow =
+        owner !== null && String(owner.ownerId) !== "system"
+          ? splitPayment(Number(decoded.amount_minor))
+          : null;
+      const statements = [
+        {
+          sql: "UPDATE payments SET status = 'confirmed', confirmed_at = ? WHERE provider_reference = ? AND status = 'pending'",
+          params: [now, reference],
+        },
+        ...(splitRow === null || owner === null
+          ? []
+          : [
+              {
+                sql: "INSERT INTO payment_splits (id, payment_id, author_id, gross_minor, commission_minor, net_minor, commission_rate, created_at) SELECT ?, p.id, ?, ?, ?, ?, ?, ? FROM payments p WHERE p.provider_reference = ? ON CONFLICT(payment_id) DO NOTHING",
+                params: [
+                  crypto.randomUUID(),
+                  String(owner.ownerId),
+                  splitRow.grossMinor,
+                  splitRow.commissionMinor,
+                  splitRow.netMinor,
+                  splitRow.commissionRate,
+                  now,
+                  reference,
+                ],
+              },
+            ]),
+      ];
+      yield* db.batch(statements).pipe(Effect.orDie);
+      if (splitRow !== null && owner !== null) {
+        const { recordStage } = yield* Effect.promise(() =>
+          import("../marketplace/clock.ts"),
+        );
+        yield* recordStage(db, {
+          listingId: String(owner.listingId),
+          authorId: String(owner.ownerId),
+          stage: "split_visible",
+          at: new Date(),
+        }).pipe(Effect.catch(() => Effect.void));
+      }
+      const confirmed = yield* db
+        .first("SELECT id AS id FROM payments WHERE provider_reference = ?", [reference])
         .pipe(Effect.orDie);
       if (confirmed === null) {
         return Response.json({ ok: true });
       }
     }
+    const hosted = yield* db
+      .first(
+        "SELECT s.listing_id AS listingId, s.listing_version AS listingVersion, s.brief AS brief, v.manifest AS manifest, v.soul AS soul FROM sessions s JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version WHERE s.id = ?",
+        [decoded.session_id],
+      )
+      .pipe(Effect.orDie);
+    if (hosted !== null) {
+      const manifest = (() => {
+        try {
+          return manifestOf({
+            soul: String(hosted.soul ?? ""),
+            manifest: hosted.manifest === null ? null : String(hosted.manifest),
+          });
+        } catch {
+          return null;
+        }
+      })();
+      if (manifest !== null && manifest.runtime?.kind === "hosted") {
+        const briefHash = yield* Effect.promise(async () => {
+          const digest = await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(String(hosted.brief ?? "{}")),
+          );
+          return Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+        });
+        const parsedBrief = Schema.decodeUnknownOption(BriefRecord)(
+          String(hosted.brief ?? "{}"),
+        );
+        yield* dispatchTask(db, {
+          sessionId: String(decoded.session_id),
+          listingId: String(hosted.listingId),
+          listingVersion: Number(hosted.listingVersion),
+          manifest,
+          brief: parsedBrief._tag === "Some" ? parsedBrief.value : {},
+          briefHash,
+        }, {
+          fetchText: (url, init) => fetch(url, init),
+          ingest: (input) => ingestArtifact(db, input),
+        }).pipe(Effect.catch(() => Effect.void));
+      }
+    }
+
     const newlyActivated = yield* Effect.tryPromise({
       try: async () => {
         const response = await env.SESSION.get(
@@ -252,6 +342,8 @@ export const initializePayment = (params: {
   readonly amountMinor: number;
   readonly callbackUrl: string;
   readonly email: string;
+  readonly subaccount?: string;
+  readonly commissionMinor?: number;
 }): Effect.Effect<{ reference: string; checkoutUrl: string }, PaystackError> =>
   Effect.gen(function* () {
     const reference = `klawva_${params.sessionId}_${Date.now()}`;
@@ -275,6 +367,13 @@ export const initializePayment = (params: {
             amount: params.amountMinor,
             reference,
             callback_url: params.callbackUrl,
+            ...(params.subaccount === undefined
+              ? {}
+              : {
+                  subaccount: params.subaccount,
+                  transaction_charge: params.commissionMinor ?? 0,
+                  bearer: "account",
+                }),
           }),
         }),
       catch: (cause) => new PaystackError({ reason: String(cause) }),

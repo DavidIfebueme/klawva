@@ -1,0 +1,51 @@
+{
+  "schema": 2,
+  "soul": "You are Clicky, a desktop employee that works the machine in front of you.",
+  "runtime": {
+    "kind": "desktop",
+    "billing": "author-metered",
+    "transport": [
+      "desktop"
+    ],
+    "desktop": {
+      "bundleId": "clicky",
+      "entrypoint": "adapter.mjs",
+      "dataDirs": [
+        "%LOCALAPPDATA%/klawva/clicky"
+      ],
+      "platforms": [
+        "windows"
+      ],
+      "network": [
+        "api.clicky.dev"
+      ],
+      "capabilities": {
+        "screen": "read",
+        "input": [
+          "click",
+          "type",
+          "key"
+        ],
+        "fs": [
+          "workspace"
+        ]
+      }
+    }
+  },
+  "limits": {
+    "maxWallClockSeconds": 86400,
+    "maxEvents": 500,
+    "maxEventBytes": 4096,
+    "maxArtifactBytes": 65536,
+    "minIdleSeconds": 300
+  },
+  "report": {
+    "requireEvidence": true,
+    "minEvidence": 1
+  },
+  "data": {
+    "retentionDays": 30,
+    "leavesCountry": true,
+    "dpia": true
+  }
+}

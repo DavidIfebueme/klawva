@@ -6,6 +6,8 @@ import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import { identityFromToken, tokenFromHeaders } from "./auth.ts";
+import { bundleAllowed, grantBundle } from "../desktop/bundles.ts";
+import { manifestOf } from "../db/schema.ts";
 import { AuthError } from "./tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
@@ -107,6 +109,26 @@ const deviceSessions = HttpApiEndpoint.get(
   },
 );
 
+const bundleAllowedRow = Schema.Struct({
+  allowed: Schema.Boolean,
+  reason: Schema.optional(Schema.String),
+});
+
+const deviceBundleAllowed = HttpApiEndpoint.get(
+  "deviceBundleAllowed",
+  "/api/device/bundles/:bundleId/allowed",
+  {
+    params: Schema.Struct({ bundleId: Schema.String }),
+    query: Schema.Struct({
+      version: Schema.String,
+      sha256: Schema.String,
+      host: Schema.String,
+    }),
+    success: bundleAllowedRow,
+    error: AuthError,
+  },
+);
+
 class DevicesGroup extends HttpApiGroup.make("Devices")
   .add(deviceCreate)
   .add(deviceList)
@@ -115,7 +137,8 @@ class DevicesGroup extends HttpApiGroup.make("Devices")
   .add(deviceScope)
   .add(pairCodeApprove)
   .add(pairCodeClaim)
-  .add(deviceSessions) {}
+  .add(deviceSessions)
+  .add(deviceBundleAllowed) {}
 
 export class DevicesApi extends HttpApi.make("DevicesApi").add(DevicesGroup) {}
 
@@ -245,6 +268,52 @@ export const devicesGroup = HttpApiBuilder.group(
             return yield* Effect.fail(new AuthError({ reason: "bad_device_token" }));
           }
           return yield* sessionsForDevice(db, deviceId);
+        }),
+      )
+      .handle("deviceBundleAllowed", ({ params, query }) =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const token = tokenFromHeaders(request.headers);
+          if (token === null) {
+            return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
+          }
+          const deviceId = yield* deviceIdForRawToken(db, token).pipe(
+            Effect.catch(() => Effect.succeed(null)),
+          );
+          if (deviceId === null) {
+            return yield* Effect.fail(new AuthError({ reason: "bad_device_token" }));
+          }
+          const decision = yield* bundleAllowed(db, {
+            bundleId: params.bundleId,
+            version: query.version,
+            sha256: query.sha256,
+          });
+          if (!decision.allowed) {
+            return { allowed: false, reason: decision.reason };
+          }
+          const manifest = yield* db
+            .first(
+              "SELECT v.manifest AS manifest FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = (SELECT listing_id FROM desktop_bundles WHERE id = ?)",
+              [params.bundleId],
+            )
+            .pipe(Effect.orDie);
+          const decoded = manifestOf({
+            soul: "",
+            manifest: manifest === null || manifest.manifest === null ? null : String(manifest.manifest),
+          });
+          const { installVerdict, flagEnabled } = yield* Effect.promise(() =>
+            import("../desktop/install.ts"),
+          );
+          const verdict = installVerdict({
+            bundlesEnabled: flagEnabled(env.DESKTOP_BUNDLES_ENABLED),
+            hostPlatform: query.host,
+            manifest: decoded,
+          });
+          if (!verdict.ok) {
+            return { allowed: false, reason: verdict.reason };
+          }
+          yield* grantBundle(db, deviceId, params.bundleId, query.version);
+          return { allowed: true };
         }),
       );
   }),

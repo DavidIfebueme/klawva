@@ -116,6 +116,67 @@ export default {
     ) {
       return ownerBlockedResponse();
     }
+    if (url.pathname.startsWith("/api/agent/")) {
+      const { claimTask, readTask, submitEvents, submitReport } = await import(
+        "./hosted/api.ts"
+      );
+      const db = makeDatabase(env.DB);
+      const auth = request.headers.get("authorization") ?? "";
+      const token = auth.toLowerCase().startsWith("bearer ")
+        ? auth.slice(7).trim()
+        : "";
+      const { rateLimited } = await import("./lib/guard.ts");
+      const limited = await Effect.runPromise(
+        rateLimited(env.PUBLIC_LIMITER, `agent:${token.slice(0, 24)}`),
+      );
+      if (limited) {
+        return new Response(JSON.stringify({ error: "rate_limited" }), {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "15" },
+        });
+      }
+      const segments = url.pathname.split("/").filter((part) => part.length > 0);
+      const taskId = segments[3] === undefined ? "" : segments[3];
+      const sub = segments[4];
+      const reply = (result: { status: number; body: unknown; retryAfter?: number }) => {
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (result.retryAfter !== undefined) {
+          headers["retry-after"] = String(result.retryAfter);
+        }
+        return new Response(result.body === null ? null : JSON.stringify(result.body), {
+          status: result.status,
+          headers,
+        });
+      };
+      if (segments[2] === "kit" && request.method === "POST") {
+        const { runContractKit } = await import("./hosted/kit.ts");
+        const result = await Effect.runPromise(runContractKit(db, token));
+        return new Response(JSON.stringify(result.result ?? { error: result.error }), {
+          status: result.status,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (segments[2] === "tasks" && segments[3] === "claim" && request.method === "POST") {
+        return reply(await Effect.runPromise(claimTask(db, token)));
+      }
+      if (segments[2] !== "tasks" || taskId === "") {
+        return new Response(null, { status: 404 });
+      }
+      if (sub === "events" && request.method === "POST") {
+        return reply(
+          await Effect.runPromise(submitEvents(db, taskId, token, await request.text())),
+        );
+      }
+      if (sub === "report" && request.method === "POST") {
+        return reply(
+          await Effect.runPromise(submitReport(db, taskId, token, await request.text())),
+        );
+      }
+      if (sub === undefined && request.method === "GET") {
+        return reply(await Effect.runPromise(readTask(db, taskId, token)));
+      }
+      return new Response(null, { status: 405 });
+    }
     if (url.pathname === "/api/voice/twiml" && request.method === "GET") {
       const { clampRelaySeconds, twimlForCall } = await import("./voice/twiml.ts");
       const seconds = clampRelaySeconds(url.searchParams.get("maxSeconds"));
@@ -256,6 +317,27 @@ export default {
         ? exit.value
         : Response.json({ ok: false }, { status: 500 });
     }
+    const taskStateMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/task$/);
+    if (taskStateMatch !== null && request.method === "GET") {
+      const { sessionTokenMatches } = await import("./account/account.ts");
+      const { sessionTaskState } = await import("./hosted/events.ts");
+      const sessionId = decodeURIComponent(taskStateMatch[1]!);
+      const db = makeDatabase(env.DB);
+      const token =
+        request.headers.get("x-auth-token") ?? url.searchParams.get("token") ?? "";
+      const allowed = await Effect.runPromise(
+        sessionTokenMatches(db, sessionId, token).pipe(
+          Effect.catch(() => Effect.succeed(false)),
+        ),
+      );
+      if (!allowed) {
+        return new Response(null, { status: 403 });
+      }
+      const state = await Effect.runPromise(sessionTaskState(db, sessionId));
+      return new Response(JSON.stringify(state), {
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (url.pathname.startsWith("/api/") ||
       url.pathname.startsWith("/webhooks/") ||
       url.pathname.startsWith("/internal/") ||
@@ -276,7 +358,40 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
-  async scheduled(_event: unknown, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
+  async scheduled(event: { cron: string }, env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { pollWorkingTasks } = await import("./hosted/poller.ts");
+        await Effect.runPromise(
+          pollWorkingTasks(db, env, (url, init) => fetch(url, init)).pipe(
+            Effect.catch(() => Effect.succeed([])),
+          ),
+        );
+        return undefined;
+      })(),
+    );
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { runDueShoppers } = await import("./marketplace/shopper.ts");
+        await Effect.runPromise(
+          runDueShoppers(db, env).pipe(Effect.catch(() => Effect.succeed({ shopped: 0, verdicts: 0, capped: false }))),
+        );
+        return undefined;
+      })(),
+    );
+    if (event.cron !== "0 * * * *") {
+      return;
+    }
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { applyTripwire } = await import("./payments/reserve.ts");
+        await Effect.runPromise(applyTripwire(db, new Date()).pipe(Effect.catch(() => Effect.succeed(false))));
+        return undefined;
+      })(),
+    );
     ctx.waitUntil(
       Effect.runPromise(sweep(env))
         .then(() => undefined)
