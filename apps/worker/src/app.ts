@@ -8,20 +8,20 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiEndpoint from "effect/http-api/HttpApiEndpoint";
 import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
-import { Database, layer as databaseLayer } from "./db/database.ts";
+import { Database, layer as databaseLayer, make as makeDatabase } from "./db/database.ts";
 import { Channel, LaunchMarket } from "./db/schema.ts";
 import { Brief } from "./db/schema.ts";
 import { manifestOf, type TransportType } from "./db/schema.ts";
 import type { DatabaseImpl } from "./db/database.ts";
 import { tripwireActive } from "./payments/reserve.ts";
-import { bedrockEnabled } from "./agent/proxy.ts";
+import { bedrockEnabled, resolveRuntime } from "./agent/proxy.ts";
 import { soulFor } from "./agent/souls.ts";
 import {
   handleUpdate,
   secretHeader,
   TelegramUpdate,
 } from "./channels/telegram.ts";
-import { defaultModel, defaultToolAllowlist, layer as agentLayer } from "./agent/runtime.ts";
+import { AgentRuntime, defaultModel, defaultToolAllowlist } from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
 import { escapeHtml, renderTemplate } from "./email/templates.ts";
@@ -131,7 +131,12 @@ const clientAddress: Effect.Effect<string, never, HttpServerRequest.HttpServerRe
     (request) => Option.getOrElse(request.remoteAddress, () => "unknown"),
   );
 import { briefTooLong, screenBrief } from "./moderation/moderation.ts";
-import { briefVerdict, screenBriefSemantic } from "./moderation/clef.ts";
+import {
+  briefVerdict,
+  ClefError,
+  screenBriefOnFallback,
+  screenBriefSemantic,
+} from "./moderation/clef.ts";
 import { connectors } from "./mcp/connectors.ts";
 
 const HealthResponse = Schema.Struct({
@@ -899,7 +904,27 @@ const rootGroup = HttpApiBuilder.group(
           const briefVerdictResult = yield* screenBriefSemantic(
             env.AI,
             payload.brief,
-          ).pipe(Effect.option);
+          ).pipe(
+            Effect.catch(() =>
+              bedrockEnabled(env)
+                ? screenBriefOnFallback(
+                    (prompt) =>
+                      resolveRuntime(
+                        env,
+                        db,
+                        "bedrock:amazon.nova-micro-v1:0",
+                      )
+                        .complete([{ role: "user", content: prompt }], false)
+                        .pipe(
+                          Effect.map((result) => result.text),
+                          Effect.mapError((cause) => new ClefError({ cause })),
+                        ),
+                    payload.brief,
+                  )
+                : Effect.fail(new ClefError({ cause: "no fallback" })),
+            ),
+            Effect.option,
+          );
           if (
             briefVerdictResult._tag === "Some" &&
             briefVerdict(briefVerdictResult.value) !== "legit"
@@ -1103,8 +1128,9 @@ export const makeAppLayer = (env: Env) => {
   const services = Layer.mergeAll(
     databaseLayer(env.DB),
     Layer.succeed(WorkerEnv)(env),
-    agentLayer(env.AI, defaultModel),
-  );
+    Layer.succeed(AgentRuntime)(
+      resolveRuntime(env, makeDatabase(env.DB), defaultModel),
+    ),  );
   const mainRoutes = HttpApiBuilder.layer(KlawvaApi).pipe(
     Layer.provide(rootGroup.pipe(Layer.provide(services))),
   );

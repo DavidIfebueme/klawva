@@ -7,7 +7,10 @@ import {
   checkNeuronBudget,
   dayNeurons,
   estimateNeurons,
+  QUOTA_COOLDOWN_MS,
+  quotaSpentRecently,
   recordAiUsage,
+  recordQuotaSpent,
 } from "../src/agent/meter.ts";
 
 const glm = "@cf/zai-org/glm-4.7-flash";
@@ -167,5 +170,54 @@ describe("checkNeuronBudget", () => {
       { key: `ai:in-tokens:${day}:${glm}`, value: 2_000_000 },
     ]);
     expect(await Effect.runPromise(checkNeuronBudget(db))).toBe(false);
+  });
+});
+
+const countersDb = (): DatabaseImpl => {
+  const rows = new Map<string, number>();
+  return {
+    all: () => Effect.succeed([]),
+    first: (_sql, params) => {
+      const key = params?.[0];
+      if (typeof key !== "string") {
+        return Effect.succeed(null);
+      }
+      const value = rows.get(key);
+      return Effect.succeed(value === undefined ? null : { value });
+    },
+    run: (_sql, params) => {
+      const key = params?.[0];
+      const value = params?.[1];
+      if (typeof key === "string" && typeof value === "number") {
+        rows.set(key, value);
+      }
+      return Effect.void;
+    },
+    batch: () => Effect.void,
+    changed: () => Effect.succeed(1),
+  };
+};
+
+describe("the quota breaker", () => {
+  it("says nothing is spent on a fresh ledger", async () => {
+    expect(await Effect.runPromise(quotaSpentRecently(countersDb()))).toBe(false);
+  });
+
+  it("reports a spend until the cooldown passes", async () => {
+    const db = countersDb();
+    await Effect.runPromise(recordQuotaSpent(db));
+    expect(await Effect.runPromise(quotaSpentRecently(db))).toBe(true);
+    expect(
+      await Effect.runPromise(quotaSpentRecently(db, Date.now() + QUOTA_COOLDOWN_MS + 1)),
+    ).toBe(false);
+  });
+
+  it("never fails the caller when the ledger is down", async () => {
+    const broken: DatabaseImpl = {
+      ...countersDb(),
+      first: () =>
+        Effect.fail(new DatabaseError({ operation: "quota", cause: "boom" })),
+    };
+    expect(await Effect.runPromise(quotaSpentRecently(broken))).toBe(false);
   });
 });

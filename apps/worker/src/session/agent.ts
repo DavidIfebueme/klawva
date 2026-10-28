@@ -333,6 +333,9 @@ export const budgetReply =
 export const modelRetryReply =
   "My model dropped that turn. Send your message again and I'll pick it up.";
 
+export const dailyAiReply =
+  "The daily ai budget is spent. I am back after the reset.";
+
 export const turnSucceeded = (
   status: string,
   failed: boolean,

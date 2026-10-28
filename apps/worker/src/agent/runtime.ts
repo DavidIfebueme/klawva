@@ -1,6 +1,5 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { fetchLinks, fetchUrl, webSearch } from "./tools.ts";
 import { checkReplyQuality, meetsQualityBar } from "../moderation/clef.ts";
@@ -398,5 +397,3 @@ export const runTurn = (params: {
     return { text: "", steps };
   });
 
-export const layer = (ai: Ai, model: string): Layer.Layer<AgentRuntime> =>
-  Layer.succeed(AgentRuntime)(makeRuntime(ai, model));
