@@ -9,6 +9,7 @@ import { sessionReplyAddress } from "../channels/email.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 import { dispatchTask } from "../hosted/dispatch.ts";
 import { ingestArtifact } from "../hosted/ingest.ts";
+import { placePhoneHire } from "../voice/placement.ts";
 import { Brief, BriefRecord, manifestOf } from "../db/schema.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
@@ -92,6 +93,11 @@ export interface PaystackEnv {
   readonly WALLET: NamedObjects;
   readonly BREVO_API_KEY: string;
   readonly BREVO_SENDER_EMAIL: string;
+  readonly BOLNA_API_KEY?: string;
+  readonly TWILIO_ACCOUNT_SID?: string;
+  readonly TWILIO_AUTH_TOKEN?: string;
+  readonly TWILIO_FROM_NUMBER?: string;
+  readonly VOICE_RELAY_URL?: string;
 }
 
 export const handlePaystackWebhook = (
@@ -197,7 +203,7 @@ export const handlePaystackWebhook = (
     }
     const hosted = yield* db
       .first(
-        "SELECT s.listing_id AS listingId, s.listing_version AS listingVersion, s.brief AS brief, v.manifest AS manifest, v.soul AS soul FROM sessions s JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version WHERE s.id = ?",
+        "SELECT s.listing_id AS listingId, s.listing_version AS listingVersion, s.brief AS brief, v.manifest AS manifest, v.soul AS soul, l.name AS listingName FROM sessions s JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
@@ -236,6 +242,33 @@ export const handlePaystackWebhook = (
           fetchText: (url, init) => fetch(url, init),
           ingest: (input) => ingestArtifact(db, input),
         }).pipe(Effect.catch(() => Effect.void));
+      }
+      if (manifest !== null && manifest.phone !== undefined) {
+        const parsedBrief = Schema.decodeUnknownOption(BriefRecord)(
+          String(hosted.brief ?? "{}"),
+        );
+        const budget = yield* db
+          .first(
+            "SELECT budget_minor AS budgetMinor, spent_minor AS spentMinor FROM sessions WHERE id = ?",
+            [decoded.session_id],
+          )
+          .pipe(Effect.orDie);
+        const remaining =
+          budget === null
+            ? 0
+            : Number(budget.budgetMinor) - Number(budget.spentMinor);
+        const outcome = yield* placePhoneHire(env, db, {
+          sessionId: String(decoded.session_id),
+          agentName: String(hosted.listingName ?? hosted.listingId),
+          manifest,
+          brief: parsedBrief._tag === "Some" ? parsedBrief.value : {},
+          budgetRemainingKobo: remaining,
+        }).pipe(Effect.catch(() => Effect.void));
+        if (outcome !== undefined && outcome !== null && !outcome.dialed) {
+          console.warn(
+            `phone hire not placed for session ${String(decoded.session_id)}: ${String(outcome.reason)}`,
+          );
+        }
       }
     }
 
