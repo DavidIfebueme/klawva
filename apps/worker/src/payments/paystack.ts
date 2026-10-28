@@ -203,7 +203,7 @@ export const handlePaystackWebhook = (
     }
     const hosted = yield* db
       .first(
-        "SELECT s.listing_id AS listingId, s.listing_version AS listingVersion, s.brief AS brief, v.manifest AS manifest, v.soul AS soul FROM sessions s JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version WHERE s.id = ?",
+        "SELECT s.listing_id AS listingId, s.listing_version AS listingVersion, s.brief AS brief, v.manifest AS manifest, v.soul AS soul, l.name AS listingName FROM sessions s JOIN listing_versions v ON v.listing_id = s.listing_id AND v.version = s.listing_version JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ?",
         [decoded.session_id],
       )
       .pipe(Effect.orDie);
@@ -257,13 +257,18 @@ export const handlePaystackWebhook = (
           budget === null
             ? 0
             : Number(budget.budgetMinor) - Number(budget.spentMinor);
-        yield* placePhoneHire(env, db, {
+        const outcome = yield* placePhoneHire(env, db, {
           sessionId: String(decoded.session_id),
-          agentName: String(hosted.listingId),
+          agentName: String(hosted.listingName ?? hosted.listingId),
           manifest,
           brief: parsedBrief._tag === "Some" ? parsedBrief.value : {},
           budgetRemainingKobo: remaining,
         }).pipe(Effect.catch(() => Effect.void));
+        if (outcome !== undefined && outcome !== null && !outcome.dialed) {
+          console.warn(
+            `phone hire not placed for session ${String(decoded.session_id)}: ${String(outcome.reason)}`,
+          );
+        }
       }
     }
 
