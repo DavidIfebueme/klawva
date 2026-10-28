@@ -926,8 +926,14 @@ const sessionGroup = HttpApiBuilder.group(
                 }),
               ).pipe(Effect.as(turn.text)),
             ),
-            Effect.catch(() =>
-              recordAiUsage(db, {
+            Effect.catch((error) => {
+              const cause =
+                error instanceof ModelError
+                  ? String(error.cause)
+                  : String(error);
+              const spent =
+                cause.includes("neurons") || cause.includes("free allocation");
+              return recordAiUsage(db, {
                 model: admission.config.model,
                 inTokens: charsToTokens(inChars),
                 outTokens: 0,
@@ -935,11 +941,13 @@ const sessionGroup = HttpApiBuilder.group(
               }).pipe(
                 Effect.andThen(() =>
                   Effect.succeed(
-                    "I could not reach my model just now. Please try again.",
+                    spent
+                      ? "The daily ai budget is spent. I am back after the reset."
+                      : "I could not reach my model just now. Please try again.",
                   ),
                 ),
-              ),
-            ),
+              );
+            }),
           );
           yield* store.append("assistant", reply);
           yield* mirror("assistant", reply);
