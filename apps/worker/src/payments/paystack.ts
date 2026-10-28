@@ -9,6 +9,7 @@ import { sessionReplyAddress } from "../channels/email.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 import { dispatchTask } from "../hosted/dispatch.ts";
 import { ingestArtifact } from "../hosted/ingest.ts";
+import { placePhoneHire } from "../voice/placement.ts";
 import { Brief, BriefRecord, manifestOf } from "../db/schema.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
@@ -92,6 +93,11 @@ export interface PaystackEnv {
   readonly WALLET: NamedObjects;
   readonly BREVO_API_KEY: string;
   readonly BREVO_SENDER_EMAIL: string;
+  readonly BOLNA_API_KEY?: string;
+  readonly TWILIO_ACCOUNT_SID?: string;
+  readonly TWILIO_AUTH_TOKEN?: string;
+  readonly TWILIO_FROM_NUMBER?: string;
+  readonly VOICE_RELAY_URL?: string;
 }
 
 export const handlePaystackWebhook = (
@@ -235,6 +241,28 @@ export const handlePaystackWebhook = (
         }, {
           fetchText: (url, init) => fetch(url, init),
           ingest: (input) => ingestArtifact(db, input),
+        }).pipe(Effect.catch(() => Effect.void));
+      }
+      if (manifest !== null && manifest.phone !== undefined) {
+        const parsedBrief = Schema.decodeUnknownOption(BriefRecord)(
+          String(hosted.brief ?? "{}"),
+        );
+        const budget = yield* db
+          .first(
+            "SELECT budget_minor AS budgetMinor, spent_minor AS spentMinor FROM sessions WHERE id = ?",
+            [decoded.session_id],
+          )
+          .pipe(Effect.orDie);
+        const remaining =
+          budget === null
+            ? 0
+            : Number(budget.budgetMinor) - Number(budget.spentMinor);
+        yield* placePhoneHire(env, db, {
+          sessionId: String(decoded.session_id),
+          agentName: String(hosted.listingId),
+          manifest,
+          brief: parsedBrief._tag === "Some" ? parsedBrief.value : {},
+          budgetRemainingKobo: remaining,
         }).pipe(Effect.catch(() => Effect.void));
       }
     }
