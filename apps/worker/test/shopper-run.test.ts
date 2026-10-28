@@ -104,7 +104,7 @@ describe("the shopper execution loop", () => {
     expect(result.capped).toBe(false);
     const sessionInsert = writes.find((w) => w.sql.includes("INSERT INTO sessions"));
     expect(sessionInsert).toBeDefined();
-    expect(sessionInsert?.sql).toContain("shopper@klawva.xyz");
+    expect(sessionInsert?.params).toContain("shopper@klawva.xyz");
     const audit = writes.find((w) => w.sql.includes("INSERT INTO shopper_audits"));
     expect(audit?.params[4]).toBe("payment link pending operator card");
   });

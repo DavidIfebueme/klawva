@@ -147,19 +147,25 @@ export const runDueShoppers = (
       if (!neverTwoInARow(lastAuthor, authorId)) {
         continue;
       }
-      const sessionId = crypto.randomUUID();
       const version = yield* db
         .first(
           "SELECT current_version AS version FROM agent_listings WHERE id = ?",
           [listingId],
         )
         .pipe(Effect.orDie);
-      yield* db
-        .run(
-          "INSERT INTO sessions (id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, created_at, updated_at) VALUES (?, ?, ?, 'shopper', 'web', ?, 'pending', 'shopper@klawva.xyz', NULL, NULL, 0, ?, ?)",
-          [sessionId, listingId, version === null ? 1 : Number(version.version), SHOPPER_BRIEF, now.toISOString(), now.toISOString()],
-        )
-        .pipe(Effect.orDie);
+      const sessionId = yield* (yield* Effect.promise(() => import("../app.ts"))).insertSessionRow(
+        db,
+        {
+          userId: null,
+          listingId,
+          listingVersion: version === null ? 1 : Number(version.version),
+          agentId: "shopper",
+          brief: SHOPPER_BRIEF,
+          customerEmail: "shopper@klawva.xyz",
+          budgetMinor: 0,
+          durationDays: 1,
+        },
+      );
       yield* db
         .run(
           "INSERT INTO shopper_audits (id, listing_id, version, session_id, verdict, notes, created_at, price_minor) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",

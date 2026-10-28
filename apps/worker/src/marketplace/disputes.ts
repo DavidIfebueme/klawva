@@ -178,8 +178,6 @@ export const createRerunSession = (
     if (authored === null) {
       return null;
     }
-    const rerunId = crypto.randomUUID();
-    const now = new Date().toISOString();
     const durationDays = 1;
     const version = yield* db
       .first(
@@ -189,20 +187,19 @@ export const createRerunSession = (
       .pipe(Effect.orDie);
     const budgetMinor =
       version === null ? 0 : Number(version.budgetMinor) * durationDays;
-    yield* db
-      .run(
-        "INSERT INTO sessions (id, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, created_at, updated_at) VALUES (?, ?, ?, 'rerun', 'web', ?, 'pending', NULL, NULL, NULL, ?, ?, ?)",
-        [
-          rerunId,
-          String(authored.id),
-          version === null ? 1 : Number(version.version),
-          typeof original.brief === "string" ? original.brief : "{}",
-          budgetMinor,
-          now,
-          now,
-        ],
-      )
-      .pipe(Effect.orDie);
+    const rerunId = yield* (yield* Effect.promise(() => import("../app.ts"))).insertSessionRow(
+      db,
+      {
+        userId: null,
+        listingId: String(authored.id),
+        listingVersion: version === null ? 1 : Number(version.version),
+        agentId: "rerun",
+        brief: typeof original.brief === "string" ? original.brief : "{}",
+        customerEmail: null,
+        budgetMinor,
+        durationDays,
+      },
+    );
     yield* resolveWithRerun(db, disputeId, rerunId);
     return { rerunSessionId: rerunId, listingId: String(authored.id) };
   });

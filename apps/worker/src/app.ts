@@ -12,6 +12,7 @@ import { Database, layer as databaseLayer } from "./db/database.ts";
 import { Channel, LaunchMarket } from "./db/schema.ts";
 import { Brief } from "./db/schema.ts";
 import { manifestOf, type TransportType } from "./db/schema.ts";
+import type { DatabaseImpl } from "./db/database.ts";
 import { tripwireActive } from "./payments/reserve.ts";
 import { bedrockEnabled } from "./agent/proxy.ts";
 import { soulFor } from "./agent/souls.ts";
@@ -166,6 +167,44 @@ const createSession = HttpApiEndpoint.post("createSession", "/api/sessions", {
   success: SessionCreated,
   error: ListingConflict,
 });
+
+export const insertSessionRow = (
+  db: DatabaseImpl,
+  params: {
+    readonly userId: string | null;
+    readonly listingId: string;
+    readonly listingVersion: number;
+    readonly agentId: string;
+    readonly brief: string;
+    readonly customerEmail: string | null;
+    readonly budgetMinor: number;
+    readonly durationDays: number;
+  },
+): Effect.Effect<string> => {
+  const id = crypto.randomUUID();
+  return db
+    .run(
+      "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, duration_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'web', ?, 'pending', ?, NULL, NULL, ?, 0, ?, ?, ?)",
+      [
+        id,
+        params.userId,
+        crypto.randomUUID().replace(/-/g, ""),
+        params.listingId,
+        params.listingVersion,
+        params.agentId,
+        params.brief,
+        params.customerEmail,
+        params.budgetMinor,
+        params.durationDays,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      ],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map(() => id),
+    );
+};
 
 const telegramWebhook = HttpApiEndpoint.post(
   "telegramWebhook",
