@@ -131,9 +131,11 @@ export const screenBriefOnFallback = (
   Effect.gen(function* () {
     const prompt = `${briefState(brief)}\n\nAnswer with exactly one word: legit, abuse, or jailbreak.`;
     const text = yield* complete(prompt);
-    const verdict = briefVerdicts.find((candidate) =>
-      text.toLowerCase().includes(candidate),
+    const lower = text.toLowerCase();
+    const unsafe = briefVerdicts.find(
+      (candidate) => candidate !== "legit" && lower.includes(candidate),
     );
+    const verdict = unsafe ?? (lower.includes("legit") ? "legit" : undefined);
     if (verdict === undefined) {
       return yield* Effect.fail(
         new ClefError({ cause: `unusable fallback verdict: ${text.slice(0, 80)}` }),

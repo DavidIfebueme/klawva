@@ -142,6 +142,16 @@ describe("clef brief moderation", () => {
     expect(briefVerdict(out)).toBe("jailbreak");
   });
 
+  it("treats a mixed answer as unsafe rather than reading legit out of it", async () => {
+    const out = await Effect.runPromise(
+      screenBriefOnFallback(
+        () => Effect.succeed("This is not legit, it is abuse."),
+        { task: "send spam" },
+      ),
+    );
+    expect(briefVerdict(out)).toBe("abuse");
+  });
+
   it("fails the fallback when nova names no verdict, so the caller fails open", async () => {
     const exit = await Effect.runPromiseExit(
       screenBriefOnFallback(

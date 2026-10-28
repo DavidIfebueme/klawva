@@ -55,6 +55,7 @@ export interface EvalResult {
   readonly score: number;
   readonly band: Band;
   readonly results: ReadonlyArray<EvalCaseResult>;
+  readonly usage: { readonly inTokens: number; readonly outTokens: number };
 }
 
 export const runEval = (params: {
@@ -67,6 +68,8 @@ export const runEval = (params: {
 }): Effect.Effect<EvalResult, ModelError> =>
   Effect.gen(function* () {
     const results: EvalCaseResult[] = [];
+    let inTokens = 0;
+    let outTokens = 0;
     for (const input of params.cases) {
       const turn = yield* runTurn({
         runtime: params.runtime,
@@ -77,6 +80,10 @@ export const runEval = (params: {
         allowlist: params.allowlist ?? defaultToolAllowlist,
         braveKey: "",
       });
+      for (const step of turn.steps) {
+        inTokens += step.inTokens;
+        outTokens += step.outTokens;
+      }
       results.push({
         input,
         output: turn.text,
@@ -90,5 +97,5 @@ export const runEval = (params: {
             results.reduce((sum, result) => sum + result.score, 0) /
               results.length,
           );
-    return { score, band: bandFor(score), results };
+    return { score, band: bandFor(score), results, usage: { inTokens, outTokens } };
   });

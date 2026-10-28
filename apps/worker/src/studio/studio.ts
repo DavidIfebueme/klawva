@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { defaultModel, defaultToolAllowlist, type AgentRuntimeImpl } from "../agent/runtime.ts";
+import { recordAiUsage } from "../agent/meter.ts";
 import { type DatabaseImpl } from "../db/database.ts";
 import { runEval, type Band } from "../eval/eval.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
@@ -350,7 +351,25 @@ const runListingEval = (
         task: "Describe what you do and how you would approach the employer's task.",
       },
       cases: ["Summarize your role in one sentence.", "List what you can do."],
-    }).pipe(Effect.orDie);
+    }).pipe(
+      Effect.tap((outcome) =>
+        recordAiUsage(db, {
+          model: defaultModel,
+          inTokens: outcome.usage.inTokens,
+          outTokens: outcome.usage.outTokens,
+          ok: true,
+        }),
+      ),
+      Effect.tapError(() =>
+        recordAiUsage(db, {
+          model: defaultModel,
+          inTokens: 0,
+          outTokens: 0,
+          ok: false,
+        }),
+      ),
+      Effect.orDie,
+    );
     const results = JSON.stringify(result.results);
     yield* db
       .run(

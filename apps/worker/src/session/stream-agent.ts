@@ -11,6 +11,7 @@ import {
   streamText,
   type GenerateTextOnFinishCallback,
   type ToolSet,
+  type UIMessage,
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import type { Env } from "../env.ts";
@@ -41,7 +42,7 @@ import {
   recordQuotaSpent,
 } from "../agent/meter.ts";
 import { ModelError, systemText } from "../agent/runtime.ts";
-import { neuronsSpent } from "../agent/proxy.ts";
+import { neuronsSpent, resolveRuntime, bedrockEnabled } from "../agent/proxy.ts";
 import { aiToolsFor } from "./stream-tools.ts";
 
 interface TurnUsage {
@@ -50,6 +51,16 @@ interface TurnUsage {
   readonly steps: Array<{ readonly inTokens: number; readonly outTokens: number }>;
   failed: boolean;
 }
+
+const fallbackHistory = (messages: ReadonlyArray<UIMessage>) =>
+  messages
+    .slice(-20)
+    .filter((message) => message.role !== "system")
+    .map((message) => ({
+      role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      content: messageText(message),
+    }))
+    .filter((message) => message.content.length > 0);
 
 export class SessionAgent extends AIChatAgent<Env> {
   maxPersistedMessages = 400;
@@ -127,6 +138,12 @@ export class SessionAgent extends AIChatAgent<Env> {
       return undefined;
     }
     this.settled.add(keyed);
+    const quotaSpent = await Effect.runPromise(quotaSpentRecently(db));
+    if (quotaSpent && !bedrockEnabled(this.env)) {
+      return new Response(dailyAiReply, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
     const admission = await Effect.runPromise(
       admitTurn(store, db, sessionId, text, this.env.AI).pipe(
         Effect.catch(() => Effect.succeed({ _tag: "OutOfBudget" } as const)),
@@ -159,8 +176,20 @@ export class SessionAgent extends AIChatAgent<Env> {
       });
     }
     const config = admission.config;
-    if (await Effect.runPromise(quotaSpentRecently(db))) {
-      return new Response(dailyAiReply, {
+    if (quotaSpent) {
+      const history = fallbackHistory(this.messages);
+      const reply = await Effect.runPromise(
+        resolveRuntime(this.env, db, config.model)
+          .complete(history, false)
+          .pipe(
+            Effect.map((result) => result.text),
+            Effect.catch(() => Effect.succeed(dailyAiReply)),
+          ),
+      );
+      await Effect.runPromise(
+        persistAssistant(store, db, this.name, reply),
+      ).catch(() => undefined);
+      return new Response(reply, {
         headers: { "Content-Type": "text/plain" },
       });
     }
@@ -235,6 +264,13 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     const store = makeStore(this.ctx.storage.sql);
     const db = makeDatabase(this.env.DB);
+    if (
+      result.status === "error" &&
+      result.error !== undefined &&
+      neuronsSpent(result.error)
+    ) {
+      await Effect.runPromise(recordQuotaSpent(db));
+    }
     const retry = retryTextFor(result.status, text.length);
     if (retry !== null) {
       await Effect.runPromise(
