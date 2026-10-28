@@ -12,7 +12,7 @@ const employeeSummary = Schema.Struct({
   priceMinor: Schema.Number,
   budgetMinor: Schema.Number,
   version: Schema.Number,
-  ownerId: Schema.String,
+  authorDisplay: Schema.String,
   avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
 });
@@ -33,6 +33,19 @@ const employeeDetail = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   briefFields: Schema.String,
+  lane: Schema.optional(Schema.String),
+  dataPolicy: Schema.optional(
+    Schema.Struct({
+      retentionDays: Schema.Number,
+      leavesCountry: Schema.Boolean,
+    }),
+  ),
+  capabilitySheet: Schema.optional(
+    Schema.Struct({
+      sentences: Schema.Array(Schema.String),
+      privacyLine: Schema.String,
+    }),
+  ),
   durations: Schema.Array(durationOption),
 });
 export type EmployeeDetail = typeof employeeDetail.Type;

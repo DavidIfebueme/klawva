@@ -60,7 +60,10 @@ export type LinkChannel = typeof LinkChannel.Type;
 export const MessageRole = Schema.Literals(["user", "assistant", "tool", "system"]);
 export type MessageRole = typeof MessageRole.Type;
 
-export const Brief = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
+export const BriefRecord = Schema.Record(Schema.String, Schema.String);
+export type BriefRecord = typeof BriefRecord.Type;
+
+export const Brief = Schema.fromJsonString(BriefRecord);
 export type Brief = typeof Brief.Type;
 
 export const VoiceManifest = Schema.Struct({
@@ -86,12 +89,90 @@ export type LaunchMarket = typeof LaunchMarket.Type;
 
 export const accountMarketOrNull = Schema.NullOr(LaunchMarket);
 
+export const RuntimeKind = Schema.Literals(["authored", "hosted", "desktop"]);
+export type RuntimeKind = typeof RuntimeKind.Type;
+
+export const BillingMode = Schema.Literals(["platform-metered", "author-metered"]);
+export type BillingMode = typeof BillingMode.Type;
+
+export const RuntimeTransport = Schema.Literals([
+  "web",
+  "email",
+  "telegram",
+  "phone",
+  "desktop",
+]);
+export type RuntimeTransport = typeof RuntimeTransport.Type;
+
+export const HostedRuntime = Schema.Struct({
+  mode: Schema.Literals(["push", "pull"]),
+  cardUrl: Schema.String,
+  auth: Schema.optional(
+    Schema.Struct({ type: Schema.String, header: Schema.String }),
+  ),
+});
+export type HostedRuntime = typeof HostedRuntime.Type;
+
+export const DesktopCapabilities = Schema.Struct({
+  screen: Schema.optional(Schema.Literals(["read"])),
+  input: Schema.optional(Schema.Array(Schema.String)),
+  network: Schema.optional(Schema.Array(Schema.String)),
+  fs: Schema.optional(Schema.Array(Schema.String)),
+});
+export type DesktopCapabilities = typeof DesktopCapabilities.Type;
+
+export const DesktopRuntime = Schema.Struct({
+  bundleId: Schema.String,
+  entrypoint: Schema.String,
+  dataDirs: Schema.Array(Schema.String),
+  platforms: Schema.Array(Schema.Literals(["windows", "linux", "mac"])),
+  network: Schema.optional(Schema.Array(Schema.String)),
+  capabilities: DesktopCapabilities,
+});
+export type DesktopRuntime = typeof DesktopRuntime.Type;
+
+export const RuntimeManifest = Schema.Struct({
+  kind: RuntimeKind,
+  billing: BillingMode,
+  transport: Schema.Array(RuntimeTransport),
+  hosted: Schema.optional(HostedRuntime),
+  desktop: Schema.optional(DesktopRuntime),
+});
+export type RuntimeManifest = typeof RuntimeManifest.Type;
+
+export const LimitsManifest = Schema.Struct({
+  maxWallClockSeconds: Schema.Number,
+  maxEvents: Schema.Number,
+  maxEventBytes: Schema.Number,
+  maxArtifactBytes: Schema.Number,
+  minIdleSeconds: Schema.Number,
+});
+export type LimitsManifest = typeof LimitsManifest.Type;
+
+export const ReportPolicy = Schema.Struct({
+  requireEvidence: Schema.Boolean,
+  minEvidence: Schema.Number,
+});
+export type ReportPolicy = typeof ReportPolicy.Type;
+
+export const DataPolicy = Schema.Struct({
+  retentionDays: Schema.Number,
+  leavesCountry: Schema.Boolean,
+  dpia: Schema.Boolean,
+});
+export type DataPolicy = typeof DataPolicy.Type;
+
 export const Manifest = Schema.Struct({
+  schema: Schema.optional(Schema.Number),
   soul: Schema.String,
   voice: Schema.optional(VoiceManifest),
   phone: Schema.optional(PhoneManifest),
   desktop: Schema.optional(DesktopManifest),
   launchMarkets: Schema.optional(Schema.Array(LaunchMarket)),
+  runtime: Schema.optional(RuntimeManifest),
+  limits: Schema.optional(LimitsManifest),
+  report: Schema.optional(ReportPolicy),
+  data: Schema.optional(DataPolicy),
 });
 export type Manifest = typeof Manifest.Type;
 

@@ -365,22 +365,27 @@ export const persistAssistant = (
     yield* mirrorMessage(db, sessionId, "assistant", text);
   });
 
-export const authorizeStream = (
+export type StreamIdentity =
+  | { readonly kind: "session" }
+  | { readonly kind: "user"; readonly userId: string }
+  | { readonly kind: "device"; readonly deviceId: string };
+
+export const streamIdentity = (
   env: Env,
   db: DatabaseImpl,
   sessionId: string,
   token: string | null,
   authHeader: string | null,
-): Effect.Effect<boolean> =>
+): Effect.Effect<StreamIdentity | null> =>
   Effect.gen(function* () {
     if (token !== null && token.length > 0) {
       const matches = yield* sessionTokenMatches(db, sessionId, token);
       if (matches) {
-        return true;
+        return { kind: "session" as const };
       }
     }
     if (authHeader === null) {
-      return false;
+      return null;
     }
     const clean =
       authHeader.toLowerCase().startsWith("bearer ") && authHeader.length > 7
@@ -390,13 +395,25 @@ export const authorizeStream = (
       Effect.catch(() => Effect.succeed(null)),
     );
     if (identity !== null) {
-      return yield* ownsSession(db, identity.userId, identity.email, sessionId);
+      const owns = yield* ownsSession(db, identity.userId, identity.email, sessionId);
+      return owns ? { kind: "user" as const, userId: identity.userId } : null;
     }
     const deviceId = yield* deviceForToken(db, sessionId, clean).pipe(
       Effect.catch(() => Effect.succeed(null)),
     );
-    return deviceId !== null;
+    return deviceId === null ? null : { kind: "device" as const, deviceId };
   });
+
+export const authorizeStream = (
+  env: Env,
+  db: DatabaseImpl,
+  sessionId: string,
+  token: string | null,
+  authHeader: string | null,
+): Effect.Effect<boolean> =>
+  streamIdentity(env, db, sessionId, token, authHeader).pipe(
+    Effect.map((identity) => identity !== null),
+  );
 
 export const messageText = (message: UIMessage): string =>
   message.parts
@@ -471,9 +488,22 @@ export const completeShift = (
         : report.stats;
     const shareToken = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
+    const briefHash = yield* Effect.tryPromise({
+      try: async () => {
+        const digest = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(briefRaw),
+        );
+        return Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      },
+      catch: (cause) => new Error(String(cause)),
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
+    const outcome = history.length === 0 ? "failed" : (report.outcome ?? "complete");
     yield* db
       .run(
-        "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) WHERE transport_id IS NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
+        "INSERT INTO mission_reports (id, session_id, transport_id, summary, stats, share_token, delivered_at, created_at, updated_at, outcome, evidence, limitations, brief_hash) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) WHERE transport_id IS NULL DO UPDATE SET summary = excluded.summary, stats = excluded.stats, outcome = excluded.outcome, evidence = excluded.evidence, limitations = excluded.limitations, brief_hash = excluded.brief_hash, delivered_at = excluded.delivered_at, updated_at = excluded.updated_at",
         [
           crypto.randomUUID(),
           sessionId,
@@ -483,6 +513,10 @@ export const completeShift = (
           now,
           now,
           now,
+          outcome,
+          JSON.stringify(report.evidence ?? []),
+          JSON.stringify(report.limitations ?? []),
+          briefHash,
         ],
       )
       .pipe(Effect.orDie);

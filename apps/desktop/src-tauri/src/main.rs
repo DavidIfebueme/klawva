@@ -220,13 +220,175 @@ fn list_workspace_files(slug: String, relative_dir: String) -> Result<Vec<String
     Ok(names)
 }
 
+#[tauri::command]
+fn bundle_spawn(entrypoint: String, port: u16, nonce: String, bundle_id: String) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    if port < 1024 || nonce.len() < 32 {
+        return Err("bad spawn plan".to_string());
+    }
+    let mut child = Command::new(&entrypoint)
+        .env("KLAWVA_BUNDLE_ID", &bundle_id)
+        .env("KLAWVA_A2A_PORT", port.to_string())
+        .env("KLAWVA_A2A_NONCE", &nonce)
+        .env("KLAWVA_A2A_TRANSPORT", "a2a-loopback")
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    if reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
+        return Err("bundle produced no handshake line".to_string());
+    }
+    let trimmed = line.trim().to_string();
+    if !trimmed.contains(&nonce) {
+        let _ = child.kill();
+        return Err("bundle did not echo the nonce".to_string());
+    }
+    BUNDLE_CHILD
+        .lock()
+        .map_err(|e| e.to_string())?
+        .replace(child);
+    Ok(trimmed)
+}
+
+static BUNDLE_CHILD: std::sync::Mutex<Option<std::process::Child>> =
+    std::sync::Mutex::new(None);
+
+#[tauri::command]
+fn bundle_kill() -> Result<bool, String> {
+    let mut guard = BUNDLE_CHILD.lock().map_err(|e| e.to_string())?;
+    match guard.take() {
+        Some(mut child) => {
+            let pid = child.id();
+            let _ = child.kill();
+            let _ = child.wait();
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/T", "/F", "/PID", &pid.to_string()])
+                    .output();
+            }
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+#[tauri::command]
+fn bundle_spawn_plan(port: u16, nonce: String, bundle_id: String) -> Result<String, String> {
+    if port < 1024 {
+        return Err("port must be unprivileged".to_string());
+    }
+    if nonce.len() < 32 {
+        return Err("nonce too short".to_string());
+    }
+    Ok(serde_json::json!({
+        "port": port,
+        "nonce": nonce,
+        "env": {
+            "KLAWVA_BUNDLE_ID": bundle_id,
+            "KLAWVA_A2A_PORT": port.to_string(),
+            "KLAWVA_A2A_NONCE": nonce,
+            "KLAWVA_A2A_TRANSPORT": "a2a-loopback"
+        }
+    })
+    .to_string())
+}
+
+#[tauri::command]
+fn purge_bundle_data(dirs: Vec<String>, allowed_root: String) -> Result<Vec<String>, String> {
+    let root = std::path::PathBuf::from(&allowed_root);
+    let root_canon = root.canonicalize().map_err(|e| e.to_string())?;
+    let mut removed = Vec::new();
+    for dir in dirs {
+        let path = std::path::PathBuf::from(&dir);
+        if path.is_absolute() || dir.contains("..") {
+            return Err(format!("refusing to purge outside scope: {dir}"));
+        }
+        let full = root.join(&path);
+        if !full.exists() {
+            continue;
+        }
+        let canon = full.canonicalize().map_err(|e| e.to_string())?;
+        if !canon.starts_with(&root_canon) {
+            return Err(format!("refusing to purge outside scope: {dir}"));
+        }
+        fs::remove_dir_all(&canon).map_err(|e| e.to_string())?;
+        removed.push(dir);
+    }
+    Ok(removed)
+}
+
+#[tauri::command]
+fn purge_workspace(slug: String) -> Result<String, String> {
+    let clean: String = slug
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let home = dirs_next_home().ok_or_else(|| "home directory not found".to_string())?;
+    let path = home.join("klawva").join("employees").join(&clean);
+    if !path.exists() {
+        return Ok("nothing to remove".to_string());
+    }
+    fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    Ok(format!("removed {}", clean))
+}
+
+#[tauri::command]
+fn verify_report(line: String, exit_code: Option<i32>) {
+    println!("{line}");
+    if let Some(code) = exit_code {
+        std::process::exit(code);
+    }
+}
+
+#[tauri::command]
+fn verify_exit(code: i32) {
+    std::process::exit(code);
+}
+
+use tauri::Manager;
+
 fn main() {
     if std::env::args().any(|arg| arg == "--smoke") {
         println!("klawva desktop smoke ok");
         return;
     }
+    let verifying = std::env::args().any(|arg| arg == "--verify");
+    if verifying {
+        match std::env::var("KLAWVA_WORKER_URL") {
+            Ok(url) if !url.contains("klawva.xyz") => {}
+            _ => {
+                eprintln!("--verify needs KLAWVA_WORKER_URL pointing at a non-production worker");
+                std::process::exit(2);
+            }
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_websocket::init())
+        .setup(move |app| {
+            if verifying {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(800));
+                    match handle.get_webview_window("main") {
+                        Some(window) => {
+                            let _ = window.eval("location.replace('index.html?verify=1')");
+                        }
+                        None => {
+                            eprintln!("verify: no webview to drive");
+                            std::process::exit(1);
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(180));
+                    eprintln!("verify: timed out waiting for the pairing loop");
+                    std::process::exit(1);
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ensure_workspace,
             write_note,
@@ -235,7 +397,14 @@ fn main() {
             start_loopback,
             take_loopback_result,
             store_secret,
-            read_secret
+            read_secret,
+            verify_report,
+            verify_exit,
+            purge_bundle_data,
+            purge_workspace,
+            bundle_spawn_plan,
+            bundle_spawn,
+            bundle_kill
         ])
         .run(tauri::generate_context!())
         .expect("error while running klawva desktop");

@@ -4,6 +4,7 @@ import { sendEmail } from "../email/brevo.ts";
 import { listingApprovedEmail, listingRejectedEmail } from "../email/templates.ts";
 import type { Env } from "../env.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
+import { listingPriceBlocked } from "../payments/economics.ts";
 import { seedListings } from "../listings/listings.ts";
 
 const scalar = (
@@ -36,6 +37,13 @@ export interface Overview {
     readonly status: string;
     readonly count: number;
   }>;
+  readonly clock: {
+    readonly medianMinutes: number | null;
+    readonly within: number;
+    readonly over: number;
+    readonly unknown: number;
+    readonly scope: string;
+  };
 }
 
 export const overview = (db: DatabaseImpl): Effect.Effect<Overview> =>
@@ -53,11 +61,13 @@ export const overview = (db: DatabaseImpl): Effect.Effect<Overview> =>
         [],
       )
       .pipe(Effect.orDie);
+    const clock = yield* clockSummary(db);
     return {
       users,
       authors,
       sessions,
       pendingReviews,
+      clock,
       listingsByStatus: rows.map((row) => ({
         status: String(row.status),
         count: Number(row.count),
@@ -96,7 +106,7 @@ const recordAudit = (
     )
     .pipe(Effect.orDie);
 
-const notifyOwner = (
+export const notifyOwner = (
   db: DatabaseImpl,
   env: Env,
   ownerId: string,
@@ -127,18 +137,22 @@ const notifyOwner = (
 const loadOwner = (
   db: DatabaseImpl,
   listingId: string,
-): Effect.Effect<{ ownerId: string; name: string }, ListingNotFound> =>
+): Effect.Effect<{ ownerId: string; name: string; priceMinor: number }, ListingNotFound> =>
   Effect.gen(function* () {
     const listing = yield* db
       .first(
-        "SELECT owner_id AS ownerId, name AS name FROM agent_listings WHERE id = ?",
+        "SELECT owner_id AS ownerId, name AS name, price_minor AS priceMinor FROM agent_listings WHERE id = ?",
         [listingId],
       )
       .pipe(Effect.orDie);
     if (listing === null) {
       return yield* Effect.fail(new ListingNotFound({}));
     }
-    return { ownerId: String(listing.ownerId), name: String(listing.name) };
+    return {
+      ownerId: String(listing.ownerId),
+      name: String(listing.name),
+      priceMinor: Number(listing.priceMinor),
+    };
   });
 
 export const approveListing = (
@@ -150,22 +164,71 @@ export const approveListing = (
   Effect.gen(function* () {
     const listing = yield* loadOwner(db, listingId);
     const now = new Date().toISOString();
+    const pending = yield* db
+      .first(
+        "SELECT version AS version FROM listing_versions WHERE listing_id = ? AND status = 'in_review' ORDER BY version DESC LIMIT 1",
+        [listingId],
+      )
+      .pipe(Effect.orDie);
     const updated = yield* db
       .first(
-        "UPDATE agent_listings SET status = 'published', updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
-        [now, listingId],
+        "UPDATE agent_listings SET status = 'published', current_version = COALESCE(?, current_version), price_minor = COALESCE((SELECT price_minor FROM listing_versions WHERE listing_id = ? AND version = COALESCE(?, current_version)), price_minor), updated_at = ? WHERE id = ? AND status = 'in_review' RETURNING id AS id",
+        [
+          pending === null ? null : Number(pending.version),
+          listingId,
+          pending === null ? null : Number(pending.version),
+          now,
+          listingId,
+        ],
       )
       .pipe(Effect.orDie);
     if (updated === null) {
       return yield* Effect.fail(new ListingConflict({ reason: "not_in_review" }));
     }
+    const corridor = yield* db
+      .first(
+        "SELECT psp AS psp FROM payout_accounts WHERE author_id = ? AND status = 'active' LIMIT 1",
+        [listing.ownerId],
+      )
+      .pipe(Effect.orDie);
+    const international = corridor !== null && String(corridor.psp) === "flutterwave";
+    if (international) {
+      const blocked = listingPriceBlocked({
+        priceMinor: listing.priceMinor,
+        international: true,
+      });
+      if (blocked.length > 0) {
+        return yield* Effect.fail(
+          new ListingConflict({ reason: `corridor_blocked:${blocked[0]}` }),
+        );
+      }
+    }
     yield* db
       .run(
-        "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
-        [actorEmail, now, listingId, listingId],
+        "UPDATE agent_listings SET author_display = CASE WHEN owner_id = 'system' THEN 'klawva' ELSE COALESCE(NULLIF((SELECT display_name FROM author_profiles WHERE user_id = agent_listings.owner_id), ''), 'author') END WHERE id = ?",
+        [listingId],
+      )
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE listing_versions SET status = 'superseded', superseded_at = ? WHERE listing_id = ? AND status = 'published'",
+        [now, listingId],
+      )
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE listing_versions SET status = 'published', published_at = ?, reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
+        [now, actorEmail, now, listingId, listingId],
       )
       .pipe(Effect.orDie);
     yield* recordAudit(db, actorEmail, "listing.approve", listingId, "{}");
+    const { recordStage } = yield* Effect.promise(() => import("../marketplace/clock.ts"));
+    yield* recordStage(db, {
+      listingId,
+      authorId: listing.ownerId,
+      stage: "reviewed",
+      at: new Date(),
+    });
     yield* notifyOwner(
       db,
       env,
@@ -197,8 +260,8 @@ export const rejectListing = (
     }
     yield* db
       .run(
-        "UPDATE listing_versions SET reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND version = (SELECT current_version FROM agent_listings WHERE id = ?)",
-        [actorEmail, now, listingId, listingId],
+        "UPDATE listing_versions SET status = 'rejected', reviewed_by = ?, reviewed_at = ? WHERE listing_id = ? AND status = 'in_review'",
+        [actorEmail, now, listingId],
       )
       .pipe(Effect.orDie);
     yield* recordAudit(
@@ -236,6 +299,66 @@ export const unpublishListing = (
     }
     yield* recordAudit(db, actorEmail, "listing.unpublish", listingId, "{}");
     return { status: "unpublished" };
+  });
+
+export const revokeListing = (
+  db: DatabaseImpl,
+  actorEmail: string,
+  listingId: string,
+  reason: string,
+): Effect.Effect<{ status: string; cancelled: number }, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    yield* loadOwner(db, listingId);
+    const now = new Date().toISOString();
+    const updated = yield* db
+      .first(
+        "UPDATE agent_listings SET status = 'unpublished', updated_at = ? WHERE id = ? AND status = 'published' RETURNING id AS id",
+        [now, listingId],
+      )
+      .pipe(Effect.orDie);
+    if (updated === null) {
+      return yield* Effect.fail(new ListingConflict({ reason: "not_published" }));
+    }
+    yield* db
+      .run(
+        "UPDATE session_tasks SET cancel_requested_at = ?, updated_at = ? WHERE listing_id = ? AND state IN ('dispatched','working') AND cancel_requested_at IS NULL",
+        [now, now, listingId],
+      )
+      .pipe(Effect.orDie);
+    const cancelled = yield* db
+      .first(
+        "SELECT COUNT(*) AS count FROM session_tasks WHERE listing_id = ? AND cancel_requested_at >= ?",
+        [listingId, now],
+      )
+      .pipe(Effect.orDie);
+    yield* recordAudit(
+      db,
+      actorEmail,
+      "listing.revoke",
+      listingId,
+      JSON.stringify({ reason }),
+    );
+    return {
+      status: "unpublished",
+      cancelled: cancelled === null ? 0 : Number(cancelled.count ?? 0),
+    };
+  });
+
+export const clockSummary = (
+  db: DatabaseImpl,
+): Effect.Effect<{ medianMinutes: number | null; within: number; over: number; unknown: number; scope: string }> =>
+  Effect.gen(function* () {
+    const { onboardingClock, medianMinutes } = yield* Effect.promise(() =>
+      import("../marketplace/clock.ts"),
+    );
+    const rows = yield* onboardingClock(db, 50);
+    return {
+      medianMinutes: medianMinutes(rows.map((row) => row.minutes)),
+      within: rows.filter((row) => row.verdict === "within").length,
+      over: rows.filter((row) => row.verdict === "over").length,
+      unknown: rows.filter((row) => row.verdict === "unknown").length,
+      scope: "hire created to first report, third-party listings, shopper sessions excluded",
+    };
   });
 
 export const seed = (db: DatabaseImpl): Effect.Effect<number> =>

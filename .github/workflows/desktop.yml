@@ -67,6 +67,34 @@ jobs:
           path: klawva-desktop-windows.exe
           if-no-files-found: error
 
+  bundle-review:
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: install the workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: build the desktop frontend
+        run: pnpm --dir apps/desktop build
+        env:
+          VITE_GOOGLE_CLIENT_ID: 446318558489-f16fn18krt9vk0egftj6kbpcdlmkk2m7.apps.googleusercontent.com
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: build and install the bundle under review
+        run: |
+          pnpm --dir apps/desktop tauri build
+          echo "bundle sandbox: install the candidate, run a staging shift, attach logs"
+
   build-linux:
     runs-on: ubuntu-latest
     permissions:

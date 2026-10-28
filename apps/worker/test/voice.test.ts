@@ -41,6 +41,7 @@ const recordingCarrier = (): { carrier: Carrier; calls: Array<{ maxSeconds: numb
 
 const consentedRow = { consentSource: "booking_form", consentedAt: "2026-10-01", dnc: 0 };
 const base = {
+  sessionId: "s1",
   to: "+15551234567",
   market: "us" as const,
   agentName: "Ada",
@@ -256,5 +257,32 @@ describe("twiml relay", () => {
 
   it("lets the twiml route past the owner gate, since twilio verifies nothing but the url", () => {
     expect(signatureVerifiedApiPath("/api/voice/twiml")).toBe(true);
+  });
+});
+
+describe("dial binds its transport", () => {
+  it("binds the phone_out leg to the carrier ref after a successful dial", async () => {
+    const writes: Array<{ sql: string; params: ReadonlyArray<Param> }> = [];
+    const db: DatabaseImpl = {
+      all: () => Effect.succeed([]),
+      first: (sql) =>
+        String(sql).startsWith("SELECT consent_source")
+          ? Effect.succeed(consentedRow)
+          : String(sql).startsWith("SELECT state AS state FROM session_transports")
+            ? Effect.succeed({ state: "pending" })
+            : Effect.succeed(null),
+      run: (sql, params) => {
+        writes.push({ sql: String(sql), params: params ?? [] });
+        return Effect.void;
+      },
+      batch: () => Effect.void,
+      changed: () => Effect.succeed(0),
+    };
+    const { carrier } = recordingCarrier();
+    const handle = await Effect.runPromise(dialChecked(db, carrier, base));
+    expect(handle.carrierRef).toBe("ref1");
+    const bind = writes.find((w) => w.sql.includes("SET state = 'bound'"));
+    expect(bind).toBeDefined();
+    expect(bind!.params[1]).toBe("ref1");
   });
 });

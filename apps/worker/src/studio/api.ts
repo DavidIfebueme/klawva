@@ -11,6 +11,7 @@ import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { WorkerEnv } from "../env.ts";
+import { publishBundle } from "../desktop/bundles.ts";
 import {
   SandboxCapReached,
   createAuthorDraft,
@@ -19,6 +20,8 @@ import {
   listingsFor,
   sandbox,
   submit,
+  ownedListing,
+  reviseListing,
   updateAuthorDraft,
 } from "./studio.ts";
 
@@ -135,6 +138,30 @@ const submitListing = HttpApiEndpoint.post(
   { params: IdParam, success: SubmitResponse, error: allErrors },
 );
 
+const publishBundleInput = Schema.Struct({
+  bundleId: Schema.String,
+  version: Schema.String,
+  bytesBase64: Schema.String,
+  signature: Schema.String,
+  minSupported: Schema.optional(Schema.String),
+  capabilities: Schema.Record(Schema.String, Schema.String),
+});
+
+const publishBundleOutput = Schema.Struct({
+  version: Schema.String,
+  sha256: Schema.String,
+});
+
+const authorPublishBundle = HttpApiEndpoint.post(
+  "authorPublishBundle",
+  "/api/author/bundles",
+  {
+    payload: publishBundleInput,
+    success: publishBundleOutput,
+    error: allErrors,
+  },
+);
+
 class StudioGroup extends HttpApiGroup.make("Studio")
   .add(me)
   .add(listListings)
@@ -142,7 +169,8 @@ class StudioGroup extends HttpApiGroup.make("Studio")
   .add(getListing)
   .add(updateListing)
   .add(runSandbox)
-  .add(submitListing) {}
+  .add(submitListing)
+  .add(authorPublishBundle) {}
 
 export class StudioApi extends HttpApi.make("StudioApi").add(StudioGroup) {}
 
@@ -187,6 +215,35 @@ export const studioGroup = HttpApiBuilder.group(
           return { id };
         }),
       )
+      .handle("authorPublishBundle", ({ payload }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          const profile = yield* db
+            .first(
+              "SELECT public_key AS publicKey FROM author_profiles WHERE user_id = ?",
+              [identity.userId],
+            )
+            .pipe(Effect.orDie);
+          const bytes = Uint8Array.from(atob(payload.bytesBase64), (char) =>
+            char.charCodeAt(0),
+          );
+          const result = yield* publishBundle(db, env, {
+            bundleId: payload.bundleId,
+            authorId: identity.userId,
+            version: payload.version,
+            bytes,
+            signature: payload.signature,
+            capabilities: payload.capabilities,
+            minSupported: payload.minSupported,
+            authorPublicKey: profile === null ? null : String(profile.publicKey ?? ""),
+          }).pipe(
+            Effect.catch((cause) =>
+              Effect.fail(new ListingConflict({ reason: String(cause) })),
+            ),
+          );
+          return result;
+        }),
+      )
       .handle("authorGetListing", ({ params }) =>
         Effect.gen(function* () {
           const identity = yield* requireIdentity();
@@ -200,7 +257,15 @@ export const studioGroup = HttpApiBuilder.group(
       .handle("authorUpdateListing", ({ params, payload }) =>
         Effect.gen(function* () {
           const identity = yield* requireIdentity();
-          yield* updateAuthorDraft(db, identity.userId, params.id, payload);
+          const current = yield* ownedListing(db, identity.userId, params.id);
+          if (current === null) {
+            return yield* Effect.fail(new ListingNotFound({}));
+          }
+          if (String(current.status) === "published") {
+            yield* reviseListing(db, identity.userId, params.id, payload);
+          } else {
+            yield* updateAuthorDraft(db, identity.userId, params.id, payload);
+          }
           return { ok: true };
         }),
       )

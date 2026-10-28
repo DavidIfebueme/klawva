@@ -15,16 +15,19 @@ const fakeDb = (
   existing: ReadonlyArray<Row> = [],
 ): { db: DatabaseImpl; writes: Writes } => {
   const writes: Writes = [];
-  const visible = (sql: string): ReadonlyArray<Row> => {
+  const visible = (sql: string, params: ReadonlyArray<Param> = []): ReadonlyArray<Row> => {
     let rows = existing;
     if (sql.includes("carrier_ref IS NULL")) {
       rows = rows.filter((row) => row.carrierRef === null || row.carrierRef === undefined);
     }
+    if (sql.includes("carrier_ref = ?")) {
+      rows = rows.filter((row) => row.carrierRef === params[2]);
+    }
     return rows;
   };
   const db: DatabaseImpl = {
-    all: (sql) => Effect.succeed(visible(String(sql))),
-    first: (sql) => Effect.succeed(visible(String(sql))[0] ?? null),
+    all: (sql, params) => Effect.succeed(visible(String(sql), params ?? [])),
+    first: (sql, params) => Effect.succeed(visible(String(sql), params ?? [])[0] ?? null),
     run: (sql, params) => {
       writes.push({ sql, params: params ?? [] });
       return Effect.void;
@@ -108,5 +111,27 @@ describe("bindTransport call legs", () => {
     const insert = writes.find((w) => w.sql.includes("INSERT INTO session_transports"));
     expect(insert).toBeDefined();
     expect(insert!.params[4]).toBe("exec-2");
+  });
+});
+
+describe("device connect binding", () => {
+  it("binds the desktop transport with the device as its carrier ref", async () => {
+    const { db, writes } = fakeDb([{ state: "pending" }]);
+    await Effect.runPromise(bindTransport(db, "s1", "desktop", "device", "d1"));
+    const bind = writes.find((w) => w.sql.includes("SET state = 'bound'"));
+    expect(bind).toBeDefined();
+    expect(bind!.params[0]).toBe("device");
+    expect(bind!.params[1]).toBe("d1");
+  });
+});
+
+describe("reconnect does not stack rows", () => {
+  it("a second connect with the same carrier ref updates the existing bound row", async () => {
+    const { db, writes } = fakeDb([
+      { state: "bound", carrierRef: "d1" },
+    ]);
+    await Effect.runPromise(bindTransport(db, "s1", "desktop", "device", "d1"));
+    expect(writes.some((w) => w.sql.includes("INSERT INTO session_transports"))).toBe(false);
+    expect(writes.some((w) => w.sql.includes("SET state = 'bound', updated_at"))).toBe(true);
   });
 });
