@@ -594,7 +594,17 @@ const rootGroup = HttpApiBuilder.group(
                   retentionDays: manifest.data.retentionDays,
                   leavesCountry: manifest.data.leavesCountry,
                 };
-          return { ...base, durations, lane, dataPolicy };
+          const { capabilitySentences } = yield* Effect.promise(() =>
+            import("./desktop/capability-sheet.ts"),
+          );
+          const sheet = capabilitySentences(manifest);
+          return {
+            ...base,
+            durations,
+            lane,
+            ...(dataPolicy === undefined ? {} : { dataPolicy }),
+            ...(sheet.sentences.length > 0 ? { capabilitySheet: sheet } : {}),
+          };
         }),
       )
       .handle("deleteMyData", ({ params, query }) =>
