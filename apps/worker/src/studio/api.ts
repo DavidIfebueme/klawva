@@ -11,6 +11,7 @@ import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { WorkerEnv } from "../env.ts";
+import { indexListing } from "../search/indexing.ts";
 import { publishBundle } from "../desktop/bundles.ts";
 import {
   SandboxCapReached,
@@ -263,6 +264,7 @@ export const studioGroup = HttpApiBuilder.group(
           }
           if (String(current.status) === "published") {
             yield* reviseListing(db, identity.userId, params.id, payload);
+            yield* indexListing(env, db, params.id).pipe(Effect.catch(() => Effect.void));
           } else {
             yield* updateAuthorDraft(db, identity.userId, params.id, payload);
           }

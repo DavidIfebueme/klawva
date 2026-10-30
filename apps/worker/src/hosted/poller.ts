@@ -4,6 +4,7 @@ import type { DatabaseImpl } from "../db/database.ts";
 import type { Manifest } from "../db/schema.ts";
 import { manifestOf } from "../db/schema.ts";
 import { safeFetch, safePost } from "../lib/safe-fetch.ts";
+import { removeFromSearch } from "../search/indexing.ts";
 import { appendEvent, shouldDisableListing } from "./events.ts";
 
 const PolledTaskRow = Schema.Struct({
@@ -171,6 +172,7 @@ const pollTask = (
             [nowIso, String(row.listingId)],
           )
           .pipe(Effect.orDie);
+        yield* removeFromSearch(db, String(row.listingId));
         yield* db
           .run(
             "UPDATE session_tasks SET state = 'cancelled', updated_at = ? WHERE id = ? AND state = 'working'",
