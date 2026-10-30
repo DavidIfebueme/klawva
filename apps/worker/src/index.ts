@@ -124,10 +124,10 @@ export default {
     if (url.pathname === "/api/listings" && url.searchParams.has("q")) {
       const { rateLimited } = await import("./lib/guard.ts");
       const address = request.headers.get("cf-connecting-ip") ?? "unknown";
-      const limited = await Effect.runPromise(
+      const allowed = await Effect.runPromise(
         rateLimited(env.PUBLIC_LIMITER, `search:${address}`, "allow"),
       );
-      if (limited) {
+      if (!allowed) {
         return new Response(JSON.stringify({ error: "rate_limited" }), {
           status: 429,
           headers: { "content-type": "application/json", "retry-after": "15" },
@@ -144,10 +144,10 @@ export default {
         ? auth.slice(7).trim()
         : "";
       const { rateLimited } = await import("./lib/guard.ts");
-      const limited = await Effect.runPromise(
+      const allowed = await Effect.runPromise(
         rateLimited(env.PUBLIC_LIMITER, `agent:${token.slice(0, 24)}`),
       );
-      if (limited) {
+      if (!allowed) {
         return new Response(JSON.stringify({ error: "rate_limited" }), {
           status: 429,
           headers: { "content-type": "application/json", "retry-after": "15" },
