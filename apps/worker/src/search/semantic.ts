@@ -10,7 +10,12 @@ export interface SemanticHit {
   readonly score: number;
 }
 
-const decodeVector = (encoded: string): Float32Array => {
+const base64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+const decodeVector = (encoded: string): Float32Array | null => {
+  if (!base64.test(encoded) || encoded.length % 4 !== 0) {
+    return null;
+  }
   const binary = atob(encoded);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
@@ -66,10 +71,8 @@ export const semanticHits = (
       if (encoded.length === 0) {
         continue;
       }
-      let stored: Float32Array;
-      try {
-        stored = decodeVector(encoded);
-      } catch {
+      const stored = decodeVector(encoded);
+      if (stored === null) {
         continue;
       }
       if (stored.length !== query.length) {

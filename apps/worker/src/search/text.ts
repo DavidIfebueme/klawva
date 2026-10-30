@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+
 const categoryVocabulary: Readonly<Record<string, string>> = {
   data: "data entry spreadsheets csv lists records clean up deduplicate export",
   research: "research sources report compare analysis look up find out",
@@ -30,22 +32,11 @@ const vocabularyWords = (text: string): ReadonlyArray<string> => {
   return extra;
 };
 
+const BriefFields = Schema.fromJsonString(Schema.Array(Schema.String));
+
 const briefLabels = (raw: string): ReadonlyArray<string> => {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((entry): entry is string => typeof entry === "string");
-    }
-    if (typeof parsed === "object" && parsed !== null) {
-      const record = parsed as Record<string, unknown>;
-      return Object.entries(record).flatMap(([key, value]) =>
-        typeof value === "string" ? [key, value] : [key],
-      );
-    }
-  } catch {
-    return [];
-  }
-  return [];
+  const decoded = Schema.decodeUnknownOption(BriefFields)(raw);
+  return decoded._tag === "Some" ? decoded.value : [];
 };
 
 export interface ListingTextInput {

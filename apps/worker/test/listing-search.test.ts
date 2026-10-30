@@ -34,7 +34,7 @@ const dbWith = (options: {
 }) => {
   const batches: Array<ReadonlyArray<{ sql: string; params?: ReadonlyArray<Param> }>> = [];
   const writes: Array<{ sql: string; params?: ReadonlyArray<Param> }> = [];
-  const db = {
+  const db: DatabaseImpl = {
     all: (sql: string) => {
       if (String(sql).includes("bm25")) {
         return Effect.succeed(options.lexical ?? []);
@@ -62,9 +62,18 @@ const dbWith = (options: {
       return Effect.void;
     },
     changed: () => Effect.succeed(0),
-  } as unknown as DatabaseImpl;
+  };
   return { db, batches, writes };
 };
+
+const partialDb = (over: Partial<DatabaseImpl>): DatabaseImpl => ({
+  all: () => Effect.succeed([]),
+  first: () => Effect.succeed(null),
+  run: () => Effect.void,
+  batch: () => Effect.void,
+  changed: () => Effect.succeed(0),
+  ...over,
+});
 
 const env = (over: Partial<Env> = {}): Env =>
   ({
@@ -94,7 +103,7 @@ describe("the lexical lane", () => {
   });
 
   it("needs enough of the words to count as a match", async () => {
-    const db = {
+    const db = partialDb({
       all: (_sql: string, params?: ReadonlyArray<Param>) => {
         const expression = String(params?.[0] ?? "");
         if (expression.includes("chase") || expression.includes("invoices")) {
@@ -105,7 +114,7 @@ describe("the lexical lane", () => {
         }
         return Effect.succeed([]);
       },
-    } as unknown as DatabaseImpl;
+    });
     const parsed = parseQuery("chase late invoices");
     const hits = await Effect.runPromise(lexicalHits(db, parsed!));
     expect(hits.map((hit) => hit.listingId)).toEqual(["both"]);
@@ -113,9 +122,12 @@ describe("the lexical lane", () => {
   });
 
   it("survives a missing table during a deploy window", async () => {
-    const db = {
-      all: () => Effect.fail(new Error("no such table")),
-    } as unknown as DatabaseImpl;
+    const db = partialDb({
+      all: () =>
+        Effect.fail(
+          new DatabaseError({ operation: "all", cause: new Error("no such table") }),
+        ),
+    });
     const parsed = parseQuery("invoices");
     const hits = await Effect.runPromise(lexicalHits(db, parsed!));
     expect(hits).toEqual([]);
