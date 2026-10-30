@@ -10,6 +10,7 @@ import { AuthError } from "../auth/tokens.ts";
 import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { Forbidden, ListingConflict, ListingNotFound } from "../errors.ts";
+import { reindexAll } from "../search/indexing.ts";
 import { approveListing, auditLog, overview, rejectListing, reviewQueue, revokeListing, seed, unpublishListing } from "./admin.ts";
 
 const IdParam = Schema.Struct({ id: Schema.String });
@@ -93,6 +94,19 @@ const adminSeed = HttpApiEndpoint.post("adminSeed", "/api/admin/seed", {
   error: allErrors,
 });
 
+const adminReindex = HttpApiEndpoint.post("adminReindex", "/api/admin/search/reindex", {
+  query: Schema.Struct({
+    cursor: Schema.optional(Schema.String),
+    limit: Schema.optional(Schema.Number),
+  }),
+  success: Schema.Struct({
+    listings: Schema.Number,
+    embedded: Schema.Number,
+    nextCursor: Schema.NullOr(Schema.String),
+  }),
+  error: allErrors,
+});
+
 const adminUnpublish = HttpApiEndpoint.post(
   "adminUnpublish",
   "/api/admin/listings/:id/unpublish",
@@ -121,6 +135,7 @@ class AdminGroup extends HttpApiGroup.make("Admin")
   .add(adminReject)
   .add(adminAudit)
   .add(adminSeed)
+  .add(adminReindex)
   .add(adminUnpublish)
   .add(adminRevoke) {}
 
@@ -185,6 +200,12 @@ export const adminGroup = HttpApiBuilder.group(
           yield* requireAdmin();
           const seeded = yield* seed(db);
           return { seeded };
+        }),
+      )
+      .handle("adminReindex", ({ query }) =>
+        Effect.gen(function* () {
+          yield* requireAdmin();
+          return yield* reindexAll(env, db, query).pipe(Effect.orDie);
         }),
       )
       .handle("adminUnpublish", ({ params }) =>
