@@ -168,6 +168,21 @@ describe("the semantic lane", () => {
     expect(hits.map((hit) => hit.listingId)).toEqual(["a"]);
   });
 
+  it("skips a vector whose decoded length is not a multiple of four", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ embedding: unit(0) }), { status: 200 })),
+    );
+    const { db } = dbWith({
+      embeddings: [
+        { listingId: "short", vector: btoa("\u0000\u0000\u0000") },
+        { listingId: "a", vector: encode(unit(0)) },
+      ],
+    });
+    const hits = await Effect.runPromise(semanticHits(env(), db, "chase invoices"));
+    expect(hits.map((hit) => hit.listingId)).toEqual(["a"]);
+  });
+
   it("returns nothing when no model is configured", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

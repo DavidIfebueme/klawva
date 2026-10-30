@@ -17,6 +17,9 @@ const decodeVector = (encoded: string): Float32Array | null => {
     return null;
   }
   const binary = atob(encoded);
+  if (binary.length % 4 !== 0) {
+    return null;
+  }
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
