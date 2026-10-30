@@ -42,11 +42,15 @@ const employeeDetail = Schema.Struct({
       leavesCountry: Schema.Boolean,
     }),
   ),
-  capabilitySheet: Schema.optional(
-    Schema.Struct({
-      sentences: Schema.Array(Schema.String),
-      privacyLine: Schema.String,
-    }),
+  capabilitySheet: Schema.optional(Schema.Array(Schema.String)),
+  consent: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        recipient: Schema.String,
+        leavesCountry: Schema.Boolean,
+        retentionDays: Schema.Number,
+      }),
+    ),
   ),
   durations: Schema.Array(durationOption),
 });

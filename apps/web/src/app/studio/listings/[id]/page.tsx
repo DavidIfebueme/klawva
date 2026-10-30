@@ -9,15 +9,30 @@ import {
 import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
   getStudioListing,
+  runStudioKit,
   runStudioSandbox,
   submitStudioListing,
   updateStudioListing,
+  uploadAuthorBundle,
+  type BundleInfo,
+  type DesktopCapabilities,
+  type KitRun,
 } from "@/lib/studio-api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Toast, type ToastState } from "@/components/ui/Toast";
-import { FlaskConical, Send, Save, ArrowLeft } from "lucide-react";
+import { ManifestSummary } from "@/components/studio/ManifestSummary";
+import {
+  ArrowLeft,
+  Check,
+  FlaskConical,
+  Save,
+  Send,
+  ShieldCheck,
+  Upload,
+  X,
+} from "lucide-react";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const session = requireSession();
@@ -48,6 +63,53 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
   return "warning";
 }
 
+const readFileBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Could not read that file."));
+        return;
+      }
+      const comma = reader.result.indexOf(",");
+      resolve(comma === -1 ? reader.result : reader.result.slice(comma + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+
+const capabilityRecord = (
+  capabilities: DesktopCapabilities | undefined,
+): Record<string, string> => {
+  if (capabilities === undefined) return {};
+  const record: Record<string, string> = {};
+  if (capabilities.screen !== undefined) record.screen = capabilities.screen;
+  if (capabilities.input !== undefined) record.input = capabilities.input.join(",");
+  if (capabilities.network !== undefined) record.network = capabilities.network.join(",");
+  if (capabilities.fs !== undefined) record.fs = capabilities.fs.join(",");
+  return record;
+};
+
+const blockedCopy = (reason: string | null | undefined): string => {
+  if (reason === null || reason === undefined || reason.length === 0) return "";
+  if (reason === "kit_not_green") {
+    return "Run the contract kit and get every step green before submitting.";
+  }
+  if (reason === "author_name_missing") {
+    return "Set your author name in the studio before submitting.";
+  }
+  if (reason === "bundle_missing") {
+    return "Upload a signed bundle for this version before submitting.";
+  }
+  if (reason.startsWith("manifest:")) {
+    return `Fix the manifest: ${reason.slice(9).split(",").join(", ")}`;
+  }
+  if (reason.startsWith("not_submittable:")) {
+    return `This listing is ${reason.split(":")[1] ?? "locked"}, so it cannot be submitted.`;
+  }
+  return reason;
+};
+
 export function Component() {
   const { session, detail } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
@@ -56,6 +118,19 @@ export function Component() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const [outcome, setOutcome] = useState<{ score: number; band: string } | null>(null);
+  const [kitRun, setKitRun] = useState<KitRun | null>(null);
+  const [kitBusy, setKitBusy] = useState(false);
+  const [bundleFile, setBundleFile] = useState<File | null>(null);
+  const [bundleVersion, setBundleVersion] = useState("");
+  const [bundleSignature, setBundleSignature] = useState("");
+  const [bundleBusy, setBundleBusy] = useState(false);
+  const [uploaded, setUploaded] = useState<BundleInfo | null>(null);
+
+  const lane = detail.lane ?? "authored";
+  const lastKit = kitRun ?? detail.kit ?? null;
+  const canSubmit = detail.canSubmit !== false;
+  const blockedReason = blockedCopy(detail.submitBlockedReason);
+  const bundle = uploaded ?? detail.bundle ?? null;
 
   const showToast = (kind: ToastState["kind"], message: string) => {
     setToast({ kind, message });
@@ -135,6 +210,60 @@ export function Component() {
     }
   };
 
+  const handleKit = async () => {
+    setKitBusy(true);
+    setError("");
+    try {
+      const result = await runStudioKit(session.token, detail.id);
+      setKitRun(result);
+      showToast(
+        result.ok ? "success" : "error",
+        result.ok
+          ? "Contract kit passed."
+          : "Contract kit failed. Fix the red steps.",
+      );
+      revalidator.revalidate();
+    } catch (err) {
+      if (handleActionAuthError(err)) return;
+      showToast("error", err instanceof Error ? err.message : "Contract kit failed");
+    } finally {
+      setKitBusy(false);
+    }
+  };
+
+  const handleBundle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const bundleId = detail.manifest?.desktop?.bundleId ?? "";
+    if (bundleFile === null) {
+      showToast("error", "Choose a bundle file first.");
+      return;
+    }
+    if (bundleId.length === 0) {
+      showToast("error", "Add a bundle id to the manifest first.");
+      return;
+    }
+    setBundleBusy(true);
+    setError("");
+    try {
+      const bytesBase64 = await readFileBase64(bundleFile);
+      const result = await uploadAuthorBundle(session.token, {
+        bundleId,
+        version: bundleVersion.trim(),
+        bytesBase64,
+        signature: bundleSignature.trim(),
+        capabilities: capabilityRecord(detail.manifest?.desktop?.capabilities),
+      });
+      setUploaded(result);
+      showToast("success", `Bundle ${result.version ?? ""} uploaded.`);
+      revalidator.revalidate();
+    } catch (err) {
+      if (handleActionAuthError(err)) return;
+      showToast("error", err instanceof Error ? err.message : "Bundle upload failed");
+    } finally {
+      setBundleBusy(false);
+    }
+  };
+
   const inputClass =
     "w-full h-11 bg-klawva-bg border border-klawva-border rounded px-4 text-sm text-klawva-text placeholder-klawva-dim focus:border-klawva-accent focus:outline-none transition-colors font-mono";
 
@@ -157,10 +286,15 @@ export function Component() {
             {detail.name}
           </h1>
         </div>
-        <Badge variant={statusVariant(detail.status)}>
-          {detail.status.replace("_", " ")}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={lane === "authored" ? "pending" : "active"}>{lane}</Badge>
+          <Badge variant={statusVariant(detail.status)}>
+            {detail.status.replace("_", " ")}
+          </Badge>
+        </div>
       </div>
+
+      <ManifestSummary lane={lane} manifest={detail.manifest} />
 
       {error && (
         <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
@@ -181,6 +315,141 @@ export function Component() {
           <p className="text-xs text-klawva-muted mt-1 font-mono">
             Band: {outcome.band}
           </p>
+        </Card>
+      )}
+
+      {lane === "hosted" && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-syne font-bold text-lg uppercase text-white">
+                Run contract kit
+              </h2>
+              <p className="font-mono text-klawva-dim text-xs mt-1">
+                {detail.kit?.ranAt
+                  ? `Last run ${new Date(detail.kit.ranAt).toLocaleString()}`
+                  : "Not run yet."}
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={handleKit}
+              loading={kitBusy}
+              disabled={kitBusy || busyAction !== null}
+            >
+              <ShieldCheck size={16} />
+              Run contract kit
+            </Button>
+          </div>
+          {lastKit === null || lastKit.steps.length === 0 ? (
+            <p className="font-mono text-sm text-klawva-muted">
+              Submit stays blocked until the kit is green.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {lastKit.steps.map((step) => (
+                <div
+                  key={step.step}
+                  className="flex flex-wrap items-baseline justify-between gap-2 border-b border-klawva-border/50 pb-2 last:border-0 font-mono text-xs"
+                >
+                  <span className="flex items-center gap-2 text-klawva-text">
+                    {step.ok ? (
+                      <Check size={14} className="text-klawva-accent" />
+                    ) : (
+                      <X size={14} className="text-klawva-orange" />
+                    )}
+                    {step.step}
+                  </span>
+                  <span
+                    className={
+                      step.ok ? "text-klawva-muted" : "text-klawva-orange"
+                    }
+                  >
+                    {step.detail}
+                  </span>
+                </div>
+              ))}
+              <p className="font-mono text-klawva-dim text-xs pt-1">
+                {lastKit === null
+                  ? ""
+                  : lastKit.ok
+                    ? "Every step passed. You can submit for review."
+                    : "Submit is blocked until every step passes."}
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {lane === "desktop" && (
+        <Card>
+          <h2 className="font-syne font-bold text-lg uppercase text-white mb-2">
+            Bundle
+          </h2>
+          <p className="font-mono text-klawva-orange text-xs mb-4">
+            Bundles are windows only.
+          </p>
+          <div className="flex flex-wrap gap-6 font-mono text-xs mb-5">
+            <span className="text-klawva-muted">
+              Version:{" "}
+              <span className="text-klawva-text">{bundle?.version ?? "none"}</span>
+            </span>
+            <span className="text-klawva-muted">
+              SHA256:{" "}
+              <span className="text-klawva-text break-all">
+                {bundle?.sha256 ?? "none"}
+              </span>
+            </span>
+          </div>
+          <form onSubmit={handleBundle} className="space-y-4">
+            <div>
+              <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
+                Bundle file (.zip)
+              </label>
+              <input
+                type="file"
+                className={`${inputClass} file:mr-4 file:rounded file:border-0 file:bg-klawva-elevated file:px-4 file:py-2 file:font-mono file:text-sm file:text-klawva-text`}
+                onChange={(e) => setBundleFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
+                  Version
+                </label>
+                <input
+                  className={inputClass}
+                  value={bundleVersion}
+                  onChange={(e) => setBundleVersion(e.target.value)}
+                  placeholder="1.0.0"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
+                Signature
+              </label>
+              <textarea
+                className="w-full min-h-[90px] bg-klawva-bg border border-klawva-border rounded p-4 text-sm text-klawva-text placeholder-klawva-dim focus:border-klawva-accent focus:outline-none transition-colors font-mono"
+                value={bundleSignature}
+                onChange={(e) => setBundleSignature(e.target.value)}
+                placeholder="Signature over the bundle digest"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="secondary"
+              size="md"
+              loading={bundleBusy}
+              disabled={
+                bundleBusy || bundleFile === null || bundleVersion.trim().length === 0
+              }
+            >
+              <Upload size={16} />
+              Upload bundle
+            </Button>
+          </form>
         </Card>
       )}
 
@@ -302,12 +571,19 @@ export function Component() {
               size="md"
               onClick={handleSubmit}
               loading={busyAction === "submit"}
-              disabled={detail.status === "published" || busyAction !== null}
+              disabled={
+                detail.status === "published" || busyAction !== null || !canSubmit
+              }
             >
               <Send size={16} />
               Submit for Review
             </Button>
           </div>
+          {!canSubmit && (
+            <p className="font-mono text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3">
+              {blockedReason}
+            </p>
+          )}
         </div>
       </Card>
 

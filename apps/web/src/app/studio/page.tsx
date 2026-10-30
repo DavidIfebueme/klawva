@@ -1,14 +1,25 @@
 import React, { useState } from "react";
 import { useLoaderData, useNavigate } from "react-router-dom";
-import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
+import {
+  requireSession,
+  rethrowAuth,
+  handleActionAuthError,
+  skipUnavailable,
+} from "@/lib/studio-loader";
 import {
   createStudioListing,
+  getAuthorEarnings,
+  getAuthorLimits,
+  getAuthorPayout,
   getStudioListings,
   getStudioMe,
 } from "@/lib/studio-api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { LaneFields } from "@/components/studio/LaneFields";
+import { AuthorMoney } from "@/components/studio/AuthorMoney";
+import { emptyLaneDraft, lanePayload, type LaneDraft } from "@/components/studio/lane-draft";
 import Link from "@/components/ui/AppLink";
 import { Plus, ArrowRight } from "lucide-react";
 
@@ -17,11 +28,14 @@ const maxPriceMinor = 2500000;
 
 export const loader = async () => {
   const session = requireSession();
-  const [me, listings] = await Promise.all([
+  const [me, listings, limits, payout, earnings] = await Promise.all([
     getStudioMe(session.token),
     getStudioListings(session.token),
+    skipUnavailable(getAuthorLimits(session.token)),
+    skipUnavailable(getAuthorPayout(session.token)),
+    skipUnavailable(getAuthorEarnings(session.token)),
   ]).catch(rethrowAuth);
-  return { session, me, listings };
+  return { session, me, listings, limits, payout, earnings };
 };
 
 function statusVariant(status: string): "active" | "pending" | "warning" {
@@ -31,7 +45,7 @@ function statusVariant(status: string): "active" | "pending" | "warning" {
 }
 
 export function Component() {
-  const { session, listings } = useLoaderData<typeof loader>();
+  const { session, me, listings, limits, payout, earnings } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
@@ -45,6 +59,12 @@ export function Component() {
   const [budgetMinor, setBudgetMinor] = useState("3000");
   const [briefFields, setBriefFields] = useState("task");
   const [soul, setSoul] = useState("");
+  const [laneDraft, setLaneDraft] = useState<LaneDraft>(emptyLaneDraft);
+
+  const atCap = limits !== null && limits.used >= limits.cap;
+
+  const patchLane = (patch: Partial<LaneDraft>) =>
+    setLaneDraft((prev) => ({ ...prev, ...patch }));
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +72,10 @@ export function Component() {
     const priceMinor = Math.round(Number(priceNaira) * 100);
     if (!Number.isFinite(priceMinor) || priceMinor < minPriceMinor || priceMinor > maxPriceMinor) {
       setError(`Price must be between ₦${minPriceMinor / 100} and ₦${maxPriceMinor / 100}`);
+      return;
+    }
+    if (atCap) {
+      setError("You have used every listing in your tier.");
       return;
     }
     setBusy(true);
@@ -68,6 +92,7 @@ export function Component() {
           .map((value) => value.trim())
           .filter((value) => value.length > 0),
         soul,
+        ...lanePayload(laneDraft),
       });
       navigate(`/studio/listings/${created.id}`);
     } catch (err) {
@@ -91,10 +116,18 @@ export function Component() {
             Your Agents
           </h1>
         </div>
-        <Button variant="primary" size="md" onClick={() => setShowForm((v) => !v)}>
-          <Plus size={16} />
-          New Listing
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button variant="primary" size="md" onClick={() => setShowForm((v) => !v)}>
+            <Plus size={16} />
+            New Listing
+          </Button>
+          {limits && (
+            <span className="font-mono text-xs text-klawva-muted">
+              Tier {limits.tier} · {Math.max(limits.cap - limits.used, 0)} of{" "}
+              {limits.cap} listings left
+            </span>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -103,12 +136,21 @@ export function Component() {
         </p>
       )}
 
+      <AuthorMoney
+        token={session.token}
+        displayName={me.displayName ?? ""}
+        limits={limits}
+        payout={payout}
+        earnings={earnings}
+      />
+
       {showForm && (
         <Card>
           <h2 className="font-syne font-bold text-lg uppercase text-white mb-6">
             Create Listing
           </h2>
           <form onSubmit={handleCreate} className="space-y-5">
+            <LaneFields value={laneDraft} onChange={patchLane} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">
@@ -213,8 +255,14 @@ export function Component() {
                 placeholder="You are a focused operations assistant..."
               />
             </div>
-            <div className="flex gap-3">
-              <Button type="submit" variant="primary" size="md" loading={busy}>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                loading={busy}
+                disabled={atCap}
+              >
                 Create Draft
               </Button>
               <Button
@@ -225,6 +273,12 @@ export function Component() {
               >
                 Cancel
               </Button>
+              {atCap && (
+                <span className="font-mono text-xs text-klawva-orange">
+                  Tier {limits?.tier} is full. {limits?.used} of {limits?.cap}{" "}
+                  listings used.
+                </span>
+              )}
             </div>
           </form>
         </Card>

@@ -30,3 +30,11 @@ export const handleActionAuthError = (error: unknown): boolean => {
   }
   return false;
 };
+
+export const skipUnavailable = <T,>(promise: Promise<T>): Promise<T | null> =>
+  promise.catch((error: unknown) => {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      rethrowAuth(error);
+    }
+    return null;
+  });

@@ -208,7 +208,7 @@ export function Component() {
                     {employee.authorDisplay === "klawva" ? (
                       <Badge variant="active">By Klawva</Badge>
                     ) : (
-                      <Badge variant="pending">By author</Badge>
+                      <Badge variant="pending">By {employee.authorDisplay}</Badge>
                     )}
                   </div>
                   <div className="font-syne font-bold text-xl text-klawva-text mb-2">

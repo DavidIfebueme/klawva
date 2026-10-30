@@ -437,8 +437,16 @@ export function Component() {
               )}
 
               <p className="font-mono text-klawva-dim text-[11px] leading-relaxed">
-                {employee.lane !== undefined && employee.lane !== "authored"
-                  ? `Your brief goes to the employee's author to do the shift. Reports and their evidence are kept for ${employee.dataPolicy?.retentionDays ?? 90} days.`
+                {employee.consent !== undefined && employee.consent !== null
+                  ? `Your brief goes to ${
+                      employee.consent.recipient === "author"
+                        ? "the author"
+                        : employee.consent.recipient
+                    }. ${
+                      employee.consent.leavesCountry
+                        ? "That data leaves the country."
+                        : "That data stays in the country."
+                    } It is kept for ${employee.consent.retentionDays} days.`
                   : "Reports and their evidence are kept for 90 days."}{" "}
                 Do not put passwords or card numbers in a brief.
               </p>
