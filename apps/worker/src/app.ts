@@ -46,6 +46,8 @@ import { AccountApi, accountGroup } from "./account/api.ts";
 import { DevicesApi, devicesGroup } from "./auth/devices-api.ts";
 import { VoiceApi, voiceGroup } from "./voice/api.ts";
 import { publicListingQuery } from "./listings/catalog.ts";
+import { parseQuery } from "./search/query.ts";
+import { searchCatalog } from "./search/search.ts";
 import { ownsSession, sessionTokenMatches } from "./account/account.ts";
 
 const ReportStats = Schema.Array(
@@ -80,6 +82,8 @@ const ListingRow = Schema.Struct({
   authorDisplay: Schema.String,
   avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
+  match: Schema.optionalKey(Schema.Number),
+  why: Schema.optionalKey(Schema.String),
 });
 
 const PublicListingBase = Schema.Struct({
@@ -223,7 +227,10 @@ const telegramWebhook = HttpApiEndpoint.post(
 const listListingsEndpoint = HttpApiEndpoint.get(
   "listListings",
   "/api/listings",
-  { success: Schema.Array(ListingRow) },
+  {
+    query: Schema.Struct({ q: Schema.optional(Schema.String) }),
+    success: Schema.Array(ListingRow),
+  },
 );
 
 const listingDetailBySlugEndpoint = HttpApiEndpoint.get(
@@ -561,14 +568,24 @@ const rootGroup = HttpApiBuilder.group(
           };
         }),
       )
-      .handle("listListings", () =>
+      .handle("listListings", ({ query: params }) =>
         Effect.gen(function* () {
           const rows = yield* db
             .all(
               publicListingQuery,
             )
             .pipe(Effect.orDie);
-          return rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
+          const decoded = rows.map((row) => Schema.decodeUnknownSync(ListingRow)(row));
+          const query = params.q ?? "";
+          if (parseQuery(query) === null) {
+            return decoded;
+          }
+          const ranked = yield* searchCatalog(env, db, decoded, query);
+          const byId = new Map(decoded.map((row) => [row.id, row]));
+          return ranked.flatMap((entry) => {
+            const row = byId.get(entry.id);
+            return row === undefined ? [] : [{ ...row, match: entry.match, why: entry.why }];
+          });
         }),
       )
       .handle("listingDetailBySlug", ({ params }) =>

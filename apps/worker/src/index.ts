@@ -116,6 +116,24 @@ export default {
     ) {
       return ownerBlockedResponse();
     }
+    if (url.pathname === "/api/admin/search/reindex" && request.method === "POST") {
+      const { reindexAll } = await import("./search/indexing.ts");
+      const result = await Effect.runPromise(reindexAll(env, makeDatabase(env.DB)));
+      return Response.json(result);
+    }
+    if (url.pathname === "/api/listings" && url.searchParams.has("q")) {
+      const { rateLimited } = await import("./lib/guard.ts");
+      const address = request.headers.get("cf-connecting-ip") ?? "unknown";
+      const limited = await Effect.runPromise(
+        rateLimited(env.PUBLIC_LIMITER, `search:${address}`, "allow"),
+      );
+      if (limited) {
+        return new Response(JSON.stringify({ error: "rate_limited" }), {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "15" },
+        });
+      }
+    }
     if (url.pathname.startsWith("/api/agent/")) {
       const { claimTask, readTask, submitEvents, submitReport } = await import(
         "./hosted/api.ts"
