@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import type { DatabaseImpl, Row } from "../db/database.ts";
+import type { DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
 import { embedConfigFrom, embedText } from "./embed.ts";
 
