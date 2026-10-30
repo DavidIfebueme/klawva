@@ -114,7 +114,11 @@ export const embedText = (
       return decoded.embedding;
     },
     catch: (cause) => {
-      noteFailure(Date.now());
-      return cause instanceof EmbedError ? cause : new EmbedError({ reason: String(cause) });
+      const error =
+        cause instanceof EmbedError ? cause : new EmbedError({ reason: String(cause) });
+      if (error.reason !== "breaker_open") {
+        noteFailure(Date.now());
+      }
+      return error;
     },
   });
