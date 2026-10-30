@@ -153,6 +153,21 @@ describe("the semantic lane", () => {
     expect(hits[1]?.score).toBeCloseTo(0, 5);
   });
 
+  it("skips a stored vector that is not base64", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ embedding: unit(0) }), { status: 200 })),
+    );
+    const { db } = dbWith({
+      embeddings: [
+        { listingId: "broken", vector: "not-base64!!" },
+        { listingId: "a", vector: encode(unit(0)) },
+      ],
+    });
+    const hits = await Effect.runPromise(semanticHits(env(), db, "chase invoices"));
+    expect(hits.map((hit) => hit.listingId)).toEqual(["a"]);
+  });
+
   it("returns nothing when no model is configured", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
