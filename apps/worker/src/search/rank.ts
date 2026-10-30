@@ -3,7 +3,6 @@ import type { SemanticHit } from "./semantic.ts";
 
 const LEXICAL_WEIGHT = 0.45;
 const SEMANTIC_WEIGHT = 0.55;
-const RATING_WEIGHT = 0.05;
 const SEMANTIC_FLOOR = 0.2;
 const EXACT_PHRASE_SCORE = 1.5;
 const MIN_PHRASE_CHARS = 3;
@@ -34,7 +33,9 @@ const normalise = (
 ): ReadonlyMap<string, number> => {
   const scores = new Map<string, number>();
   for (const hit of hits) {
-    scores.set(hit.listingId, hit.score);
+    if (Number.isFinite(hit.score)) {
+      scores.set(hit.listingId, hit.score);
+    }
   }
   if (scores.size === 0) {
     return scores;
@@ -86,9 +87,6 @@ export const rankListings = (input: RankInput): ReadonlyArray<Ranked> => {
     } else {
       score = (lex ?? 0) * LEXICAL_WEIGHT + (sem ?? 0) * SEMANTIC_WEIGHT;
     }
-    if (row.avgRating !== null && Number.isFinite(row.avgRating)) {
-      score += RATING_WEIGHT * (row.avgRating / 5);
-    }
     const why = exact
       ? `the name or tagline says "${input.phrase}"`
       : lex !== undefined && sem !== undefined
@@ -98,6 +96,17 @@ export const rankListings = (input: RankInput): ReadonlyArray<Ranked> => {
           : "close in meaning";
     ranked.push({ id: row.id, match: Math.round(score * 1000) / 1000, why });
   }
-  ranked.sort((left, right) => right.match - left.match || left.id.localeCompare(right.id));
+  const rating = new Map(
+    input.rows.map((row) => [
+      row.id,
+      row.avgRating !== null && Number.isFinite(row.avgRating) ? row.avgRating : -1,
+    ]),
+  );
+  ranked.sort(
+    (left, right) =>
+      right.match - left.match ||
+      (rating.get(right.id) ?? -1) - (rating.get(left.id) ?? -1) ||
+      left.id.localeCompare(right.id),
+  );
   return ranked.slice(0, RESULT_LIMIT);
 };

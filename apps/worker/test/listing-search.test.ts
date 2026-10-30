@@ -167,8 +167,8 @@ describe("searching the catalogue", () => {
     );
     const { db } = dbWith({
       lexical: [
-        { listingId: "a", rank: -2 },
-        { listingId: "d", rank: -1 },
+        { listingId: "a", score: 2 },
+        { listingId: "d", score: 1 },
       ],
       embeddings: [
         { listingId: "b", vector: encode(unit(0)) },

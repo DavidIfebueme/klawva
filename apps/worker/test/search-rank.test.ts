@@ -63,6 +63,43 @@ describe("ranking results", () => {
     expect(ranked.map((entry) => entry.id)).toEqual(["b", "a"]);
   });
 
+  it("uses a rating only to order equal matches", () => {
+    const equal = rankListings({
+      rows,
+      lexical: [
+        { listingId: "c", score: 5 },
+        { listingId: "a", score: 5 },
+      ],
+      semantic: [],
+      phrase: "ledger",
+    });
+    expect(equal.map((entry) => entry.id)).toEqual(["c", "a"]);
+
+    const better = rankListings({
+      rows,
+      lexical: [
+        { listingId: "c", score: 2 },
+        { listingId: "b", score: 1 },
+      ],
+      semantic: [],
+      phrase: "ledger",
+    });
+    expect(better.map((entry) => entry.id)).toEqual(["c", "b"]);
+  });
+
+  it("drops a hit whose score is not a number", () => {
+    const ranked = rankListings({
+      rows,
+      lexical: [
+        { listingId: "a", score: Number.NaN },
+        { listingId: "c", score: 1 },
+      ],
+      semantic: [],
+      phrase: "ledger",
+    });
+    expect(ranked.map((entry) => entry.id)).toEqual(["c"]);
+  });
+
   it("is deterministic on a tie", () => {
     const unrated = rows.map((row) => ({ ...row, avgRating: null }));
     const tied = rankListings({
