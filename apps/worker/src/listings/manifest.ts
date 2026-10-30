@@ -1,4 +1,10 @@
-import type { Manifest } from "../db/schema.ts";
+import type {
+  HostedRuntime,
+  LaunchMarket,
+  LimitsManifest,
+  Manifest,
+  RuntimeManifest,
+} from "../db/schema.ts";
 
 export const PLATFORM_LIMITS = {
   maxWallClockSeconds: 86_400,
@@ -201,4 +207,168 @@ export const effectiveLimits = (manifest: Manifest) => {
       PLATFORM_LIMITS.minIdleSeconds,
     ),
   };
+};
+
+export type Lane = "authored" | "hosted" | "desktop";
+
+export interface HostedDraft {
+  readonly cardUrl: string;
+  readonly mode: "push" | "pull";
+  readonly authType?: string;
+  readonly authHeader?: string;
+}
+
+export type DesktopPlatform = "windows" | "linux" | "mac";
+
+export interface DesktopDraft {
+  readonly bundleId: string;
+  readonly entrypoint: string;
+  readonly dataDirs: ReadonlyArray<string>;
+  readonly capabilities: {
+    readonly screen?: "read";
+    readonly input?: ReadonlyArray<string>;
+    readonly network?: ReadonlyArray<string>;
+    readonly fs?: ReadonlyArray<string>;
+  };
+  readonly platforms?: ReadonlyArray<DesktopPlatform>;
+}
+
+export interface DataDraft {
+  readonly retentionDays: number;
+  readonly leavesCountry: boolean;
+  readonly dpia: boolean;
+}
+
+export interface LimitsDraft {
+  readonly maxWallClockSeconds?: number;
+  readonly maxEvents?: number;
+  readonly maxEventBytes?: number;
+  readonly maxArtifactBytes?: number;
+  readonly minIdleSeconds?: number;
+}
+
+export interface LaneDraft {
+  readonly soul: string;
+  readonly lane: Lane;
+  readonly launchMarkets?: ReadonlyArray<LaunchMarket>;
+  readonly hosted?: HostedDraft;
+  readonly desktop?: DesktopDraft;
+  readonly data?: DataDraft;
+  readonly limits?: LimitsDraft;
+}
+
+export type LaneDraftVerdict =
+  | { readonly ok: true; readonly manifest: Manifest }
+  | { readonly ok: false; readonly reasons: ReadonlyArray<string> };
+
+const limitsFor = (input: LimitsDraft | undefined): LimitsManifest => ({
+  maxWallClockSeconds:
+    input?.maxWallClockSeconds ?? PLATFORM_LIMITS.maxWallClockSeconds,
+  maxEvents: input?.maxEvents ?? PLATFORM_LIMITS.maxEvents,
+  maxEventBytes: input?.maxEventBytes ?? PLATFORM_LIMITS.maxEventBytes,
+  maxArtifactBytes: input?.maxArtifactBytes ?? PLATFORM_LIMITS.maxArtifactBytes,
+  minIdleSeconds: input?.minIdleSeconds ?? PLATFORM_LIMITS.minIdleSeconds,
+});
+
+const hostedRuntime = (input: HostedDraft | undefined): HostedRuntime | undefined =>
+  input === undefined
+    ? undefined
+    : {
+        cardUrl: input.cardUrl,
+        mode: input.mode,
+        ...(input.authType === undefined || input.authHeader === undefined
+          ? {}
+          : { auth: { type: input.authType, header: input.authHeader } }),
+      };
+
+const runtimeFor = (draft: LaneDraft): RuntimeManifest => {
+  if (draft.lane === "hosted") {
+    return {
+      kind: "hosted",
+      billing: "author-metered",
+      transport: ["web"],
+      hosted: hostedRuntime(draft.hosted),
+    };
+  }
+  if (draft.lane === "desktop") {
+    const desktop = draft.desktop;
+    return {
+      kind: "desktop",
+      billing: "author-metered",
+      transport: ["desktop"],
+      desktop:
+        desktop === undefined
+          ? undefined
+          : {
+              bundleId: desktop.bundleId,
+              entrypoint: desktop.entrypoint,
+              dataDirs: [...desktop.dataDirs],
+              platforms: desktop.platforms === undefined ? ["windows"] : [...desktop.platforms],
+              network: desktop.capabilities.network,
+              capabilities: {
+                ...(desktop.capabilities.screen === undefined
+                  ? {}
+                  : { screen: desktop.capabilities.screen }),
+                ...(desktop.capabilities.input === undefined
+                  ? {}
+                  : { input: [...desktop.capabilities.input] }),
+                ...(desktop.capabilities.network === undefined
+                  ? {}
+                  : { network: [...desktop.capabilities.network] }),
+                ...(desktop.capabilities.fs === undefined
+                  ? {}
+                  : { fs: [...desktop.capabilities.fs] }),
+              },
+            },
+    };
+  }
+  return { kind: "authored", billing: "platform-metered", transport: ["web"] };
+};
+
+const laneBlockReasons = (draft: LaneDraft): ReadonlyArray<string> => {
+  const reasons: string[] = [];
+  if (draft.lane === "authored") {
+    if (draft.hosted !== undefined) {
+      reasons.push("authored_with_hosted_block");
+    }
+    if (draft.desktop !== undefined) {
+      reasons.push("authored_with_desktop_block");
+    }
+  }
+  if (draft.lane === "hosted" && draft.desktop !== undefined) {
+    reasons.push("hosted_with_desktop_block");
+  }
+  if (draft.lane === "desktop" && draft.hosted !== undefined) {
+    reasons.push("desktop_with_hosted_block");
+  }
+  return reasons;
+};
+
+export const manifestForLane = (draft: LaneDraft): LaneDraftVerdict => {
+  const blocked = laneBlockReasons(draft);
+  if (blocked.length > 0) {
+    return { ok: false, reasons: blocked };
+  }
+  const authored = draft.lane === "authored";
+  const manifest: Manifest = {
+    schema: CURRENT_MANIFEST_SCHEMA,
+    soul: draft.soul,
+    ...(draft.launchMarkets === undefined
+      ? {}
+      : { launchMarkets: [...draft.launchMarkets] }),
+    ...(authored ? {} : { runtime: runtimeFor(draft) }),
+    ...(authored && draft.limits === undefined
+      ? {}
+      : { limits: limitsFor(draft.limits) }),
+    ...(authored
+      ? {}
+      : {
+          report: { requireEvidence: true, minEvidence: 1 },
+          data: draft.data ?? { retentionDays: 30, leavesCountry: false, dpia: false },
+        }),
+  };
+  const verdict = validateManifest(manifest);
+  return verdict.ok
+    ? { ok: true, manifest }
+    : { ok: false, reasons: verdict.reasons };
 };

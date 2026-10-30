@@ -237,6 +237,10 @@ export const approveListing = (
       listing.ownerId,
       "Your Klawva employee is live",
       listingApprovedEmail(listing.name),
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => console.error("listing_approved_email_failed", error)),
+      ),
     );
     return { status: "published" };
   });

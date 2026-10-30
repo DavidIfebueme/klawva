@@ -15,7 +15,7 @@ export const sendEmail = (params: {
   readonly html: string;
   readonly replyToEmail?: string;
 }): Effect.Effect<void, EmailError> => {
-  if (params.apiKey.length === 0 || params.senderEmail.length === 0) {
+  if (!params.apiKey || !params.senderEmail) {
     return Effect.void;
   }
   return Effect.tryPromise({

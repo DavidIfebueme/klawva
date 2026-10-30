@@ -115,6 +115,14 @@ const PublicListingDetail = Schema.Struct({
       leavesCountry: Schema.Boolean,
     }),
   ),
+  capabilitySheet: Schema.Array(Schema.String),
+  consent: Schema.NullOr(
+    Schema.Struct({
+      recipient: Schema.String,
+      leavesCountry: Schema.Boolean,
+      retentionDays: Schema.Number,
+    }),
+  ),
   durations: Schema.Array(
     Schema.Struct({
       days: Schema.Number,
@@ -592,7 +600,7 @@ const rootGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const row = yield* db
             .first(
-              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.brief_fields AS briefFields, v.manifest AS manifest FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
+              "SELECT l.id AS id, l.slug AS slug, l.name AS name, l.tagline AS tagline, l.category AS category, l.price_minor AS priceMinor, v.budget_minor AS budgetMinor, l.current_version AS version, v.brief_fields AS briefFields, v.manifest AS manifest, COALESCE(l.author_display, CASE WHEN l.owner_id = 'system' THEN 'klawva' ELSE 'author' END) AS authorDisplay FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.slug = ? AND l.status = 'published'",
               [params.slug],
             )
             .pipe(Effect.orDie);
@@ -616,16 +624,24 @@ const rootGroup = HttpApiBuilder.group(
                   retentionDays: manifest.data.retentionDays,
                   leavesCountry: manifest.data.leavesCountry,
                 };
-          const { capabilitySentences } = yield* Effect.promise(() =>
-            import("./desktop/capability-sheet.ts"),
+          const { capabilitySheet } = yield* Effect.promise(() =>
+            import("./listings/capabilities.ts"),
           );
-          const sheet = capabilitySentences(manifest);
+          const consent =
+            lane === "hosted" || lane === "desktop"
+              ? {
+                  recipient: String(row.authorDisplay),
+                  leavesCountry: manifest.data?.leavesCountry ?? false,
+                  retentionDays: manifest.data?.retentionDays ?? 30,
+                }
+              : null;
           return {
             ...base,
             durations,
             lane,
             ...(dataPolicy === undefined ? {} : { dataPolicy }),
-            ...(sheet.sentences.length > 0 ? { capabilitySheet: sheet } : {}),
+            capabilitySheet: capabilitySheet(manifest),
+            consent,
           };
         }),
       )
