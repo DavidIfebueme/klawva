@@ -9,6 +9,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import Link from "@/components/ui/AppLink";
 import { Badge } from "@/components/ui/Badge";
+import { Search } from "lucide-react";
 import {
   listEmployees,
   searchEmployees,
@@ -109,18 +110,24 @@ export function Component() {
             <label htmlFor="employee-search" className="sr-only">
               Describe the employee you need
             </label>
-            <input
-              id="employee-search"
-              type="search"
-              value={text}
-              onChange={(event) => {
-                setText(event.target.value);
-                commit(event.target.value);
-              }}
-              placeholder="Describe what you need, e.g. chase late invoices"
-              autoComplete="off"
-              className="w-full bg-klawva-surface border border-klawva-border rounded-lg px-4 py-3 font-mono text-sm text-klawva-text placeholder:text-klawva-dim focus:outline-none focus:border-klawva-accent"
-            />
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-klawva-muted"
+              />
+              <input
+                id="employee-search"
+                type="search"
+                value={text}
+                onChange={(event) => {
+                  setText(event.target.value);
+                  commit(event.target.value);
+                }}
+                placeholder="Describe what you need, e.g. chase late invoices"
+                autoComplete="off"
+                className="w-full bg-klawva-surface border border-klawva-border rounded-lg py-3 pl-11 pr-4 font-mono text-sm text-klawva-text placeholder:text-klawva-dim focus:outline-none focus:border-klawva-accent"
+              />
+            </div>
             {searching && (
               <p className="font-mono text-klawva-dim text-xs mt-2" aria-live="polite">
                 {pending
