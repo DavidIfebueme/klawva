@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import type { DatabaseImpl } from "../db/database.ts";
+import type { DatabaseError, DatabaseImpl } from "../db/database.ts";
 import type { Env } from "../env.ts";
 import { embedConfigFrom, embedText } from "./embed.ts";
 import { listingText } from "./text.ts";
@@ -41,14 +41,13 @@ export const indexListing = (
   db: DatabaseImpl,
   listingId: string,
   at: Date = new Date(),
-): Effect.Effect<IndexResult> =>
+): Effect.Effect<IndexResult, DatabaseError> =>
   Effect.gen(function* () {
     const row = yield* db
       .first(
         "SELECT l.name AS name, l.tagline AS tagline, l.category AS category, COALESCE(v.brief_fields, '[]') AS briefFields, COALESCE(v.soul, '') AS soul FROM agent_listings l LEFT JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ? AND l.status = 'published'",
         [listingId],
-      )
-      .pipe(Effect.orDie);
+      );
     if (row === null) {
       yield* removeFromSearch(db, listingId);
       return { embedded: false };
@@ -81,8 +80,7 @@ export const indexListing = (
       .first(
         "SELECT text_hash AS textHash, model AS model FROM listing_embeddings WHERE listing_id = ?",
         [listingId],
-      )
-      .pipe(Effect.orDie);
+      );
     if (
       existing !== null &&
       String(existing.textHash) === hash &&
@@ -110,25 +108,39 @@ export const indexListing = (
           hash,
           at.toISOString(),
         ],
-      )
-      .pipe(Effect.orDie);
+      );
     return { embedded: true };
   });
+
+export interface ReindexOptions {
+  readonly cursor?: string;
+  readonly limit?: number;
+}
 
 export interface ReindexResult {
   readonly listings: number;
   readonly embedded: number;
+  readonly nextCursor: string | null;
 }
+
+const REINDEX_PAGE = 25;
+const REINDEX_MAX_PAGE = 100;
 
 export const reindexAll = (
   env: Env,
   db: DatabaseImpl,
+  options: ReindexOptions = {},
   at: Date = new Date(),
-): Effect.Effect<ReindexResult> =>
+): Effect.Effect<ReindexResult, DatabaseError> =>
   Effect.gen(function* () {
-    const rows = yield* db
-      .all("SELECT id AS id FROM agent_listings WHERE status = 'published'")
-      .pipe(Effect.orDie);
+    const limit = Math.min(
+      Math.max(Math.trunc(options.limit ?? REINDEX_PAGE), 1),
+      REINDEX_MAX_PAGE,
+    );
+    const rows = yield* db.all(
+      "SELECT id AS id FROM agent_listings WHERE status = 'published' AND id > ? ORDER BY id LIMIT ?",
+      [options.cursor ?? "", limit],
+    );
     let embedded = 0;
     for (const entry of rows) {
       const result = yield* indexListing(env, db, String(entry.id), at);
@@ -136,5 +148,10 @@ export const reindexAll = (
         embedded += 1;
       }
     }
-    return { listings: rows.length, embedded };
+    const last = rows[rows.length - 1];
+    return {
+      listings: rows.length,
+      embedded,
+      nextCursor: rows.length === limit && last !== undefined ? String(last.id) : null,
+    };
   });

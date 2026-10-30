@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
-import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
+import { DatabaseError, type DatabaseImpl, type Param, type Row } from "../src/db/database.ts";
 import type { Env } from "../src/env.ts";
 import { lexicalHits } from "../src/search/lexical.ts";
 import { parseQuery } from "../src/search/query.ts";
@@ -227,6 +228,34 @@ describe("indexing a listing", () => {
     expect(result.embedded).toBe(false);
     expect(batches.flat().every((statement) => statement.sql.startsWith("DELETE"))).toBe(true);
     expect(writes).toEqual([]);
+  });
+
+  it("keeps a store failure in the error channel", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ embedding: unit(3) }), { status: 200 })),
+    );
+    const { db } = dbWith({
+      listing: {
+        name: "Klawva Inbox",
+        tagline: "Answers your inbox.",
+        category: "data",
+        briefFields: "[]",
+        soul: "",
+      },
+    });
+    const broken: DatabaseImpl = {
+      ...db,
+      run: () =>
+        Effect.fail(
+          new DatabaseError({ operation: "run", cause: new Error("write failed") }),
+        ),
+    };
+    const exit = await Effect.runPromiseExit(indexListing(env(), broken, "a"));
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+    }
   });
 
   it("indexes the words even when the model is unavailable", async () => {
