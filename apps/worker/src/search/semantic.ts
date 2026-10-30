@@ -54,7 +54,7 @@ export const semanticHits = (
     }
     const evaluated = yield* embedText(config, phrase).pipe(
       Effect.map((embedding) => ({ ok: true as const, embedding })),
-      Effect.catch(() => Effect.succeed({ ok: false as const, embedding: [] as ReadonlyArray<number> })),
+      Effect.catch(() => Effect.succeed({ ok: false as const, embedding: [] })),
     );
     if (!evaluated.ok) {
       return [];
@@ -63,7 +63,7 @@ export const semanticHits = (
       .all("SELECT listing_id AS listingId, vector AS vector FROM listing_embeddings WHERE model = ?", [
         config.model,
       ])
-      .pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<Row>)));
+      .pipe(Effect.catch(() => Effect.succeed([])));
     const query = Float32Array.from(evaluated.embedding);
     const hits: Array<SemanticHit> = [];
     for (const row of rows) {

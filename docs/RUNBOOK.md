@@ -40,7 +40,9 @@ blended ranking, no second service.
 - the model is `amazon.titan-embed-text-v2:0` at 512 dimensions, normalized. the
   model name is stored per row, so a model change degrades the meaning lane to
   nothing instead of mixing two vector spaces. reindex after changing it.
-- the limiter key is `search:<cf-connecting-ip>` on `/api/listings?q=`.
+- the limiter key is `search:<client address>` on `/api/listings?q=`. the key is
+  the last `x-forwarded-for` hop, because browser traffic reaches the worker
+  through the Vercel rewrite and `cf-connecting-ip` would be the proxy.
 - scale ceiling: a query reads every published vector. that is fine into the
   hundreds. at roughly 500 listings, move the store to vectorize. the only file
   that changes is `src/search/semantic.ts`.

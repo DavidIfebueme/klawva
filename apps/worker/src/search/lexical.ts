@@ -31,7 +31,7 @@ const tokenHits = (
           score: Number(row.score),
         })),
       ),
-      Effect.catch(() => Effect.succeed([] as ReadonlyArray<TokenHit>)),
+      Effect.catch(() => Effect.succeed([])),
     );
 
 export const lexicalHits = (

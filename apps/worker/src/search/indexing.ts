@@ -91,7 +91,7 @@ export const indexListing = (
     const evaluated = yield* embedText(config, text.embedding, 5_000).pipe(
       Effect.map((embedding) => ({ ok: true as const, embedding })),
       Effect.catch(() =>
-        Effect.succeed({ ok: false as const, embedding: [] as ReadonlyArray<number> }),
+        Effect.succeed({ ok: false as const, embedding: [] }),
       ),
     );
     if (!evaluated.ok) {
