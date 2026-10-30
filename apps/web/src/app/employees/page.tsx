@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { useLoaderData } from "react-router-dom";
+import { useRef, useState } from "react";
+import {
+  useLoaderData,
+  useNavigation,
+  useSearchParams,
+  type LoaderFunctionArgs,
+} from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import Link from "@/components/ui/AppLink";
@@ -10,16 +15,10 @@ import {
   type EmployeeSummary,
 } from "@/lib/employees-api";
 
-export const loader = async () => ({ employees: await listEmployees() });
+const MIN_QUERY_CHARS = 2;
+const DEBOUNCE_MS = 250;
 
 type SortOrder = "featured" | "low" | "high";
-
-const queryFromLocation = (): string => {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return new URLSearchParams(window.location.search).get("q") ?? "";
-};
 
 const sortEmployees = (
   employees: ReadonlyArray<EmployeeSummary>,
@@ -33,72 +32,62 @@ const sortEmployees = (
     return aFeatured - bFeatured || a.name.localeCompare(b.name);
   });
 
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const query = (new URL(request.url).searchParams.get("q") ?? "").trim();
+  const searching = query.length >= MIN_QUERY_CHARS;
+  if (!searching) {
+    return { query, searching, failed: false, employees: await listEmployees() };
+  }
+  const employees = await searchEmployees(query).catch(() => null);
+  return {
+    query,
+    searching,
+    failed: employees === null,
+    employees: employees ?? [],
+  };
+};
+
 export function Component() {
-  const { employees } = useLoaderData<typeof loader>();
+  const data = useLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  const [params, setParams] = useSearchParams();
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<SortOrder>("featured");
-  const [query, setQuery] = useState(queryFromLocation);
-  const [results, setResults] = useState<ReadonlyArray<EmployeeSummary> | null>(null);
-  const [pending, setPending] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const sequence = useRef(0);
+  const [text, setText] = useState(data.query);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (trimmed.length >= 2) {
-        url.searchParams.set("q", trimmed);
-      } else {
-        url.searchParams.delete("q");
+  const typedQuery = text.trim();
+  const typing = typedQuery.length >= MIN_QUERY_CHARS;
+  const pending = navigation.state !== "idle";
+  const searching = data.searching || (pending && typing);
+
+  const commit = (value: string) => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+    }
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      if (window.location.pathname !== "/employees") {
+        return;
       }
-      window.history.replaceState(null, "", url);
-    }
-    if (trimmed.length < 2) {
-      sequence.current += 1;
-      setResults(null);
-      setPending(false);
-      setFailed(false);
-      return;
-    }
-    const ticket = sequence.current + 1;
-    sequence.current = ticket;
-    const controller = new AbortController();
-    setPending(true);
-    setFailed(false);
-    const timer = window.setTimeout(() => {
-      searchEmployees(trimmed, controller.signal)
-        .then((rows) => {
-          if (sequence.current !== ticket) {
-            return;
-          }
-          setResults(rows);
-          setPending(false);
-        })
-        .catch(() => {
-          if (sequence.current !== ticket) {
-            return;
-          }
-          setResults([]);
-          setFailed(true);
-          setPending(false);
-        });
-    }, 250);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [query]);
+      const trimmed = value.trim();
+      const next = new URLSearchParams(params);
+      if (trimmed.length >= MIN_QUERY_CHARS) {
+        next.set("q", trimmed);
+      } else {
+        next.delete("q");
+      }
+      setParams(next, { replace: true });
+    }, DEBOUNCE_MS);
+  };
 
-  const trimmed = query.trim();
-  const searching = trimmed.length >= 2 && results !== null;
-  const source: ReadonlyArray<EmployeeSummary> =
-    searching && results !== null ? results : employees;
-  const categories = Array.from(new Set(employees.map((employee) => employee.category))).sort();
-  const matched = source.filter(
+  const matched = data.employees.filter(
     (employee) => category === "all" || employee.category === category,
   );
-  const visible = searching ? matched : sortEmployees(matched, sort);
+  const visible = data.searching ? matched : sortEmployees(matched, sort);
+  const categories = Array.from(
+    new Set(data.employees.map((employee) => employee.category)),
+  ).sort();
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -123,8 +112,11 @@ export function Component() {
             <input
               id="employee-search"
               type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={text}
+              onChange={(event) => {
+                setText(event.target.value);
+                commit(event.target.value);
+              }}
               placeholder="Describe what you need, e.g. chase late invoices"
               autoComplete="off"
               className="w-full bg-klawva-surface border border-klawva-border rounded-lg px-4 py-3 font-mono text-sm text-klawva-text placeholder:text-klawva-dim focus:outline-none focus:border-klawva-accent"
@@ -133,7 +125,7 @@ export function Component() {
               <p className="font-mono text-klawva-dim text-xs mt-2" aria-live="polite">
                 {pending
                   ? "searching..."
-                  : `${visible.length} match${visible.length === 1 ? "" : "es"} for "${trimmed}"`}
+                  : `${visible.length} match${visible.length === 1 ? "" : "es"} for "${data.query}"`}
               </p>
             )}
           </div>
@@ -185,11 +177,13 @@ export function Component() {
           {visible.length === 0 ? (
             <div className="bg-klawva-surface border border-klawva-border rounded-lg p-16 text-center">
               <p className="font-mono text-klawva-muted">
-                {failed
-                  ? "Search is unavailable right now. Try again in a moment."
-                  : searching
-                    ? `No employee matches "${trimmed}". Try describing the job differently.`
-                    : "No employees in this category yet."}
+                {pending
+                  ? "searching..."
+                  : data.failed
+                    ? "Search is unavailable right now. Try again in a moment."
+                    : data.searching
+                      ? `No employee matches "${data.query}". Try describing the job differently.`
+                      : "No employees in this category yet."}
               </p>
             </div>
           ) : (
