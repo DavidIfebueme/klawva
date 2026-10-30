@@ -31,8 +31,10 @@ two lanes. d1 fts5 for words, titan embeddings stored in d1 for meaning. one
 blended ranking, no second service.
 
 - after the deploy that adds migration 0047, call `POST /api/admin/search/reindex`
-  once with the owner cookie. it fills `listing_fts` and `listing_embeddings` for
-  every published listing. until then, search only finds an exact name or tagline.
+  with an admin session token. one call indexes 25 published listings and returns
+  a `nextCursor`; repeat with `?cursor=<nextCursor>` until it is null. it fills
+  `listing_fts` and `listing_embeddings` for every published listing. until then,
+  search only finds an exact name or tagline.
 - approving a listing indexes it inline, so a new listing needs no manual step.
   unpublishing or revoking removes it from both stores.
 - a failed embedding never blocks publish or search. the words are indexed first,
