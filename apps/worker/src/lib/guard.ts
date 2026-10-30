@@ -8,13 +8,14 @@ export interface RateLimiter {
 export const rateLimited = (
   limiter: RateLimiter,
   key: string,
+  onError: "block" | "allow" = "allow",
 ): Effect.Effect<boolean> =>
   Effect.tryPromise({
     try: () => limiter.limit({ key }),
     catch: (cause) => new Error(String(cause)),
   }).pipe(
     Effect.map((result) => result.success),
-    Effect.catch(() => Effect.succeed(true)),
+    Effect.catch(() => Effect.succeed(onError === "allow")),
   );
 
 export const verifyTurnstile = (

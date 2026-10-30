@@ -15,6 +15,8 @@ const employeeSummary = Schema.Struct({
   authorDisplay: Schema.String,
   avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
+  match: Schema.optionalKey(Schema.Number),
+  why: Schema.optionalKey(Schema.String),
 });
 export type EmployeeSummary = typeof employeeSummary.Type;
 
@@ -72,6 +74,15 @@ async function send(path: string, init?: RequestInit): Promise<unknown> {
 export async function listEmployees(): Promise<ReadonlyArray<EmployeeSummary>> {
   return Schema.decodeUnknownSync(Schema.Array(employeeSummary))(
     await send("/api/listings"),
+  );
+}
+
+export async function searchEmployees(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ReadonlyArray<EmployeeSummary>> {
+  return Schema.decodeUnknownSync(Schema.Array(employeeSummary))(
+    await send(`/api/listings?q=${encodeURIComponent(query)}`, { signal }),
   );
 }
 

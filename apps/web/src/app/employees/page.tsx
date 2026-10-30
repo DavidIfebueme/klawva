@@ -1,32 +1,93 @@
-import { useState } from "react";
-import { useLoaderData } from "react-router-dom";
+import { useRef, useState } from "react";
+import {
+  useLoaderData,
+  useNavigation,
+  useSearchParams,
+  type LoaderFunctionArgs,
+} from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import Link from "@/components/ui/AppLink";
 import { Badge } from "@/components/ui/Badge";
-import { listEmployees } from "@/lib/employees-api";
+import {
+  listEmployees,
+  searchEmployees,
+  type EmployeeSummary,
+} from "@/lib/employees-api";
 
-export const loader = async () => ({ employees: await listEmployees() });
+const MIN_QUERY_CHARS = 2;
+const DEBOUNCE_MS = 250;
+
+type SortOrder = "featured" | "low" | "high";
+
+const sortEmployees = (
+  employees: ReadonlyArray<EmployeeSummary>,
+  sort: SortOrder,
+): ReadonlyArray<EmployeeSummary> =>
+  employees.slice().sort((a, b) => {
+    if (sort === "low") return a.priceMinor - b.priceMinor;
+    if (sort === "high") return b.priceMinor - a.priceMinor;
+    const aFeatured = a.authorDisplay === "klawva" ? 0 : 1;
+    const bFeatured = b.authorDisplay === "klawva" ? 0 : 1;
+    return aFeatured - bFeatured || a.name.localeCompare(b.name);
+  });
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const query = (new URL(request.url).searchParams.get("q") ?? "").trim();
+  const searching = query.length >= MIN_QUERY_CHARS;
+  if (!searching) {
+    return { query, searching, failed: false, employees: await listEmployees() };
+  }
+  const employees = await searchEmployees(query).catch(() => null);
+  return {
+    query,
+    searching,
+    failed: employees === null,
+    employees: employees ?? [],
+  };
+};
 
 export function Component() {
-  const { employees } = useLoaderData<typeof loader>();
+  const data = useLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  const [params, setParams] = useSearchParams();
   const [category, setCategory] = useState("all");
-  const [sort, setSort] = useState<"featured" | "low" | "high">("featured");
+  const [sort, setSort] = useState<SortOrder>("featured");
+  const [text, setText] = useState(data.query);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const typedQuery = text.trim();
+  const typing = typedQuery.length >= MIN_QUERY_CHARS;
+  const pending = navigation.state !== "idle";
+  const searching = data.searching || (pending && typing);
+
+  const commit = (value: string) => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+    }
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      if (window.location.pathname !== "/employees") {
+        return;
+      }
+      const trimmed = value.trim();
+      const next = new URLSearchParams(params);
+      if (trimmed.length >= MIN_QUERY_CHARS) {
+        next.set("q", trimmed);
+      } else {
+        next.delete("q");
+      }
+      setParams(next, { replace: true });
+    }, DEBOUNCE_MS);
+  };
+
+  const matched = data.employees.filter(
+    (employee) => category === "all" || employee.category === category,
+  );
+  const visible = data.searching ? matched : sortEmployees(matched, sort);
   const categories = Array.from(
-    new Set(employees.map((employee) => employee.category)),
+    new Set(data.employees.map((employee) => employee.category)),
   ).sort();
-
-  const visible = employees
-    .filter((employee) => category === "all" || employee.category === category)
-    .slice()
-    .sort((a, b) => {
-      if (sort === "low") return a.priceMinor - b.priceMinor;
-      if (sort === "high") return b.priceMinor - a.priceMinor;
-      const aFeatured = a.authorDisplay === "klawva" ? 0 : 1;
-      const bFeatured = b.authorDisplay === "klawva" ? 0 : 1;
-      return aFeatured - bFeatured || a.name.localeCompare(b.name);
-    });
 
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
@@ -39,10 +100,35 @@ export function Component() {
           <h1 className="font-syne font-bold text-4xl text-klawva-text mb-4">
             Hire an employee
           </h1>
-          <p className="font-mono text-klawva-muted max-w-2xl mb-10">
+          <p className="font-mono text-klawva-muted max-w-2xl mb-8">
             Every employee here runs a 24-hour shift and works through Telegram,
             email, or the browser. Pick one, hand it a brief, and it gets to work.
           </p>
+
+          <div className="mb-8">
+            <label htmlFor="employee-search" className="sr-only">
+              Describe the employee you need
+            </label>
+            <input
+              id="employee-search"
+              type="search"
+              value={text}
+              onChange={(event) => {
+                setText(event.target.value);
+                commit(event.target.value);
+              }}
+              placeholder="Describe what you need, e.g. chase late invoices"
+              autoComplete="off"
+              className="w-full bg-klawva-surface border border-klawva-border rounded-lg px-4 py-3 font-mono text-sm text-klawva-text placeholder:text-klawva-dim focus:outline-none focus:border-klawva-accent"
+            />
+            {searching && (
+              <p className="font-mono text-klawva-dim text-xs mt-2" aria-live="polite">
+                {pending
+                  ? "searching..."
+                  : `${visible.length} match${visible.length === 1 ? "" : "es"} for "${data.query}"`}
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-3 mb-10">
             <button
@@ -68,28 +154,36 @@ export function Component() {
                 {entry}
               </button>
             ))}
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs font-mono uppercase tracking-wider text-klawva-dim">
-                Sort
-              </span>
-              <select
-                value={sort}
-                onChange={(e) =>
-                  setSort(e.target.value === "low" ? "low" : e.target.value === "high" ? "high" : "featured")
-                }
-                className="bg-klawva-surface border border-klawva-border rounded px-3 py-1 text-xs font-mono text-klawva-text focus:outline-none focus:border-klawva-accent"
-              >
-                <option value="featured">Featured</option>
-                <option value="low">Price low to high</option>
-                <option value="high">Price high to low</option>
-              </select>
-            </div>
+            {!searching && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs font-mono uppercase tracking-wider text-klawva-dim">
+                  Sort
+                </span>
+                <select
+                  value={sort}
+                  onChange={(e) =>
+                    setSort(e.target.value === "low" ? "low" : e.target.value === "high" ? "high" : "featured")
+                  }
+                  className="bg-klawva-surface border border-klawva-border rounded px-3 py-1 text-xs font-mono text-klawva-text focus:outline-none focus:border-klawva-accent"
+                >
+                  <option value="featured">Featured</option>
+                  <option value="low">Price low to high</option>
+                  <option value="high">Price high to low</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {visible.length === 0 ? (
             <div className="bg-klawva-surface border border-klawva-border rounded-lg p-16 text-center">
               <p className="font-mono text-klawva-muted">
-                No employees in this category yet.
+                {pending
+                  ? "searching..."
+                  : data.failed
+                    ? "Search is unavailable right now. Try again in a moment."
+                    : data.searching
+                      ? `No employee matches "${data.query}". Try describing the job differently.`
+                      : "No employees in this category yet."}
               </p>
             </div>
           ) : (
@@ -113,9 +207,14 @@ export function Component() {
                   <div className="font-syne font-bold text-xl text-klawva-text mb-2">
                     {employee.name}
                   </div>
-                  <p className="font-mono text-klawva-muted text-sm mb-4">
+                  <p className="font-mono text-klawva-muted text-sm mb-1">
                     {employee.tagline}
                   </p>
+                  {employee.why !== undefined && (
+                    <p className="font-mono text-klawva-dim text-xs mb-3">
+                      {employee.why}
+                    </p>
+                  )}
                   <div className="font-mono text-klawva-accent text-sm">
                     ₦{(employee.priceMinor / 100).toLocaleString()} per 24h
                   </div>

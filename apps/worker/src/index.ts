@@ -116,6 +116,26 @@ export default {
     ) {
       return ownerBlockedResponse();
     }
+    if (url.pathname === "/api/listings" && url.searchParams.has("q")) {
+      const { rateLimited } = await import("./lib/guard.ts");
+      const forwarded = (request.headers.get("x-forwarded-for") ?? "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+      const address =
+        forwarded[forwarded.length - 1] ??
+        request.headers.get("cf-connecting-ip") ??
+        "unknown";
+      const allowed = await Effect.runPromise(
+        rateLimited(env.PUBLIC_LIMITER, `search:${address}`, "allow"),
+      );
+      if (!allowed) {
+        return new Response(JSON.stringify({ error: "rate_limited" }), {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "15" },
+        });
+      }
+    }
     if (url.pathname.startsWith("/api/agent/")) {
       const { claimTask, readTask, submitEvents, submitReport } = await import(
         "./hosted/api.ts"
@@ -126,10 +146,10 @@ export default {
         ? auth.slice(7).trim()
         : "";
       const { rateLimited } = await import("./lib/guard.ts");
-      const limited = await Effect.runPromise(
+      const allowed = await Effect.runPromise(
         rateLimited(env.PUBLIC_LIMITER, `agent:${token.slice(0, 24)}`),
       );
-      if (limited) {
+      if (!allowed) {
         return new Response(JSON.stringify({ error: "rate_limited" }), {
           status: 429,
           headers: { "content-type": "application/json", "retry-after": "15" },

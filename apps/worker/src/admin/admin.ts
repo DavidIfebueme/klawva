@@ -6,6 +6,7 @@ import type { Env } from "../env.ts";
 import { ListingConflict, ListingNotFound } from "../errors.ts";
 import { listingPriceBlocked } from "../payments/economics.ts";
 import { seedListings } from "../listings/listings.ts";
+import { indexListing, removeFromSearch } from "../search/indexing.ts";
 
 const scalar = (
   db: DatabaseImpl,
@@ -222,6 +223,7 @@ export const approveListing = (
       )
       .pipe(Effect.orDie);
     yield* recordAudit(db, actorEmail, "listing.approve", listingId, "{}");
+    yield* indexListing(env, db, listingId).pipe(Effect.catch(() => Effect.void));
     const { recordStage } = yield* Effect.promise(() => import("../marketplace/clock.ts"));
     yield* recordStage(db, {
       listingId,
@@ -298,6 +300,7 @@ export const unpublishListing = (
       return yield* Effect.fail(new ListingConflict({ reason: "not_published" }));
     }
     yield* recordAudit(db, actorEmail, "listing.unpublish", listingId, "{}");
+    yield* removeFromSearch(db, listingId);
     return { status: "unpublished" };
   });
 
@@ -338,6 +341,7 @@ export const revokeListing = (
       listingId,
       JSON.stringify({ reason }),
     );
+    yield* removeFromSearch(db, listingId);
     return {
       status: "unpublished",
       cancelled: cancelled === null ? 0 : Number(cancelled.count ?? 0),
