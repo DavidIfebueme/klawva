@@ -21,7 +21,7 @@ const tokenHits = (
 ): Effect.Effect<ReadonlyArray<TokenHit>> =>
   db
     .all(
-      `SELECT listing_id AS listingId, -bm25(listing_fts, ${COLUMN_WEIGHTS}) AS score FROM listing_fts WHERE listing_fts MATCH ? LIMIT ?`,
+      `SELECT listing_id AS listingId, -bm25(listing_fts, ${COLUMN_WEIGHTS}) AS score FROM listing_fts WHERE listing_fts MATCH ? ORDER BY score DESC LIMIT ?`,
       [tokenExpression(token), LEXICAL_LIMIT],
     )
     .pipe(
