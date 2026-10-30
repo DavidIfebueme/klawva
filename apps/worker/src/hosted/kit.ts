@@ -46,6 +46,7 @@ export interface LatestKitRun {
   readonly ok: boolean;
   readonly ranAt: string;
   readonly steps: ReadonlyArray<KitStep>;
+  readonly cardHash: string;
 }
 
 export const latestKitRun = (
@@ -55,7 +56,7 @@ export const latestKitRun = (
 ): Effect.Effect<LatestKitRun | null> =>
   db
     .first(
-      "SELECT ok AS ok, ran_at AS ranAt, detail AS detail FROM kit_runs WHERE listing_id = ? AND version = ? ORDER BY ran_at DESC LIMIT 1",
+      "SELECT ok AS ok, ran_at AS ranAt, detail AS detail, card_hash AS cardHash FROM kit_runs WHERE listing_id = ? AND version = ? ORDER BY ran_at DESC LIMIT 1",
       [listingId, version],
     )
     .pipe(
@@ -72,6 +73,7 @@ export const latestKitRun = (
           ok: Number(row.ok) === 1,
           ranAt: String(row.ranAt),
           steps,
+          cardHash: String(row.cardHash ?? ""),
         };
       }),
     );

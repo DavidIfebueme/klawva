@@ -22,9 +22,14 @@ import {
   runAuthorKit,
   submit,
   submitBlockedReason,
+  updateAuthorDraft,
   type DraftInput,
+  type UpdateInput,
 } from "../src/studio/studio.ts";
+import { hashToken } from "../src/hosted/tokens.ts";
 import { emptyWorld, fakeDb } from "./author-db.ts";
+
+const CARD_HASH = await Effect.runPromise(hashToken("https://clicky.dev/card"));
 
 const base: DraftInput = {
   slug: "clicky",
@@ -313,6 +318,40 @@ describe("create guards the tier cap", () => {
   });
 });
 
+describe("editing a listing keeps its lane", () => {
+  it("keeps the hosted block when the payload does not name a lane", async () => {
+    const { db } = fakeDb(emptyWorld());
+    const id = await Effect.runPromise(
+      createAuthorDraft(db, "u1", {
+        ...base,
+        lane: "hosted",
+        hosted: { cardUrl: "https://clicky.dev/card", mode: "push" },
+        data: { retentionDays: 30, leavesCountry: true, dpia: true },
+      }),
+    );
+    const patch: UpdateInput = {
+      name: "Clicky",
+      tagline: "clicks things",
+      category: "ops",
+      priceMinor: 5_000,
+      budgetMinor: 1_000,
+      briefFields: ["task"],
+      soul: "you are clicky, edited",
+    };
+    await Effect.runPromise(updateAuthorDraft(db, "u1", id, patch));
+    const detail = await Effect.runPromise(listingDetail(db, "u1", id));
+    expect(detail?.lane).toBe("hosted");
+    const manifest = Schema.decodeUnknownSync(
+      Schema.Struct({
+        kind: Schema.String,
+        hosted: Schema.NullOr(Schema.Struct({ cardUrl: Schema.String })),
+      }),
+    )(detail?.manifest);
+    expect(manifest.kind).toBe("hosted");
+    expect(manifest.hosted?.cardUrl).toBe("https://clicky.dev/card");
+  });
+});
+
 describe("submit gate", () => {
   const now = new Date().toISOString();
   const hostedWorld = (kitOk: number | null) => {
@@ -360,6 +399,7 @@ describe("submit gate", () => {
                 version: 1,
                 ok: kitOk,
                 ranAt: now,
+                cardHash: CARD_HASH,
                 detail: JSON.stringify([
                   { step: "card", ok: kitOk === 1, detail: "http_200" },
                 ]),
@@ -666,8 +706,8 @@ describe("capability sheet", () => {
     expect(sheet).not.toContain("stays on your machine");
   });
 
-  it("says a desktop bundle with no network stays on the machine", () => {
-    expect(sheetFor(desktopDraft)).toContain("stays on your machine");
+  it("says a desktop bundle with no network declares no network access", () => {
+    expect(sheetFor(desktopDraft)).toContain("declares no network access");
   });
 
   it("says hosted work runs on the author's server", () => {

@@ -80,6 +80,7 @@ const ListingRow = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   authorDisplay: Schema.String,
+  authorKind: Schema.String,
   avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
   match: Schema.optionalKey(Schema.Number),

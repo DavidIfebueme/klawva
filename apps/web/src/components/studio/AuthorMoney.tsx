@@ -76,8 +76,11 @@ function PayoutForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className={labelClass}>Provider</label>
+          <label className={labelClass} htmlFor="payout-psp">
+            Provider
+          </label>
           <select
+            id="payout-psp"
             className={inputClass}
             value={psp}
             onChange={(e) =>
@@ -89,8 +92,12 @@ function PayoutForm({
           </select>
         </div>
         <div>
-          <label className={labelClass}>Subaccount</label>
+          <label className={labelClass} htmlFor="payout-subaccount">
+            Subaccount
+          </label>
           <input
+            id="payout-subaccount"
+            required
             className={inputClass}
             value={subaccount}
             onChange={(e) => setSubaccount(e.target.value)}
@@ -98,8 +105,12 @@ function PayoutForm({
           />
         </div>
         <div>
-          <label className={labelClass}>Country</label>
+          <label className={labelClass} htmlFor="payout-country">
+            Country
+          </label>
           <input
+            id="payout-country"
+            required
             className={inputClass}
             value={country}
             onChange={(e) => setCountry(e.target.value)}
@@ -107,8 +118,12 @@ function PayoutForm({
           />
         </div>
         <div>
-          <label className={labelClass}>Currency</label>
+          <label className={labelClass} htmlFor="payout-currency">
+            Currency
+          </label>
           <input
+            id="payout-currency"
+            required
             className={inputClass}
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
@@ -116,8 +131,12 @@ function PayoutForm({
           />
         </div>
         <div className="md:col-span-2">
-          <label className={labelClass}>TIN</label>
+          <label className={labelClass} htmlFor="payout-tin">
+            TIN
+          </label>
           <input
+            id="payout-tin"
+            required
             className={inputClass}
             value={tin}
             onChange={(e) => setTin(e.target.value)}

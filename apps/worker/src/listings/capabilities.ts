@@ -31,7 +31,7 @@ export const capabilitySheet = (manifest: Manifest): string[] => {
     sentences.push(`stores its data in ${desktop.dataDirs.join(", ")}`);
   }
   if (hosts.length === 0) {
-    sentences.push("stays on your machine");
+    sentences.push("declares no network access");
   }
   return sentences;
 };

@@ -17,8 +17,10 @@ import {
 } from "../listings/manifest.ts";
 import { statusForBand } from "../listings/publish.ts";
 import { screenSoul } from "../moderation/moderation.ts";
+import { hashToken } from "../hosted/tokens.ts";
 import type { Identity } from "../auth/auth.ts";
 import {
+  ManifestJson,
   manifestOf,
   type LaunchMarket,
   type LimitsManifest,
@@ -28,6 +30,7 @@ import {
   authorStanding,
   canCreateListing,
   countListings,
+  listingCap,
   tierFor,
 } from "../marketplace/kyc.ts";
 import {
@@ -154,28 +157,83 @@ export interface DraftInput {
   readonly limits?: LimitsDraft;
 }
 
-const laneDraft = (input: {
-  readonly soul: string;
-  readonly lane?: Lane;
-  readonly launchMarkets?: ReadonlyArray<LaunchMarket>;
-  readonly hosted?: HostedDraft;
-  readonly desktop?: DesktopDraft;
-  readonly data?: DataDraft;
-  readonly limits?: LimitsDraft;
-}) => ({
-  soul: input.soul,
-  lane: input.lane ?? "authored",
-  launchMarkets: input.launchMarkets,
-  hosted: input.hosted,
-  desktop: input.desktop,
-  data: input.data,
-  limits: input.limits,
-});
+const storedManifest = (
+  db: DatabaseImpl,
+  listingId: string,
+  version: number,
+): Effect.Effect<Manifest | null> =>
+  db
+    .first(
+      "SELECT manifest AS manifest FROM listing_versions WHERE listing_id = ? AND version = ?",
+      [listingId, version],
+    )
+    .pipe(
+      Effect.map((row) => {
+        if (row === null || typeof row.manifest !== "string") {
+          return null;
+        }
+        const decoded = Schema.decodeUnknownOption(ManifestJson)(String(row.manifest));
+        return decoded._tag === "Some" ? decoded.value : null;
+      }),
+      Effect.orDie,
+    );
+
+const laneDraft = (
+  input: {
+    readonly soul: string;
+    readonly lane?: Lane;
+    readonly launchMarkets?: ReadonlyArray<LaunchMarket>;
+    readonly hosted?: HostedDraft;
+    readonly desktop?: DesktopDraft;
+    readonly data?: DataDraft;
+    readonly limits?: LimitsDraft;
+  },
+  current: Manifest | null,
+) => {
+  const runtime = current?.runtime;
+  const hosted: HostedDraft | undefined =
+    input.hosted !== undefined
+      ? input.hosted
+      : runtime?.hosted === undefined
+        ? undefined
+        : {
+            cardUrl: runtime.hosted.cardUrl,
+            mode: runtime.hosted.mode,
+            ...(runtime.hosted.auth === undefined
+              ? {}
+              : {
+                  authType: runtime.hosted.auth.type,
+                  authHeader: runtime.hosted.auth.header,
+                }),
+          };
+  const desktop: DesktopDraft | undefined =
+    input.desktop !== undefined
+      ? input.desktop
+      : runtime?.desktop === undefined
+        ? undefined
+        : {
+            bundleId: runtime.desktop.bundleId,
+            entrypoint: runtime.desktop.entrypoint,
+            dataDirs: runtime.desktop.dataDirs,
+            platforms: runtime.desktop.platforms,
+            capabilities: runtime.desktop.capabilities,
+          };
+  return {
+    soul: input.soul,
+    lane: input.lane ?? runtime?.kind ?? "authored",
+    launchMarkets: input.launchMarkets ?? current?.launchMarkets,
+    hosted,
+    desktop,
+    data: input.data ?? current?.data,
+    limits: input.limits ?? current?.limits,
+  };
+};
 
 const buildManifest = (
   input: Parameters<typeof laneDraft>[0],
+  current: Manifest | null,
 ): Effect.Effect<Manifest, ListingConflict> => {
-  const built = manifestForLane(laneDraft(input));
+  const built = manifestForLane(laneDraft(input, current));
   return built.ok
     ? Effect.succeed(built.manifest)
     : Effect.fail(
@@ -204,6 +262,7 @@ export const createAuthorDraft = (
   Effect.gen(function* () {
     const standing = (yield* authorStanding(db, userId)) ?? tierFor({});
     const existing = yield* countListings(db, userId);
+    const cap = listingCap[standing.tier];
     if (!canCreateListing(standing, existing)) {
       return yield* Effect.fail(
         new ListingConflict({ reason: "listing_cap_reached" }),
@@ -215,12 +274,12 @@ export const createAuthorDraft = (
     if (clash !== null) {
       return yield* Effect.fail(new ListingConflict({ reason: "slug_taken" }));
     }
-    const manifest = yield* buildManifest(input);
+    const manifest = yield* buildManifest(input, null);
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    yield* db
-      .run(
-        "INSERT INTO agent_listings (id, owner_id, slug, name, tagline, category, status, price_minor, current_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, 1, ?, ?)",
+    const created = yield* db
+      .first(
+        "INSERT INTO agent_listings (id, owner_id, slug, name, tagline, category, status, price_minor, current_version, created_at, updated_at) SELECT ?, ?, ?, ?, ?, ?, 'draft', ?, 1, ?, ? WHERE (SELECT COUNT(*) FROM agent_listings WHERE owner_id = ?) < ? RETURNING id AS id",
         [
           id,
           userId,
@@ -231,9 +290,16 @@ export const createAuthorDraft = (
           input.priceMinor,
           now,
           now,
+          userId,
+          cap,
         ],
       )
       .pipe(Effect.orDie);
+    if (created === null) {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: "listing_cap_reached" }),
+      );
+    }
     const hash = yield* versionHash(manifest, input.briefFields, input.budgetMinor);
     yield* db
       .run(
@@ -389,7 +455,12 @@ export const submitBlockedReason = (
     }
     if (lane === "hosted") {
       const run = yield* latestKitRun(db, listingId, version);
-      if (run === null || !run.ok) {
+      const cardUrl = manifest.runtime?.hosted?.cardUrl;
+      if (run === null || !run.ok || cardUrl === undefined) {
+        return "kit_not_green";
+      }
+      const cardHash = yield* hashToken(cardUrl).pipe(Effect.orDie);
+      if (run.cardHash !== cardHash) {
         return "kit_not_green";
       }
     }
@@ -399,7 +470,10 @@ export const submitBlockedReason = (
         return "bundle_missing";
       }
       const bundle = yield* db
-        .first("SELECT id AS id FROM desktop_bundles WHERE id = ?", [bundleId])
+        .first(
+          "SELECT b.id AS id FROM desktop_bundles b JOIN bundle_versions v ON v.bundle_id = b.id AND v.status = 'published' WHERE b.id = ? AND b.author_id = (SELECT owner_id FROM agent_listings WHERE id = ?) LIMIT 1",
+          [bundleId, listingId],
+        )
         .pipe(Effect.orDie);
       if (bundle === null) {
         return "bundle_missing";
@@ -479,7 +553,8 @@ export const updateAuthorDraft = (
     }
     const version = Number(listing.version);
     const now = new Date().toISOString();
-    const manifest = yield* buildManifest(input);
+    const previous = yield* storedManifest(db, listingId, version);
+    const manifest = yield* buildManifest(input, previous);
     yield* db
       .run(
         "UPDATE agent_listings SET name = ?, tagline = ?, category = ?, price_minor = ?, updated_at = ? WHERE id = ?",
@@ -524,7 +599,8 @@ export const reviseListing = (
     const current = Number(listing.version);
     const next = current + 1;
     const now = new Date().toISOString();
-    const manifest = yield* buildManifest(input);
+    const previous = yield* storedManifest(db, listingId, current);
+    const manifest = yield* buildManifest(input, previous);
     const hash = yield* versionHash(manifest, input.briefFields, input.budgetMinor);
     yield* db
       .run(

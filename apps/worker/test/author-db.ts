@@ -23,6 +23,7 @@ export interface WorldVersion {
 }
 
 export interface WorldKitRun {
+  readonly cardHash?: string;
   readonly listingId: string;
   readonly version: number;
   readonly ok: number;
@@ -85,12 +86,34 @@ export const fakeDb = (
     ) {
       return world.profile;
     }
+    if (sql.startsWith("SELECT manifest AS manifest FROM listing_versions WHERE listing_id = ?")) {
+      const found = world.versions.find(
+        (entry) =>
+          entry.listingId === text(params, 0) && entry.version === Number(params?.[1] ?? 0),
+      );
+      return found === undefined ? null : { manifest: found.manifest };
+    }
     if (sql.startsWith("SELECT owner_id AS ownerId FROM agent_listings WHERE id = ?")) {
       const listing = world.listings.find((entry) => entry.id === text(params, 0));
       return listing === undefined ? null : { ownerId: listing.ownerId };
     }
     if (sql.startsWith("SELECT display_name AS displayName FROM author_profiles")) {
       return world.profile;
+    }
+    if (sql.startsWith("INSERT INTO agent_listings")) {
+      const bound = params ?? [];
+      world.listings.push({
+        id: text(bound, 0),
+        ownerId: text(bound, 1),
+        slug: text(bound, 2),
+        name: text(bound, 3),
+        tagline: text(bound, 4),
+        category: text(bound, 5),
+        status: "draft",
+        priceMinor: Number(bound[6]),
+        version: 1,
+      });
+      return { id: text(bound, 0) };
     }
     if (sql.startsWith("SELECT COUNT(*) AS count FROM agent_listings WHERE owner_id = ?")) {
       return {
@@ -187,7 +210,7 @@ export const fakeDb = (
             version: version.version,
           };
     }
-    if (sql.startsWith("SELECT ok AS ok, ran_at AS ranAt, detail AS detail FROM kit_runs")) {
+    if (sql.startsWith("SELECT ok AS ok, ran_at AS ranAt, detail AS detail")) {
       const found = world.kitRuns
         .filter(
           (run) => run.listingId === text(params, 0) && run.version === Number(params?.[1] ?? 0),
@@ -196,7 +219,12 @@ export const fakeDb = (
         .at(0);
       return found === undefined
         ? null
-        : { ok: found.ok, ranAt: found.ranAt, detail: found.detail };
+        : {
+            ok: found.ok,
+            ranAt: found.ranAt,
+            detail: found.detail,
+            cardHash: found.cardHash ?? "",
+          };
     }
     if (sql.startsWith("SELECT version AS version, sha256 AS sha256 FROM bundle_versions")) {
       const found = world.bundles.find(
@@ -302,6 +330,7 @@ export const fakeDb = (
           ok: Number(bound[2]),
           ranAt: text(bound, 4),
           detail: text(bound, 3),
+          cardHash: text(bound, 6),
         });
       }
       return Effect.void;

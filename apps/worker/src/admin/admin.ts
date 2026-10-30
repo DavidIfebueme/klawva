@@ -238,8 +238,8 @@ export const approveListing = (
       "Your Klawva employee is live",
       listingApprovedEmail(listing.name),
     ).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => console.error("listing_approved_email_failed", error)),
+      Effect.catchCause((cause) =>
+        Effect.sync(() => console.error("listing_approved_email_failed", cause)),
       ),
     );
     return { status: "published" };

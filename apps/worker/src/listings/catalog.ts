@@ -8,6 +8,7 @@ export const publicListingColumns = [
   "COALESCE(v.budget_minor, 0) AS budgetMinor",
   "l.current_version AS version",
   "COALESCE(l.author_display, CASE WHEN l.owner_id = 'system' THEN 'klawva' ELSE 'author' END) AS authorDisplay",
+  "CASE WHEN l.owner_id = 'system' THEN 'klawva' ELSE 'author' END AS authorKind",
   "(SELECT AVG(rating) FROM session_feedback f WHERE f.listing_id = l.id) AS avgRating",
   "v.score AS score",
 ].join(", ");
