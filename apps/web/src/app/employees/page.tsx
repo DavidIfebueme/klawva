@@ -22,9 +22,7 @@ const DEBOUNCE_MS = 250;
 type SortOrder = "featured" | "low" | "high";
 
 const isKlawva = (employee: EmployeeSummary): boolean =>
-  employee.authorKind === undefined
-    ? employee.authorDisplay === "klawva"
-    : employee.authorKind === "klawva";
+  employee.authorKind === "klawva";
 
 const sortEmployees = (
   employees: ReadonlyArray<EmployeeSummary>,
