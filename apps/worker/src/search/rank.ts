@@ -81,6 +81,9 @@ export const rankListings = (input: RankInput): ReadonlyArray<Ranked> => {
     if (lex === undefined && sem === undefined && !exact) {
       continue;
     }
+    if (hasExact && !exact) {
+      continue;
+    }
     let score: number;
     if (exact) {
       score = EXACT_PHRASE_SCORE;

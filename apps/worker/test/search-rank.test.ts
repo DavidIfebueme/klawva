@@ -58,7 +58,7 @@ describe("ranking results", () => {
         { listingId: "a", score: 1 },
       ],
       semantic: [],
-      phrase: "reports",
+      phrase: "ledger",
     });
     expect(ranked.map((entry) => entry.id)).toEqual(["b", "a"]);
   });
@@ -85,6 +85,19 @@ describe("ranking results", () => {
       phrase: "ledger",
     });
     expect(better.map((entry) => entry.id)).toEqual(["c", "b"]);
+  });
+
+  it("returns only the exact phrase matches when the phrase names one", () => {
+    const ranked = rankListings({
+      rows,
+      lexical: [{ listingId: "c", score: 4 }],
+      semantic: [
+        { listingId: "b", score: 0.9 },
+        { listingId: "c", score: 0.8 },
+      ],
+      phrase: "money admin",
+    });
+    expect(ranked.map((entry) => entry.id)).toEqual(["a"]);
   });
 
   it("drops a hit whose score is not a number", () => {

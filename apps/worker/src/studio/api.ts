@@ -18,6 +18,7 @@ import {
   createAuthorDraft,
   ensureProfile,
   authorProfile,
+  deleteAuthorListing,
   listingDetail,
   listingsFor,
   runAuthorKit,
@@ -27,6 +28,7 @@ import {
   reviseListing,
   setAuthorName,
   updateAuthorDraft,
+  withdrawListing,
 } from "./studio.ts";
 import {
   authorEarnings,
@@ -201,6 +203,26 @@ const setName = HttpApiEndpoint.patch("authorSetName", "/api/author/profile", {
   success: Schema.Struct({ displayName: Schema.String }),
   error: allErrors,
 });
+
+const deleteListing = HttpApiEndpoint.delete(
+  "authorDeleteListing",
+  "/api/author/listings/:id",
+  {
+    params: IdParam,
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: allErrors,
+  },
+);
+
+const withdrawListingEndpoint = HttpApiEndpoint.post(
+  "authorWithdrawListing",
+  "/api/author/listings/:id/withdraw",
+  {
+    params: IdParam,
+    success: Schema.Struct({ status: Schema.String }),
+    error: allErrors,
+  },
+);
 
 const listListings = HttpApiEndpoint.get("authorListings", "/api/author/listings", {
   success: Schema.Array(Summary),
@@ -422,7 +444,9 @@ class StudioGroup extends HttpApiGroup.make("Studio")
   .add(getEarnings)
   .add(getLimits)
   .add(authorPublishBundle)
-  .add(setName) {}
+  .add(setName)
+  .add(deleteListing)
+  .add(withdrawListingEndpoint) {}
 
 export class StudioApi extends HttpApi.make("StudioApi").add(StudioGroup) {}
 
@@ -458,6 +482,19 @@ export const studioGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const identity = yield* requireIdentity();
           return yield* setAuthorName(db, identity.userId, payload.displayName);
+        }),
+      )
+      .handle("authorDeleteListing", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          yield* deleteAuthorListing(db, identity.userId, params.id);
+          return { ok: true };
+        }),
+      )
+      .handle("authorWithdrawListing", ({ params }) =>
+        Effect.gen(function* () {
+          const identity = yield* requireIdentity();
+          return yield* withdrawListing(db, identity.userId, params.id);
         }),
       )
       .handle("authorListings", () =>

@@ -323,6 +323,27 @@ export const fakeDb = (
           };
         }
       }
+      if (sql.startsWith("DELETE FROM listing_versions WHERE listing_id = ?")) {
+        for (let index = world.versions.length - 1; index >= 0; index -= 1) {
+          if (world.versions[index]?.listingId === text(bound, 0)) {
+            world.versions.splice(index, 1);
+          }
+        }
+      }
+      if (sql.startsWith("DELETE FROM agent_listings WHERE id = ?")) {
+        for (let index = world.listings.length - 1; index >= 0; index -= 1) {
+          if (world.listings[index]?.id === text(bound, 0)) {
+            world.listings.splice(index, 1);
+          }
+        }
+      }
+      if (sql.startsWith("UPDATE agent_listings SET status = 'draft'")) {
+        const index = world.listings.findIndex((entry) => entry.id === text(bound, 1));
+        const listing = index === -1 ? undefined : world.listings[index];
+        if (listing !== undefined) {
+          world.listings[index] = { ...listing, status: "draft" };
+        }
+      }
       if (sql.startsWith("INSERT INTO kit_runs")) {
         world.kitRuns.push({
           listingId: text(bound, 1),
