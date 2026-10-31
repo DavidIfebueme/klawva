@@ -13,7 +13,7 @@ const employeeSummary = Schema.Struct({
   budgetMinor: Schema.Number,
   version: Schema.Number,
   authorDisplay: Schema.String,
-  authorKind: Schema.String,
+  authorKind: Schema.optionalKey(Schema.String),
   avgRating: Schema.NullOr(Schema.Number),
   score: Schema.NullOr(Schema.Number),
   match: Schema.optionalKey(Schema.Number),

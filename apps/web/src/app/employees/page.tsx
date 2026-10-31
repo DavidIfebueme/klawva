@@ -21,6 +21,11 @@ const DEBOUNCE_MS = 250;
 
 type SortOrder = "featured" | "low" | "high";
 
+const isKlawva = (employee: EmployeeSummary): boolean =>
+  employee.authorKind === undefined
+    ? employee.authorDisplay === "klawva"
+    : employee.authorKind === "klawva";
+
 const sortEmployees = (
   employees: ReadonlyArray<EmployeeSummary>,
   sort: SortOrder,
@@ -28,8 +33,8 @@ const sortEmployees = (
   employees.slice().sort((a, b) => {
     if (sort === "low") return a.priceMinor - b.priceMinor;
     if (sort === "high") return b.priceMinor - a.priceMinor;
-    const aFeatured = a.authorKind === "klawva" ? 0 : 1;
-    const bFeatured = b.authorKind === "klawva" ? 0 : 1;
+    const aFeatured = isKlawva(a) ? 0 : 1;
+    const bFeatured = isKlawva(b) ? 0 : 1;
     return aFeatured - bFeatured || a.name.localeCompare(b.name);
   });
 
@@ -205,7 +210,7 @@ export function Component() {
                     <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider">
                       {employee.category}
                     </span>
-                    {employee.authorKind === "klawva" ? (
+                    {isKlawva(employee) ? (
                       <Badge variant="active">By Klawva</Badge>
                     ) : (
                       <Badge variant="pending">By {employee.authorDisplay}</Badge>

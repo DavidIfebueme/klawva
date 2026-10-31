@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { LaneFields } from "@/components/studio/LaneFields";
 import { AuthorMoney } from "@/components/studio/AuthorMoney";
+import { blockedCopy } from "@/lib/studio-copy";
 import { emptyLaneDraft, lanePayload, type LaneDraft } from "@/components/studio/lane-draft";
 import Link from "@/components/ui/AppLink";
 import { Plus, ArrowRight } from "lucide-react";
@@ -97,7 +98,10 @@ export function Component() {
       navigate(`/studio/listings/${created.id}`);
     } catch (err) {
       if (handleActionAuthError(err)) return;
-      setError(err instanceof Error ? err.message : "Failed to create listing");
+      setError(
+        blockedCopy(err instanceof Error ? err.message : null) ||
+          "Failed to create listing",
+      );
       setBusy(false);
     }
   };
