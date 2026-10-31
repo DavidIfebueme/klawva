@@ -1,25 +1,89 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
 import { manifestOf } from "../db/schema.ts";
 import { listingForToken } from "./tokens.ts";
 import { safeFetch, safePost } from "../lib/safe-fetch.ts";
 import { hashToken } from "./tokens.ts";
 
-export interface KitResult {
+export interface KitStep {
+  readonly step: string;
   readonly ok: boolean;
-  readonly steps: ReadonlyArray<{ readonly step: string; readonly ok: boolean; readonly detail: string }>;
+  readonly detail: string;
 }
 
-export const runContractKit = (
+export interface KitResult {
+  readonly ok: boolean;
+  readonly steps: ReadonlyArray<KitStep>;
+}
+
+const KitStepSchema = Schema.Struct({
+  step: Schema.String,
+  ok: Schema.Boolean,
+  detail: Schema.String,
+});
+
+const KitStepsJson = Schema.fromJsonString(Schema.Array(KitStepSchema));
+
+export const kitDailyCap = 10;
+
+export const kitRunsToday = (
   db: DatabaseImpl,
-  listingToken: string,
+  listingId: string,
+): Effect.Effect<number> =>
+  db
+    .first(
+      "SELECT COUNT(*) AS count FROM kit_runs WHERE listing_id = ? AND ran_at >= ?",
+      [listingId, new Date(Date.now() - 86_400_000).toISOString()],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => (row === null ? 0 : Number(row.count))),
+    );
+
+export interface LatestKitRun {
+  readonly ok: boolean;
+  readonly ranAt: string;
+  readonly steps: ReadonlyArray<KitStep>;
+  readonly cardHash: string;
+}
+
+export const latestKitRun = (
+  db: DatabaseImpl,
+  listingId: string,
+  version: number,
+): Effect.Effect<LatestKitRun | null> =>
+  db
+    .first(
+      "SELECT ok AS ok, ran_at AS ranAt, detail AS detail, card_hash AS cardHash FROM kit_runs WHERE listing_id = ? AND version = ? ORDER BY ran_at DESC LIMIT 1",
+      [listingId, version],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => {
+        if (row === null) {
+          return null;
+        }
+        const steps = Option.getOrElse(
+          Schema.decodeUnknownOption(KitStepsJson)(String(row.detail)),
+          () => [],
+        );
+        return {
+          ok: Number(row.ok) === 1,
+          ranAt: String(row.ranAt),
+          steps,
+          cardHash: String(row.cardHash ?? ""),
+        };
+      }),
+    );
+
+export const runKitForListing = (
+  db: DatabaseImpl,
+  listingId: string,
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>,
 ): Effect.Effect<{ status: number; result: KitResult | null; error?: string }> =>
   Effect.gen(function* () {
-    const listingId = yield* listingForToken(db, listingToken);
-    if (listingId === null) {
-      return { status: 401, result: null, error: "bad_token" };
-    }
     const version = yield* db
       .first(
         "SELECT v.manifest AS manifest, v.soul AS soul, l.current_version AS version FROM agent_listings l JOIN listing_versions v ON v.listing_id = l.id AND v.version = l.current_version WHERE l.id = ?",
@@ -161,6 +225,19 @@ export const runContractKit = (
       .pipe(Effect.orDie);
 
     return { status: 200, result: { ok, steps } };
+  });
+
+export const runContractKit = (
+  db: DatabaseImpl,
+  listingToken: string,
+  fetchImpl?: (url: string, init: RequestInit) => Promise<Response>,
+): Effect.Effect<{ status: number; result: KitResult | null; error?: string }> =>
+  Effect.gen(function* () {
+    const listingId = yield* listingForToken(db, listingToken);
+    if (listingId === null) {
+      return { status: 401, result: null, error: "bad_token" };
+    }
+    return yield* runKitForListing(db, listingId, fetchImpl);
   });
 
 export const kitRunIsFresh = (
