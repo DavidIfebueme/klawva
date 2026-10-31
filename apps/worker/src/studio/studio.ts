@@ -608,9 +608,6 @@ export const deleteAuthorListing = (
       );
     }
     yield* db
-      .run("DELETE FROM listing_versions WHERE listing_id = ?", [listingId])
-      .pipe(Effect.orDie);
-    yield* db
       .run("DELETE FROM agent_listings WHERE id = ? AND owner_id = ?", [listingId, userId])
       .pipe(Effect.orDie);
   });

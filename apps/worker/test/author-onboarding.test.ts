@@ -388,7 +388,7 @@ describe("editing a listing keeps its lane", () => {
 });
 
 describe("an author can clear a listing", () => {
-  it("deletes a draft and its versions", async () => {
+  it("deletes a draft", async () => {
     const { db } = fakeDb(emptyWorld());
     const id = await Effect.runPromise(createAuthorDraft(db, "u1", base));
     await Effect.runPromise(deleteAuthorListing(db, "u1", id));
