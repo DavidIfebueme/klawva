@@ -78,21 +78,27 @@ export class SessionAgent extends AIChatAgent<Env> {
     );
   }
 
-  private sessionStore(): SessionStoreImpl {
+  private spentUpdate(spentMinor: number): Effect.Effect<void> {
     const db = makeDatabase(this.env.DB);
     const sessionId = String(this.ctx.id.name ?? "");
+    return db
+      .run(
+        "UPDATE sessions SET spent_minor = CASE WHEN spent_minor < ? THEN ? ELSE spent_minor END, updated_at = ? WHERE id = ?",
+        [spentMinor, spentMinor, new Date().toISOString(), sessionId],
+      )
+      .pipe(Effect.catch(() => Effect.void));
+  }
+
+  private sessionStore(): SessionStoreImpl {
     return makeStore(this.ctx.storage.sql, (spentMinor) => {
-      this.ctx.waitUntil(
-        Effect.runPromise(
-          db
-            .run(
-              "UPDATE sessions SET spent_minor = CASE WHEN spent_minor < ? THEN ? ELSE spent_minor END, updated_at = ? WHERE id = ?",
-              [spentMinor, spentMinor, new Date().toISOString(), sessionId],
-            )
-            .pipe(Effect.catch(() => Effect.void)),
-        ),
-      );
+      this.ctx.waitUntil(Effect.runPromise(this.spentUpdate(spentMinor)));
     });
+  }
+
+  private async reconcileSpent(): Promise<void> {
+    const store = this.sessionStore();
+    const spent = await Effect.runPromise(store.get("spent_minor"));
+    await Effect.runPromise(this.spentUpdate(Number(spent ?? "0")));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -332,5 +338,6 @@ export class SessionAgent extends AIChatAgent<Env> {
         String(this.ctx.id.name ?? ""),
       ),
     );
+    await this.reconcileSpent();
   }
 }
