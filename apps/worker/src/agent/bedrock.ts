@@ -48,21 +48,44 @@ const ConverseResponse = Schema.Struct({
   }),
 });
 
+interface ConverseTurn {
+  readonly role: "user" | "assistant";
+  readonly content: ReadonlyArray<{ readonly text: string }>;
+}
+
+const normaliseTurns = (
+  raw: ReadonlyArray<ConverseTurn>,
+): ReadonlyArray<ConverseTurn> => {
+  const merged: Array<ConverseTurn> = [];
+  for (const turn of raw) {
+    const last = merged.at(-1);
+    if (last !== undefined && last.role === turn.role) {
+      merged[merged.length - 1] = {
+        role: last.role,
+        content: [{ text: `${last.content[0]?.text ?? ""}\n\n${turn.content[0]?.text ?? ""}` }],
+      };
+      continue;
+    }
+    merged.push(turn);
+  }
+  if (merged.length > 0 && merged[0]?.role !== "user") {
+    merged.unshift({ role: "user", content: [{ text: "Continue the shift." }] });
+  }
+  return merged;
+};
+
 export const toConverseMessages = (messages: ReadonlyArray<ChatMessage>) => {
   const system: Array<{ text: string }> = [];
-  const turns: Array<Record<string, unknown>> = [];
+  const turns: Array<ConverseTurn> = [];
   for (const message of messages) {
     if (message.role === "system") {
       system.push({ text: message.content });
       continue;
     }
-    if (message.role === "tool") {
-      turns.push({ role: "user", content: [{ text: message.content }] });
-      continue;
-    }
-    turns.push({ role: message.role, content: [{ text: message.content }] });
+    const role = message.role === "assistant" ? "assistant" : "user";
+    turns.push({ role, content: [{ text: message.content }] });
   }
-  return { system, turns };
+  return { system, turns: normaliseTurns(turns) };
 };
 
 export const toolConfigFor = (specs: ReadonlyArray<BedrockToolSpec>) =>

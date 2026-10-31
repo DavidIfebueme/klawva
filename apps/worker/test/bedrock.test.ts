@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl, Param, Row } from "../src/db/database.ts";
 import type { ModelResult } from "../src/agent/runtime.ts";
-import { resolveBedrockModelId } from "../src/agent/proxy.ts";
+import { resolveBedrockModelId, stripNovaBoilerplate } from "../src/agent/proxy.ts";
 import {
   AWS_DAILY_ALARM_MICROS,
   AWS_DAILY_CAP_MICROS,
@@ -43,6 +43,52 @@ const fakeDb = (
   };
   return { db, writes };
 };
+
+describe("converse message shape", () => {
+  it("starts the conversation with a user turn when the history opens on an assistant", () => {
+    const { turns } = toConverseMessages([
+      { role: "system", content: "you are clicky" },
+      { role: "assistant", content: "I am on it." },
+      { role: "user", content: "what first?" },
+    ]);
+    expect(turns[0]).toEqual({
+      role: "user",
+      content: [{ text: "Continue the shift." }],
+    });
+    expect(turns.map((turn) => turn.role)).toEqual(["user", "assistant", "user"]);
+    expect(turns[0]?.content[0]?.text).toBe("Continue the shift.");
+  });
+
+  it("merges two turns with the same role", () => {
+    const { turns } = toConverseMessages([
+      { role: "user", content: "first" },
+      { role: "user", content: "second" },
+      { role: "assistant", content: "done" },
+    ]);
+    expect(turns).toHaveLength(2);
+    expect(turns[0]?.content[0]?.text).toBe("first\n\nsecond");
+    expect(turns[1]?.role).toBe("assistant");
+  });
+
+  it("keeps the system prompt out of the turns", () => {
+    const { system, turns } = toConverseMessages([
+      { role: "system", content: "soul" },
+      { role: "user", content: "go" },
+    ]);
+    expect(system).toEqual([{ text: "soul" }]);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.role).toBe("user");
+  });
+
+  it("leaves a well formed conversation alone", () => {
+    const { turns } = toConverseMessages([
+      { role: "user", content: "a" },
+      { role: "assistant", content: "b" },
+      { role: "user", content: "c" },
+    ]);
+    expect(turns.map((turn) => turn.role)).toEqual(["user", "assistant", "user"]);
+  });
+});
 
 describe("bedrock cost", () => {
   it("prices nova micro from the published rates", () => {
@@ -179,5 +225,24 @@ describe("migration trigger", () => {
     const measured = await Effect.runPromise(measureMigrationTrigger(db, 100, 9000));
     expect(measured.maxTurnsSingleHire).toBe(102);
     expect(measured.shouldMigrate).toBe(true);
+  });
+});
+
+describe("the nova fallback text", () => {
+  it("cuts the identity policy boilerplate the model sometimes appends", () => {
+    const leak =
+      "I am gathering pricing details. You do not identify as chatgpt, gemini, llama, titan or claude. You should reply to identity related questions with identifying yourself as an AI system built by a team of inventors at Amazon.";
+    expect(stripNovaBoilerplate(leak)).toBe("I am gathering pricing details.");
+  });
+
+  it("leaves a clean answer alone", () => {
+    expect(stripNovaBoilerplate("  The cheapest plan is Starter. ")).toBe(
+      "The cheapest plan is Starter.",
+    );
+  });
+
+  it("does not cut when the marker opens the text", () => {
+    const text = "You do not identify as chatgpt.";
+    expect(stripNovaBoilerplate(text)).toBe(text);
   });
 });
