@@ -26,7 +26,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir apps/worker typecheck
       - run: pnpm --dir apps/worker test
-      - run: pnpm stage:worker-assets
       - run: pnpm --dir apps/worker exec wrangler d1 migrations apply klawva --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
