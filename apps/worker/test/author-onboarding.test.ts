@@ -18,11 +18,13 @@ import {
 } from "../src/studio/money.ts";
 import {
   createAuthorDraft,
+  deleteAuthorListing,
   listingDetail,
   runAuthorKit,
   submit,
   submitBlockedReason,
   updateAuthorDraft,
+  withdrawListing,
   type DraftInput,
   type UpdateInput,
 } from "../src/studio/studio.ts";
@@ -195,6 +197,39 @@ describe("lanes in the draft path", () => {
   });
 });
 
+describe("slug format", () => {
+  it("refuses a slug with a space", async () => {
+    const { db } = fakeDb(emptyWorld());
+    const error = await Effect.runPromise(
+      Effect.flip(createAuthorDraft(db, "u1", { ...base, slug: "test support desk" })),
+    );
+    expect(error._tag).toBe("ListingConflict");
+    if (error._tag === "ListingConflict") {
+      expect(error.reason).toBe("slug_format");
+    }
+  });
+
+  it("refuses an uppercase slug and a trailing dash", async () => {
+    const { db } = fakeDb(emptyWorld());
+    const upper = await Effect.runPromise(
+      Effect.flip(createAuthorDraft(db, "u1", { ...base, slug: "Ada-Desk" })),
+    );
+    const trailing = await Effect.runPromise(
+      Effect.flip(createAuthorDraft(db, "u1", { ...base, slug: "ada-desk-" })),
+    );
+    expect(upper._tag === "ListingConflict" && upper.reason).toBe("slug_format");
+    expect(trailing._tag === "ListingConflict" && trailing.reason).toBe("slug_format");
+  });
+
+  it("refuses a slug outside the length window", async () => {
+    const { db } = fakeDb(emptyWorld());
+    const error = await Effect.runPromise(
+      Effect.flip(createAuthorDraft(db, "u1", { ...base, slug: "a" })),
+    );
+    expect(error._tag === "ListingConflict" && error.reason).toBe("slug_length");
+  });
+});
+
 describe("manifest refusals at create", () => {
   const reasonFor = async (input: DraftInput): Promise<string> => {
     const { db } = fakeDb(emptyWorld());
@@ -349,6 +384,98 @@ describe("editing a listing keeps its lane", () => {
     )(detail?.manifest);
     expect(manifest.kind).toBe("hosted");
     expect(manifest.hosted?.cardUrl).toBe("https://clicky.dev/card");
+  });
+});
+
+describe("an author can clear a listing", () => {
+  it("deletes a draft", async () => {
+    const { db } = fakeDb(emptyWorld());
+    const id = await Effect.runPromise(createAuthorDraft(db, "u1", base));
+    await Effect.runPromise(deleteAuthorListing(db, "u1", id));
+    const detail = await Effect.runPromise(listingDetail(db, "u1", id));
+    expect(detail).toBeNull();
+  });
+
+  it("refuses to delete a published listing", async () => {
+    const world = {
+      ...emptyWorld(),
+      listings: [
+        {
+          id: "l1",
+          ownerId: "u1",
+          slug: "clicky",
+          name: "Clicky",
+          tagline: "x",
+          category: "ops",
+          status: "published",
+          priceMinor: 5_000,
+          version: 1,
+        },
+      ],
+      versions: [
+        {
+          listingId: "l1",
+          version: 1,
+          soul: "x",
+          manifest: JSON.stringify({ soul: "x" }),
+          briefFields: "[]",
+          budgetMinor: 1_000,
+        },
+      ],
+    };
+    const { db } = fakeDb(world);
+    const error = await Effect.runPromise(
+      Effect.flip(deleteAuthorListing(db, "u1", "l1")),
+    );
+    expect(error._tag === "ListingConflict" && error.reason).toBe(
+      "not_deletable:published",
+    );
+  });
+
+  it("withdraws a listing from review back to draft", async () => {
+    const world = {
+      ...emptyWorld(),
+      listings: [
+        {
+          id: "l1",
+          ownerId: "u1",
+          slug: "clicky",
+          name: "Clicky",
+          tagline: "x",
+          category: "ops",
+          status: "in_review",
+          priceMinor: 5_000,
+          version: 1,
+        },
+      ],
+    };
+    const { db } = fakeDb(world);
+    const result = await Effect.runPromise(withdrawListing(db, "u1", "l1"));
+    expect(result.status).toBe("draft");
+    expect(world.listings[0]?.status).toBe("draft");
+  });
+
+  it("refuses to withdraw a draft", async () => {
+    const { db } = fakeDb({
+      ...emptyWorld(),
+      listings: [
+        {
+          id: "l1",
+          ownerId: "u1",
+          slug: "clicky",
+          name: "Clicky",
+          tagline: "x",
+          category: "ops",
+          status: "draft",
+          priceMinor: 5_000,
+          version: 1,
+        },
+      ],
+    });
+    const error = await Effect.runPromise(Effect.flip(withdrawListing(db, "u1", "l1")));
+    expect(error._tag === "ListingConflict" && error.reason).toBe(
+      "not_withdrawable:draft",
+    );
   });
 });
 

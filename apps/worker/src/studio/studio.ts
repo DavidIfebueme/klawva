@@ -157,6 +157,15 @@ export interface DraftInput {
   readonly limits?: LimitsDraft;
 }
 
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const slugProblem = (slug: string): string | null => {
+  if (slug.length < 2 || slug.length > 64) {
+    return "slug_length";
+  }
+  return slugPattern.test(slug) ? null : "slug_format";
+};
+
 const storedManifest = (
   db: DatabaseImpl,
   listingId: string,
@@ -267,6 +276,10 @@ export const createAuthorDraft = (
       return yield* Effect.fail(
         new ListingConflict({ reason: "listing_cap_reached" }),
       );
+    }
+    const slugFault = slugProblem(input.slug);
+    if (slugFault !== null) {
+      return yield* Effect.fail(new ListingConflict({ reason: slugFault }));
     }
     const clash = yield* db
       .first("SELECT id AS id FROM agent_listings WHERE slug = ?", [input.slug])
@@ -576,6 +589,60 @@ export const updateAuthorDraft = (
         ],
       )
       .pipe(Effect.orDie);
+  });
+
+export const deleteAuthorListing = (
+  db: DatabaseImpl,
+  userId: string,
+  listingId: string,
+): Effect.Effect<void, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    const listing = yield* ownedListing(db, userId, listingId);
+    if (listing === null) {
+      return yield* Effect.fail(new ListingNotFound({}));
+    }
+    const status = String(listing.status);
+    if (status !== "draft" && status !== "rejected") {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: `not_deletable:${status}` }),
+      );
+    }
+    yield* db
+      .run("DELETE FROM agent_listings WHERE id = ? AND owner_id = ?", [listingId, userId])
+      .pipe(Effect.orDie);
+  });
+
+export const withdrawListing = (
+  db: DatabaseImpl,
+  userId: string,
+  listingId: string,
+): Effect.Effect<{ status: string }, ListingNotFound | ListingConflict> =>
+  Effect.gen(function* () {
+    const listing = yield* ownedListing(db, userId, listingId);
+    if (listing === null) {
+      return yield* Effect.fail(new ListingNotFound({}));
+    }
+    const status = String(listing.status);
+    if (status !== "in_review") {
+      return yield* Effect.fail(
+        new ListingConflict({ reason: `not_withdrawable:${status}` }),
+      );
+    }
+    const version = Number(listing.version);
+    const now = new Date().toISOString();
+    yield* db
+      .run("UPDATE agent_listings SET status = 'draft', updated_at = ? WHERE id = ?", [
+        now,
+        listingId,
+      ])
+      .pipe(Effect.orDie);
+    yield* db
+      .run(
+        "UPDATE listing_versions SET status = 'draft' WHERE listing_id = ? AND version = ?",
+        [listingId, version],
+      )
+      .pipe(Effect.orDie);
+    return { status: "draft" };
   });
 
 export const reviseListing = (

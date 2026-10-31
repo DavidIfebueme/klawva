@@ -67,6 +67,21 @@ export const blockedCopy = (reason: string | null | undefined): string => {
   if (reason === "slug_taken") {
     return "That slug is already taken. Pick another.";
   }
+  if (reason === "slug_format") {
+    return "Use lowercase letters, numbers and single dashes in the slug.";
+  }
+  if (reason === "slug_length") {
+    return "The slug must be 2 to 64 characters.";
+  }
+  if (reason === "bundle_unsigned") {
+    return "The bundle needs a signature from your author key, and key registration is not open yet.";
+  }
+  if (reason === "bundle_signature_invalid") {
+    return "The signature does not match the bundle file.";
+  }
+  if (reason === "bad_version") {
+    return "Use a version like 1.2.0.";
+  }
   if (reason.startsWith("manifest:")) {
     return `Fix the manifest: ${manifestReasons(reason)}`;
   }

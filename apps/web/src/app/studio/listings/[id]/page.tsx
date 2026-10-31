@@ -8,12 +8,14 @@ import {
 } from "react-router-dom";
 import { requireSession, rethrowAuth, handleActionAuthError } from "@/lib/studio-loader";
 import {
+  deleteStudioListing,
   getStudioListing,
   runStudioKit,
   runStudioSandbox,
   submitStudioListing,
   updateStudioListing,
   uploadAuthorBundle,
+  withdrawStudioListing,
   type BundleInfo,
   type DesktopCapabilities,
   type KitRun,
@@ -100,6 +102,7 @@ export function Component() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [outcome, setOutcome] = useState<{ score: number; band: string } | null>(null);
   const [kitRun, setKitRun] = useState<KitRun | null>(null);
+  const [dangerBusy, setDangerBusy] = useState(false);
   const [kitBusy, setKitBusy] = useState(false);
   const [bundleFile, setBundleFile] = useState<File | null>(null);
   const [bundleVersion, setBundleVersion] = useState("");
@@ -188,6 +191,37 @@ export function Component() {
       showToast("error", err instanceof Error ? err.message : "Submit failed");
     } finally {
       setBusyAction(null);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    setDangerBusy(true);
+    setError("");
+    try {
+      await withdrawStudioListing(session.token, detail.id);
+      revalidator.revalidate();
+      showToast("success", "Back in draft. Edit and resubmit when ready.");
+    } catch (err) {
+      if (handleActionAuthError(err)) return;
+      setError(err instanceof Error ? err.message : "Could not withdraw the listing.");
+    } finally {
+      setDangerBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Delete this draft? This cannot be undone.")) {
+      return;
+    }
+    setDangerBusy(true);
+    setError("");
+    try {
+      await deleteStudioListing(session.token, detail.id);
+      navigate("/studio");
+    } catch (err) {
+      if (handleActionAuthError(err)) return;
+      setError(err instanceof Error ? err.message : "Could not delete the listing.");
+      setDangerBusy(false);
     }
   };
 
@@ -565,6 +599,29 @@ export function Component() {
               {blockedReason}
             </p>
           )}
+          <div className="flex flex-wrap gap-3">
+            {detail.status === "in_review" && (
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={handleWithdraw}
+                loading={dangerBusy}
+              >
+                Withdraw from Review
+              </Button>
+            )}
+            {(detail.status === "draft" || detail.status === "rejected") && (
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={handleDelete}
+                loading={dangerBusy}
+                disabled={busyAction !== null}
+              >
+                Delete Draft
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
