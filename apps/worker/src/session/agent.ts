@@ -102,12 +102,24 @@ export class SessionStore extends Context.Service<SessionStore, SessionStoreImpl
   "klawva/session/SessionStore",
 ) {}
 
-const readMeta = (sql: SqlStorage, key: string): string | null => {
+export interface SessionSql {
+  readonly exec: (
+    query: string,
+    ...bindings: ReadonlyArray<string | number | ArrayBuffer | null>
+  ) => {
+    readonly toArray: () => ReadonlyArray<Record<string, unknown>>;
+  };
+}
+
+const readMeta = (sql: SessionSql, key: string): string | null => {
   const rows = sql.exec("SELECT value FROM session_meta WHERE key = ?", key).toArray();
   return rows[0] ? String(rows[0].value) : null;
 };
 
-export const makeStore = (sql: SqlStorage): SessionStoreImpl => ({
+export const makeStore = (
+  sql: SessionSql,
+  projectSpent?: (spentMinor: number) => void,
+): SessionStoreImpl => ({
   get: (key) => Effect.sync(() => readMeta(sql, key)),
   set: (key, value) =>
     Effect.sync(() => {
@@ -144,10 +156,12 @@ export const makeStore = (sql: SqlStorage): SessionStoreImpl => ({
         );
       }
       yield* Effect.sync(() => {
+        const next = spent + amountMinor;
         sql.exec(
           "INSERT INTO session_meta (key, value) VALUES ('spent_minor', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-          String(spent + amountMinor),
+          String(next),
         );
+        projectSpent?.(next);
       });
     }),
 });
