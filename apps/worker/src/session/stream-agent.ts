@@ -28,6 +28,7 @@ import {
   loadTurnConfig,
   makeStore,
   messageText,
+  type SessionStoreImpl,
   modelRetryReply,
   persistAssistant,
   retryTextFor,
@@ -77,6 +78,29 @@ export class SessionAgent extends AIChatAgent<Env> {
     );
   }
 
+  private spentUpdate(spentMinor: number): Effect.Effect<void> {
+    const db = makeDatabase(this.env.DB);
+    const sessionId = String(this.ctx.id.name ?? "");
+    return db
+      .run(
+        "UPDATE sessions SET spent_minor = CASE WHEN spent_minor < ? THEN ? ELSE spent_minor END, updated_at = ? WHERE id = ?",
+        [spentMinor, spentMinor, new Date().toISOString(), sessionId],
+      )
+      .pipe(Effect.catch(() => Effect.void));
+  }
+
+  private sessionStore(): SessionStoreImpl {
+    return makeStore(this.ctx.storage.sql, (spentMinor) => {
+      this.ctx.waitUntil(Effect.runPromise(this.spentUpdate(spentMinor)));
+    });
+  }
+
+  private async reconcileSpent(): Promise<void> {
+    const store = this.sessionStore();
+    const spent = await Effect.runPromise(store.get("spent_minor"));
+    await Effect.runPromise(this.spentUpdate(Number(spent ?? "0")));
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/agents/")) {
@@ -87,7 +111,7 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     return serveRestApi(
       request,
-      makeStore(this.ctx.storage.sql),
+      this.sessionStore(),
       this.env,
       String(this.ctx.id.name ?? ""),
     );
@@ -127,7 +151,7 @@ export class SessionAgent extends AIChatAgent<Env> {
     _onFinish: GenerateTextOnFinishCallback<ToolSet>,
     _options?: OnChatMessageOptions,
   ): Promise<Response | undefined> {
-    const store = makeStore(this.ctx.storage.sql);
+    const store = this.sessionStore();
     const db = makeDatabase(this.env.DB);
     const sessionId = String(this.ctx.id.name ?? "");
     const text = lastUserText(this.messages);
@@ -262,7 +286,7 @@ export class SessionAgent extends AIChatAgent<Env> {
     if (requestId !== undefined) {
       this.turns.delete(requestId);
     }
-    const store = makeStore(this.ctx.storage.sql);
+    const store = this.sessionStore();
     const db = makeDatabase(this.env.DB);
     if (
       result.status === "error" &&
@@ -309,10 +333,11 @@ export class SessionAgent extends AIChatAgent<Env> {
   async alarm(): Promise<void> {
     await Effect.runPromise(
       completeShift(
-        makeStore(this.ctx.storage.sql),
+        this.sessionStore(),
         this.env,
         String(this.ctx.id.name ?? ""),
       ),
     );
+    await this.reconcileSpent();
   }
 }
