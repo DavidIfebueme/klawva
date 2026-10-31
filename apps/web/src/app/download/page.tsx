@@ -40,12 +40,6 @@ export function Component() {
               <p className="font-mono text-klawva-muted text-sm mb-4">
                 {unavailableOsCopy(visitor)}
               </p>
-              <div className="flex items-center justify-center gap-3">
-                <Button href={desktopDownloadUrl("windows")}>windows</Button>
-                <Button variant="secondary" href={desktopDownloadUrl("linux")}>
-                  linux
-                </Button>
-              </div>
             </div>
           ) : (
             <>

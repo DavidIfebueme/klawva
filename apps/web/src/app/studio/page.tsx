@@ -134,12 +134,6 @@ export function Component() {
         </div>
       </div>
 
-      {error && (
-        <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
-          {error}
-        </p>
-      )}
-
       <AuthorMoney
         token={session.token}
         displayName={me.displayName ?? ""}
@@ -154,6 +148,11 @@ export function Component() {
             Create Listing
           </h2>
           <form onSubmit={handleCreate} className="space-y-5">
+            {error && (
+              <p className="text-xs text-klawva-orange bg-klawva-orange/10 border border-klawva-orange/20 rounded p-3 font-mono">
+                {error}
+              </p>
+            )}
             <LaneFields value={laneDraft} onChange={patchLane} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
@@ -163,10 +162,16 @@ export function Component() {
                 <input
                   className={inputClass}
                   required
+                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                  minLength={2}
+                  maxLength={64}
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="my-ops-agent"
                 />
+                <p className="font-mono text-[11px] text-klawva-dim mt-1">
+                  lowercase letters, numbers and single dashes
+                </p>
               </div>
               <div>
                 <label className="block text-xs uppercase tracking-wider text-klawva-muted mb-2">

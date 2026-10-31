@@ -359,6 +359,30 @@ export async function createStudioListing(
   );
 }
 
+export async function deleteStudioListing(
+  token: string,
+  id: string,
+): Promise<{ ok: boolean }> {
+  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
+    await send(`/api/author/listings/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    }),
+  );
+}
+
+export async function withdrawStudioListing(
+  token: string,
+  id: string,
+): Promise<{ status: string }> {
+  return Schema.decodeUnknownSync(Schema.Struct({ status: Schema.String }))(
+    await send(`/api/author/listings/${id}/withdraw`, {
+      method: "POST",
+      headers: authHeaders(token),
+    }),
+  );
+}
+
 export async function runStudioSandbox(
   token: string,
   id: string,
