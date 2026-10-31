@@ -85,11 +85,10 @@ export class SessionAgent extends AIChatAgent<Env> {
       this.ctx.waitUntil(
         Effect.runPromise(
           db
-            .run("UPDATE sessions SET spent_minor = ?, updated_at = ? WHERE id = ?", [
-              spentMinor,
-              new Date().toISOString(),
-              sessionId,
-            ])
+            .run(
+              "UPDATE sessions SET spent_minor = CASE WHEN spent_minor < ? THEN ? ELSE spent_minor END, updated_at = ? WHERE id = ?",
+              [spentMinor, spentMinor, new Date().toISOString(), sessionId],
+            )
             .pipe(Effect.catch(() => Effect.void)),
         ),
       );

@@ -155,14 +155,16 @@ export const makeStore = (
           new BudgetExhausted({ budgetMinor: budget, spentMinor: spent }),
         );
       }
+      const next = spent + amountMinor;
       yield* Effect.sync(() => {
-        const next = spent + amountMinor;
         sql.exec(
           "INSERT INTO session_meta (key, value) VALUES ('spent_minor', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
           String(next),
         );
-        projectSpent?.(next);
       });
+      yield* Effect.sync(() => projectSpent?.(next)).pipe(
+        Effect.catchDefect(() => Effect.void),
+      );
     }),
 });
 

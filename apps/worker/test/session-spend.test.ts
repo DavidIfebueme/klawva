@@ -61,6 +61,17 @@ describe("session spend", () => {
     expect(projected).toEqual([]);
   });
 
+  it("survives a projection that throws", async () => {
+    const { sql, meta } = fakeSql({ budget_minor: "100", spent_minor: "0" });
+    const store = makeStore(sql, () => {
+      throw new Error("d1 unavailable");
+    });
+
+    await Effect.runPromise(store.spend(20));
+
+    expect(meta.get("spent_minor")).toBe("20");
+  });
+
   it("works when no projection is wired", async () => {
     const { sql, meta } = fakeSql({ budget_minor: "100", spent_minor: "0" });
     const store = makeStore(sql);
