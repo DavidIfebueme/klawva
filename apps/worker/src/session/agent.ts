@@ -950,6 +950,7 @@ const sessionGroup = HttpApiBuilder.group(
                 error instanceof ModelError
                   ? String(error.cause)
                   : String(error);
+              console.error("ai_turn_failed", cause);
               const spent =
                 cause.includes("neurons") || cause.includes("free allocation");
               return recordAiUsage(db, {

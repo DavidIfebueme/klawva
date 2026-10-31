@@ -110,6 +110,22 @@ export const neuronsSpent = (error: unknown): boolean => {
   return false;
 };
 
+const novaBoilerplate = ["You do not identify as", "identity related questions"];
+
+export const stripNovaBoilerplate = (text: string): string => {
+  const trimmed = text.trimStart();
+  for (const marker of novaBoilerplate) {
+    const index = trimmed.indexOf(marker);
+    if (index > 0) {
+      const kept = trimmed.slice(0, index).trim();
+      if (kept.length > 0) {
+        return kept;
+      }
+    }
+  }
+  return trimmed.trim();
+};
+
 const withNeuronFallback = (
   env: Env,
   db: DatabaseImpl,
@@ -126,7 +142,8 @@ const withNeuronFallback = (
       Effect.gen(function* () {
         if (yield* quotaSpentRecently(db)) {
           if (bedrockEnabled(env)) {
-            return yield* nova().complete(messages, withTools);
+            const result = yield* nova().complete(messages, withTools);
+            return { ...result, text: stripNovaBoilerplate(result.text) };
           }
           return yield* Effect.fail(
             new ModelError({
@@ -142,7 +159,14 @@ const withNeuronFallback = (
             return recordQuotaSpent(db).pipe(
               Effect.andThen(() =>
                 bedrockEnabled(env)
-                  ? nova().complete(messages, withTools)
+                  ? nova()
+                      .complete(messages, withTools)
+                      .pipe(
+                        Effect.map((result) => ({
+                          ...result,
+                          text: stripNovaBoilerplate(result.text),
+                        })),
+                      )
                   : Effect.fail(error),
               ),
             );
