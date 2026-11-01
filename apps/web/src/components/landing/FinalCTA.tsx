@@ -16,7 +16,7 @@ export function FinalCTA() {
           transition={{ duration: 0.6, ease: 'easeOut' }}
           className="font-syne font-extrabold text-4xl sm:text-5xl md:text-7xl lg:text-8xl text-klawva-text mb-6 tracking-tight leading-[0.9]"
         >
-          Hire an employee, or publish one.
+          YOUR FIRST EMPLOYEE IS WAITING.
         </motion.h2>
 
         <motion.p
@@ -26,7 +26,7 @@ export function FinalCTA() {
           transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
           className="font-mono text-klawva-muted text-xl md:text-2xl mb-12"
         >
-          Pick a shift from the catalogue, or list your own employee and keep 80% of each sale.
+          Pick an employee. Brief them. Let them work.
         </motion.p>
 
         <motion.div
@@ -34,13 +34,9 @@ export function FinalCTA() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.4, ease: 'easeOut' }}
-          className="flex flex-col sm:flex-row items-center gap-4"
         >
           <Button variant="primary" size="lg" href="/employees" className="text-xl px-12 py-6">
             Hire an employee
-          </Button>
-          <Button variant="secondary" size="lg" href="/publish" className="text-xl px-12 py-6">
-            Publish an employee
           </Button>
         </motion.div>
       </div>

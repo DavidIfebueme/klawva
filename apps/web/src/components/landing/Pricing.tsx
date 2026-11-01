@@ -69,7 +69,7 @@ export function Pricing({ minPriceMinor }: { minPriceMinor: number | null }) {
           transition={{ duration: 0.5, delay: 0.35 }}
           className="font-mono text-klawva-muted text-sm mb-12"
         >
-          Longer shifts cost less per day. One charge through Paystack.
+          Longer shifts cost less per day.
         </motion.p>
 
         <motion.ul

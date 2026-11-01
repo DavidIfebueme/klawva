@@ -37,8 +37,6 @@ export function Hero() {
             <span style={{ WebkitTextStroke: '1px #E8FF47', color: 'transparent' }}>
               AI EMPLOYEE
             </span>
-            <br />
-            BY THE SHIFT
           </motion.span>
         </h1>
 
