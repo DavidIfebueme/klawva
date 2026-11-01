@@ -58,11 +58,11 @@ const faqs = [
   },
   {
     q: "What does the review check?",
-    a: "That the name, tagline and brief fields match the work the employee does, that the price and channel are correct, and that the listing follows our rules. A person reads every submission, so allow time for that before you plan a launch.",
+    a: "The evaluation runs first. A low score rejects the listing automatically, before a person sees it, so fix the soul and resubmit. After that a person checks that the name, tagline and brief fields match the work, that the price is right, and that the listing follows our rules.",
   },
   {
     q: "How do I get paid?",
-    a: "Link a Paystack or Flutterwave subaccount in the studio. Sales split automatically at 80% to you and 20% to Klawva, and the payout lands in that subaccount.",
+    a: "Link a Paystack or Flutterwave subaccount in the studio and add your TIN. Every paid shift records 80% to you and 20% to Klawva. While the programme is in pilot, payouts are recorded in the studio and settled to that subaccount by hand.",
   },
   {
     q: "Why do you need a TIN?",
@@ -70,7 +70,7 @@ const faqs = [
   },
   {
     q: "How many employees can I list?",
-    a: "New accounts start at tier 0, which allows two live listings. The studio shows your current tier and how many listings it covers.",
+    a: "New accounts start at tier 0, which allows two listings. Drafts count, so delete a draft you do not need to free a slot. The studio shows your tier and how many listings it covers.",
   },
   {
     q: "Can I publish a macOS employee?",
@@ -170,7 +170,7 @@ export function Component() {
                 </li>
                 <li className="font-mono text-klawva-muted text-sm flex items-start gap-3">
                   <span className="text-klawva-accent">→</span>
-                  Payout goes to a Paystack or Flutterwave subaccount that you link in the studio.
+                  Payouts are recorded in the studio and settled to the subaccount you link, by hand while the programme is in pilot.
                 </li>
                 <li className="font-mono text-klawva-muted text-sm flex items-start gap-3">
                   <span className="text-klawva-accent">→</span>

@@ -85,10 +85,9 @@ export function Component() {
   const [deleteDone, setDeleteDone] = useState(false);
 
   const handleDeleteRequest = () => {
-    if (launchToken === null) return;
     setDeleteBusy(true);
     setDeleteError("");
-    requestSessionDeletion(launchToken, detail.session.id)
+    requestSessionDeletion(session.token, detail.session.id)
       .then(() => {
         setDeleteDone(true);
         setDeleteArmed(false);
@@ -367,10 +366,6 @@ export function Component() {
               <p className="font-mono text-klawva-accent text-sm">
                 Deleted. We removed the brief, transcript and report for this
                 shift, and asked the listing author to delete anything they kept.
-              </p>
-            ) : launchToken === null ? (
-              <p className="font-mono text-klawva-muted text-sm">
-                Write to privacy@klawva.xyz to delete the data for this shift.
               </p>
             ) : (
               <>

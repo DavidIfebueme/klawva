@@ -13,7 +13,7 @@ const included = [
   'Shift report at the end',
 ];
 
-export function Pricing({ minPriceMinor }: { minPriceMinor: number }) {
+export function Pricing({ minPriceMinor }: { minPriceMinor: number | null }) {
   return (
     <section id="pricing" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-3xl mx-auto text-center">
@@ -32,9 +32,15 @@ export function Pricing({ minPriceMinor }: { minPriceMinor: number }) {
           >
             <Card className="h-full flex flex-col items-center justify-center p-12 hover:border-klawva-accent transition-colors duration-300">
               <h3 className="font-syne font-extrabold text-6xl text-klawva-accent mb-4">
-                from ₦{(minPriceMinor / 100).toLocaleString()}
+                {minPriceMinor === null
+                  ? "One charge"
+                  : `from ₦${(minPriceMinor / 100).toLocaleString()}`}
               </h3>
-              <p className="font-mono text-klawva-muted text-sm mb-8">per shift</p>
+              <p className="font-mono text-klawva-muted text-sm mb-8">
+                {minPriceMinor === null
+                  ? "per shift, priced per employee"
+                  : "for a 24-hour shift"}
+              </p>
             </Card>
           </motion.div>
         </div>

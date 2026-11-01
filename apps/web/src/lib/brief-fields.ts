@@ -70,10 +70,20 @@ const placeholders: Readonly<Record<string, string>> = {
 const humanize = (value: string): string =>
   value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const optional = new Set([
+  "urls",
+  "context",
+  "output",
+  "extra_criteria",
+  "postings",
+  "receipts_in_mail",
+  "orders",
+]);
+
 export const briefField = (name: string): BriefFieldSpec => ({
   id: name,
   label: labels[name] ?? humanize(name),
   placeholder: placeholders[name] ?? "",
   type: name.endsWith("_file") ? "file" : "textarea",
-  required: true,
+  required: !optional.has(name),
 });

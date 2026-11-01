@@ -434,7 +434,7 @@ export function Component() {
                       employee.consent.recipient === "author"
                         ? "the author"
                         : employee.consent.recipient
-                    }. ${
+                    }. Your brief and the shift data go to them. ${
                       employee.consent.leavesCountry
                         ? "That data leaves the country."
                         : "That data stays in the country."
@@ -452,7 +452,8 @@ export function Component() {
                     {durationDays === 1
                       ? "24-hour shift"
                       : `${durationDays}-day shift`}
-                    . The AI allowance for this shift is included in the price.
+                    . The AI allowance for this shift is included in the price,
+                    about {Math.floor(employee.budgetMinor / 50)} messages.
                   </p>
                 </div>
                 <Button type="submit" variant="primary" size="lg" loading={loading}>

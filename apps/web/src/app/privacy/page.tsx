@@ -57,8 +57,10 @@ export default function PrivacyPage() {
               Reports are deleted ninety days after they are written.
             </p>
             <p>
-              Desktop employees run on your Windows or Linux machine. Their data
-              stays on that machine until you uninstall the app or delete the data.
+              A desktop employee runs on your Windows or Linux machine, and the
+              files it keeps there stay until you uninstall the app or delete them.
+              The brief, the messages and the report are still stored on Klawva
+              like any other shift, so you can read them in your account.
             </p>
           </section>
 

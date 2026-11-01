@@ -10,22 +10,24 @@ import { FinalCTA } from "@/components/landing/FinalCTA";
 import { listEmployees } from "@/lib/employees-api";
 
 export const loader = async () => {
-  const employees = await listEmployees();
-  const minPriceMinor = employees.reduce(
-    (lowest, employee) => Math.min(lowest, employee.priceMinor),
-    employees[0]?.priceMinor ?? 0,
-  );
-  return { employees, minPriceMinor };
+  const employees = await listEmployees().catch(() => null);
+  const list = employees ?? [];
+  const prices = list.map((employee) => employee.priceMinor);
+  return {
+    employees: list,
+    failed: employees === null,
+    minPriceMinor: prices.length === 0 ? null : Math.min(...prices),
+  };
 };
 
 export function Component() {
-  const { employees, minPriceMinor } = useLoaderData<typeof loader>();
+  const { employees, failed, minPriceMinor } = useLoaderData<typeof loader>();
 
   return (
     <main className="min-h-screen bg-klawva-bg text-klawva-text font-mono selection:bg-klawva-accent selection:text-klawva-bg">
       <Navbar />
       <Hero />
-      <AgentGrid employees={employees} />
+      <AgentGrid employees={employees} failed={failed} />
       <HowItWorks />
       <Pricing minPriceMinor={minPriceMinor} />
       <WhyKlawva />

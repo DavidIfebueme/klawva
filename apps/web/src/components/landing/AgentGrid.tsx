@@ -18,7 +18,13 @@ const iconMap: Partial<Record<string, typeof ScrapperIcon>> = {
   leadscout: LeadScoutIcon,
 };
 
-export function AgentGrid({ employees }: { employees: ReadonlyArray<EmployeeSummary> }) {
+export function AgentGrid({
+  employees,
+  failed,
+}: {
+  employees: ReadonlyArray<EmployeeSummary>;
+  failed: boolean;
+}) {
   const visible = employees.slice(0, 6);
 
   return (
@@ -62,7 +68,7 @@ export function AgentGrid({ employees }: { employees: ReadonlyArray<EmployeeSumm
                       {employee.category}
                     </span>
                     <span className="font-mono text-klawva-accent text-sm">
-                      ₦{(employee.priceMinor / 100).toLocaleString()} per shift
+                      ₦{(employee.priceMinor / 100).toLocaleString()} per 24h
                     </span>
                   </div>
 
@@ -74,6 +80,14 @@ export function AgentGrid({ employees }: { employees: ReadonlyArray<EmployeeSumm
             );
           })}
         </div>
+
+        {visible.length === 0 && (
+          <p className="text-center font-mono text-klawva-muted">
+            {failed
+              ? "The catalogue is unavailable right now. Try again in a moment."
+              : "No employees are listed yet."}
+          </p>
+        )}
 
         <div className="mt-16 text-center">
           <Button variant="ghost" href="/employees">

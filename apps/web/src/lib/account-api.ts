@@ -160,12 +160,12 @@ export async function submitFeedback(
 const deletionRequest = Schema.Struct({ deadline: Schema.String });
 
 export async function requestSessionDeletion(
-  sessionToken: string,
+  token: string,
   id: string,
 ): Promise<{ deadline: string }> {
   const res = await fetch(
-    `${BASE}/api/sessions/${encodeURIComponent(id)}/delete-my-data?token=${encodeURIComponent(sessionToken)}`,
-    { method: "POST" },
+    `${BASE}/api/sessions/${encodeURIComponent(id)}/delete-my-data`,
+    { method: "POST", headers: { "x-auth-token": token } },
   );
   if (!res.ok) {
     throw new ApiError(await failureMessage(res), res.status);

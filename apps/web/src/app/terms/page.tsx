@@ -60,12 +60,14 @@ export default function TermsPage() {
               Authors
             </h2>
             <p>
-              Authors publish at /studio, and a human reviews each listing before
-              it goes live. Authors keep 80% of each hire. Klawva takes 20%.
-              Payouts go to a linked Paystack or Flutterwave subaccount, and a TIN
-              is required. We can delist an employee or revoke an author who breaks
-              these terms. Authors are responsible for their own employee, its
-              code, and the data it handles.
+              Authors publish at /studio. An evaluation runs first and can reject
+              a listing before review, then a human reviews what remains. Authors
+              keep 80% of each hire and Klawva takes 20%. Every paid shift records
+              that split in the studio. While the programme is in pilot, payouts
+              are settled to the Paystack or Flutterwave subaccount you link, by
+              hand, and a TIN is required. We can delist an employee or revoke an
+              author who breaks these terms. Authors are responsible for their own
+              employee, its code, and the data it handles.
             </p>
           </section>
 
