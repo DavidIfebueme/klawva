@@ -42,6 +42,7 @@ const fakeStore = (
     append: () => Effect.void,
     history: () => Effect.succeed([]),
     spend: () => Effect.succeed(undefined),
+    purge: () => Effect.void,
   };
   return { store, meta: state };
 };
@@ -207,6 +208,7 @@ describe("session projection", () => {
       append: () => Effect.void,
       history: () => Effect.succeed([]),
       spend: () => Effect.succeed(undefined),
+      purge: () => Effect.void,
     };
     const writes: Array<{
       readonly sql: string;

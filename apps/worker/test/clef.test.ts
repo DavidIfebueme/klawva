@@ -34,6 +34,7 @@ const store = (meta: Readonly<Record<string, string>>): SessionStoreImpl => ({
   append: () => Effect.void,
   history: () => Effect.succeed([]),
   spend: () => Effect.void,
+  purge: () => Effect.void,
 });
 
 const db: DatabaseImpl = {

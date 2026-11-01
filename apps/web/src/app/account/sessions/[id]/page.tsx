@@ -365,8 +365,8 @@ export function Component() {
             </h2>
             {deleteDone ? (
               <p className="font-mono text-klawva-accent text-sm">
-                Deletion requested. We will remove the shift data and ask the
-                author to delete anything they kept.
+                Deleted. We removed the brief, transcript and report for this
+                shift, and asked the listing author to delete anything they kept.
               </p>
             ) : launchToken === null ? (
               <p className="font-mono text-klawva-muted text-sm">
