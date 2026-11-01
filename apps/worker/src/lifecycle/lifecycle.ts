@@ -120,6 +120,18 @@ export const sweep = (env: Env): Effect.Effect<SweepResult> =>
       ended = reported.filter((ok) => ok).length;
     }
 
+    const expiring = yield* db
+      .all(
+        "SELECT s.id AS id FROM sessions s WHERE s.window_end IS NOT NULL AND s.window_end < ? AND EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id) LIMIT 200",
+        [transcriptCutoff],
+      )
+      .pipe(Effect.orDie);
+    yield* Effect.forEach(
+      expiring,
+      (row) => callSession(env, String(row.id), "/purge"),
+      { concurrency: 3 },
+    );
+
     yield* db
       .run(
         "DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE window_end IS NOT NULL AND window_end < ?)",

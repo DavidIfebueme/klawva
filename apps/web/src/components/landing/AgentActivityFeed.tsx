@@ -1,42 +1,38 @@
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 
 const FEED_LINES = [
-  'Scanning 47 product listings from Lagos market...',
-  'Price delta detected: ₦2,400 → ₦1,850 on item #847',
-  'Cross-referencing supplier ratings...',
-  '3 new vendor responses received',
-  'Research complete: 12 sources verified',
-  'Compiling delivery schedule for zone 4...',
-  'Scraping category: Electronics → 234 items found',
-  'Duplicate listing filtered: SKU-9921 already tracked',
-  'Vendor order #847 confirmed — ETA 48hrs',
-  'Market trend alert: demand spike in hardware tools',
-  'Extracting contact info from 18 supplier pages...',
-  'Competitor price matrix updated — 6 changes',
-  'Session note: employer prefers WhatsApp updates',
-  'Inventory check: 3 items below threshold',
-  'Scraping complete — 892 records extracted',
-  'Research query: import regulations Ghana 2026',
-  'Mapping supplier network — 14 nodes identified',
-  'Flagging unreliable vendor: rating < 2.1',
-  'Daily summary queued for delivery',
-  'Price comparison table generated — 47 rows',
-  'Outreach sent to 5 new suppliers',
-  'Verifying product availability with vendor #12...',
-  'Scraping target: e-commerce category page 3/8',
-  'Lead qualified: construction materials distributor',
-  'Session timer: 18h 32m remaining',
-  'Data export ready — CSV format, 2.4MB',
-  'New vendor onboarded: ABJ Wholesale Ltd',
-  'Research note: exchange rate impact on pricing',
-  'Scraping rate: 12 pages/min — within limits',
-  'Order fulfillment rate: 94.2% this session',
-  'Category scan: Automobile parts → 67 new listings',
-  'Price alert: cement bag up 8% in 24hrs',
-  'Vendor response time: avg 2.3hrs',
-  'Generating procurement recommendations...',
-  'Supply chain bottleneck flagged: port clearance delays',
+  'scrapper: price check on 12 listings, 3 changed',
+  'scrapper: saved a comparison table for the brief',
+  'scrapper: page 4 of 8 read, no errors',
+  'researcher: reading source 6 of 11',
+  'researcher: flagged one source as undated',
+  'researcher: outline drafted, filling in citations',
+  'inbox: drafted a reply to a customer enquiry',
+  'inbox: moved 4 messages to awaiting your answer',
+  'inbox: tagged an invoice request for moneyadmin',
+  'receptionist: took a message for the 3pm call',
+  'receptionist: logged a caller who wants a callback',
+  'receptionist: shared the opening hours reply',
+  'moneyadmin: matched 8 payments to invoices',
+  'moneyadmin: flagged one receipt with no reference',
+  'paperwork: filed the signed contract',
+  'paperwork: renamed 6 documents to the client format',
+  'jobseeker: found 14 roles that match the brief',
+  'jobseeker: checked 5 listings for closing dates',
+  'leadscout: qualified 6 new leads',
+  'leadscout: removed 3 duplicates from the list',
+  'cvtailor: rewrote the summary for a fintech role',
+  'cvtailor: shortened the CV to two pages',
+  'study: summarised chapter 3 into 12 points',
+  'study: built a practice set from last week',
+  'followupcaller: queued a follow-up for tomorrow',
+  'followupcaller: logged two people who asked for email',
+  'checkincaller: recorded a check-in from a patient',
+  'checkincaller: rescheduled one check-in to Friday',
+  'session note: shift ends in 18h 32m',
+  'session note: brief updated by the employer',
+  'report: shift report drafted, waiting for the end',
 ];
 
 interface FeedColumnProps {
@@ -47,14 +43,11 @@ interface FeedColumnProps {
 }
 
 function FeedColumn({ lines, speed, offset, className = '' }: FeedColumnProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+  const start = (el: HTMLDivElement | null) => {
+    if (el === null) return;
 
     const totalHeight = el.scrollHeight / 2;
-    let frame: number;
+    let frame = 0;
     let pos = offset * totalHeight;
 
     const step = () => {
@@ -66,14 +59,14 @@ function FeedColumn({ lines, speed, offset, className = '' }: FeedColumnProps) {
 
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [speed, offset]);
+  };
 
   const doubled = [...lines, ...lines];
 
   return (
     <div className={`h-full overflow-hidden relative ${className}`}>
       <div
-        ref={scrollRef}
+        ref={start}
         className="h-full overflow-y-hidden"
         style={{ scrollbarWidth: 'none' }}
       >

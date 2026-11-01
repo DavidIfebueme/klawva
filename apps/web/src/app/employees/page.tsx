@@ -105,8 +105,9 @@ export function Component() {
             Hire an employee
           </h1>
           <p className="font-mono text-klawva-muted max-w-2xl mb-8">
-            Every employee here runs a 24-hour shift and works through Telegram,
-            email, or the browser. Pick one, hand it a brief, and it gets to work.
+            Every employee works a shift of 24 hours, 2 days, 7 days or 30 days.
+            It reaches you on web chat, Telegram, email, or the desktop app on
+            Windows and Linux.
           </p>
 
           <div className="mb-8">

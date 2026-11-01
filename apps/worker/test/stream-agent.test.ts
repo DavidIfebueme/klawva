@@ -119,6 +119,7 @@ describe("turn admission", () => {
       append: () => Effect.void,
       history: () => Effect.succeed([]),
       spend: () => Effect.void,
+      purge: () => Effect.void,
     };
     const db: DatabaseImpl = {
       all: () => Effect.succeed([]),
@@ -277,6 +278,7 @@ describe("paid state gate", () => {
           append: () => Effect.void,
           history: () => Effect.succeed([]),
           spend: () => Effect.succeed(undefined),
+          purge: () => Effect.void,
         } as SessionStoreImpl,
         {
           all: () => Effect.succeed([]),

@@ -5,7 +5,6 @@ import {
   redirect,
   useRouteError,
 } from "react-router-dom";
-import Landing from "./app/page.tsx";
 import CustomRequest from "./app/custom-request/page.tsx";
 import Pricing from "./app/pricing/page.tsx";
 import Privacy from "./app/privacy/page.tsx";
@@ -76,7 +75,7 @@ export const router = createBrowserRouter([
     element: <Outlet />,
     errorElement: <RootRouteError />,
     children: [
-      { path: "/", element: <Landing /> },
+      { path: "/", lazy: () => import("./app/page.tsx") },
       { path: "/employees", lazy: () => import("./app/employees/page.tsx") },
       {
         path: "/employees/launch",
@@ -102,6 +101,7 @@ export const router = createBrowserRouter([
       { path: "/store", loader: () => redirect("/employees") },
       { path: "/agents", loader: () => redirect("/employees") },
       { path: "/custom-request", element: <CustomRequest /> },
+      { path: "/publish", lazy: () => import("./app/publish/page.tsx") },
       { path: "/pricing", element: <Pricing /> },
       { path: "/privacy", element: <Privacy /> },
       { path: "/terms", element: <Terms /> },

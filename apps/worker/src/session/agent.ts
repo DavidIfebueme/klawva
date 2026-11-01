@@ -96,6 +96,7 @@ export interface SessionStoreImpl {
   readonly append: (role: string, content: string) => Effect.Effect<void>;
   readonly history: () => Effect.Effect<ReadonlyArray<StoredMessage>>;
   readonly spend: (amountMinor: number) => Effect.Effect<void, BudgetExhausted>;
+  readonly purge: () => Effect.Effect<void>;
 }
 
 export class SessionStore extends Context.Service<SessionStore, SessionStoreImpl>()(
@@ -146,6 +147,11 @@ export const makeStore = (
         .toArray()
         .map((row) => ({ role: String(row.role), content: String(row.content) })),
     ),
+  purge: () =>
+    Effect.sync(() => {
+      sql.exec("DELETE FROM session_messages");
+      sql.exec("DELETE FROM session_meta WHERE key IN ('brief', 'soul')");
+    }),
   spend: (amountMinor) =>
     Effect.gen(function* () {
       const budget = Number(readMeta(sql, "budget_minor") ?? "0");
@@ -671,6 +677,10 @@ const kickoff = HttpApiEndpoint.post("kickoff", "/kickoff", {
   }),
 });
 
+const purge = HttpApiEndpoint.post("purge", "/purge", {
+  success: Schema.Struct({ ok: Schema.Boolean }),
+});
+
 const appendMessage = HttpApiEndpoint.post("appendMessage", "/messages", {
   payload: Schema.Struct({
     role: Schema.Literals(["user", "assistant"]),
@@ -691,6 +701,7 @@ class SessionGroup extends HttpApiGroup.make("Session")
   .add(history)
   .add(report)
   .add(kickoff)
+  .add(purge)
   .add(appendMessage) {}
 
 class SessionApi extends HttpApi.make("SessionApi").add(SessionGroup) {}
@@ -874,6 +885,12 @@ const sessionGroup = HttpApiBuilder.group(
       .handle("report", () =>
         Effect.gen(function* () {
           yield* completeShift(store, sessionEnv.env, sessionEnv.sessionId);
+          return { ok: true };
+        }),
+      )
+      .handle("purge", () =>
+        Effect.gen(function* () {
+          yield* store.purge();
           return { ok: true };
         }),
       )

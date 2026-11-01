@@ -252,14 +252,24 @@ export function Component() {
           {desktop && (
             <DesktopDownloadBlock agentName={agentName} />
           )}
-          {channel === "web" ? (
+          {desktop ? (
             <>
               <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
                 Your employee is on it
               </h1>
               <p className="font-mono text-klawva-muted text-sm mb-10">
-                {agentName} has your brief and is on shift for the next 24
-                hours. Open the chat to watch it work or redirect it.
+                {agentName} has your brief and is on shift. Open the app, pair it
+                with this shift, and it starts working on your computer.
+              </p>
+            </>
+          ) : channel === "web" ? (
+            <>
+              <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
+                Your employee is on it
+              </h1>
+              <p className="font-mono text-klawva-muted text-sm mb-10">
+                {agentName} has your brief and is on shift. Open the chat to
+                watch it work or redirect it.
               </p>
               <div>
                 <Button variant="primary" size="lg" href={chatLink}>
@@ -304,7 +314,9 @@ export function Component() {
             </>
           )}
           <p className="font-mono text-klawva-dim text-xs mt-8">
-            {agentName} · 24-hour shift · channel: {channel}
+            {desktop
+              ? `${agentName} · on shift · runs in the desktop app`
+              : `${agentName} · on shift · channel: ${channel}`}
           </p>
           {!desktop && (
             <p className="font-mono text-klawva-dim text-xs mt-6">

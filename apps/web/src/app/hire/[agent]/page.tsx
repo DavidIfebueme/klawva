@@ -74,11 +74,16 @@ export function Component() {
             )}
           <div className="h-px w-full bg-klawva-border" />
           <p className="font-mono text-klawva-muted text-lg leading-relaxed">
-            Hires run a 24-hour shift. You hand over a brief, then work with
-            {" "}
-            {employee.name.split(" ").pop()} entirely through Telegram from the
-            moment your payment clears.
+            Hires run a shift of 24 hours up to 30 days. You hand over a brief,
+            then work with {employee.name} through web chat, email, Telegram, or
+            the desktop app on Windows and Linux from the moment your payment
+            clears.
           </p>
+          {employee.category === "phone" && (
+            <p className="font-mono text-klawva-dim text-sm leading-relaxed">
+              Calling is not live yet, so a phone shift runs in chat for now.
+            </p>
+          )}
           {(employee.lane ?? "authored") !== "authored" && (
             <div className="border border-klawva-border rounded p-4 font-mono text-xs text-klawva-dim leading-relaxed">
               <p className="text-klawva-muted mb-2">Data schedule</p>
@@ -87,8 +92,11 @@ export function Component() {
                 {employee.dataPolicy
                   ? ` Reports and evidence are kept ${employee.dataPolicy.retentionDays} days.`
                   : ""}{" "}
-                You can ask for your data back from the session page at any
-                time; the author has 7 days to delete it.
+                You can ask for your data back from your account page at any
+                time.
+                {employee.dataPolicy
+                  ? ` The author has ${employee.dataPolicy.retentionDays} days to delete it.`
+                  : ""}
               </p>
             </div>
           )}
@@ -105,12 +113,12 @@ export function Component() {
             </div>
             <Link href={`/checkout?agent=${employee.slug}`} className="block w-full">
               <Button variant="primary" size="lg" className="w-full mb-4">
-                Hire {employee.name.split(" ").pop()} →
+                Hire {employee.name} →
               </Button>
             </Link>
             <div className="text-center">
               <Badge variant="pending" className="px-3 py-1 text-xs tracking-widest">
-                [ 24 HRS ]
+                [ 24 HRS TO 30 DAYS ]
               </Badge>
             </div>
           </div>

@@ -22,7 +22,7 @@ export function Hero() {
           className="mb-6 lg:mb-8"
         >
           <span className="font-mono text-klawva-muted text-[10px] sm:text-xs tracking-[0.2em] uppercase">
-            [ AUTONOMOUS · 24-HOUR · DISPOSABLE ]
+            [ CLOUD · PHONE · DESKTOP ]
           </span>
         </motion.div>
 
@@ -37,6 +37,8 @@ export function Hero() {
             <span style={{ WebkitTextStroke: '1px #E8FF47', color: 'transparent' }}>
               AI EMPLOYEE
             </span>
+            <br />
+            BY THE SHIFT
           </motion.span>
         </h1>
 
@@ -46,7 +48,7 @@ export function Hero() {
           transition={{ duration: 0.5, delay: 0.8, ease: 'easeOut' }}
           className="font-mono text-klawva-muted text-lg md:text-xl max-w-2xl mb-12"
         >
-          Deploy an AI worker to your Telegram or WhatsApp. It handles the shift, delivers results, and signs off. One fee. No subscription.
+          Pick an employee, write a brief, and pay for one shift. Shifts run 24 hours, 2 days, 7 days or 30 days. You get the transcript and a shift report at the end.
         </motion.p>
 
         <motion.div
@@ -55,8 +57,8 @@ export function Hero() {
           transition={{ duration: 0.5, delay: 1.0, ease: 'easeOut' }}
           className="flex flex-col sm:flex-row items-center gap-4 mb-16"
         >
-          <Button variant="primary" size="lg" href="/employees">Meet the Employees</Button>
-          <Button variant="secondary" size="lg" href="#how-it-works">How It Works</Button>
+          <Button variant="primary" size="lg" href="/employees">Hire an employee</Button>
+          <Button variant="secondary" size="lg" href="/publish">Publish your own</Button>
         </motion.div>
 
         <motion.div
@@ -66,8 +68,8 @@ export function Hero() {
           className="flex flex-wrap justify-center gap-3"
         >
           <Badge variant="pending" className="px-4 py-1.5 text-sm">SCRAPPER</Badge>
-          <Badge variant="pending" className="px-4 py-1.5 text-sm">VENDOR</Badge>
           <Badge variant="pending" className="px-4 py-1.5 text-sm">RESEARCHER</Badge>
+          <Badge variant="pending" className="px-4 py-1.5 text-sm">RECEPTIONIST</Badge>
         </motion.div>
 
       </div>

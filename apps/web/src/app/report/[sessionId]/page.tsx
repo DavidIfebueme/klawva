@@ -4,21 +4,18 @@ import {
   useLoaderData,
   type LoaderFunctionArgs,
 } from "react-router-dom";
+import * as Schema from "effect/Schema";
 import { motion } from "motion/react";
 import { toPng } from "html-to-image";
 import { Navbar } from "../../../components/layout/Navbar";
 import { Footer } from "../../../components/layout/Footer";
 import { KlawvaMark } from "../../../components/icons/KlawvaMark";
-import { ScrapperIcon } from "../../../components/icons/ScrapperIcon";
-import { VendorIcon } from "../../../components/icons/VendorIcon";
-import { ResearcherIcon } from "../../../components/icons/ResearcherIcon";
 import { Button } from "../../../components/ui/Button";
 import { ApiError } from "../../../lib/api-error";
 import { getSharedReport } from "../../../lib/public-api";
 import { Markdown } from "../../../components/ui/Markdown";
-import { agents, type AgentId } from "../../../lib/agents";
 
-const isAgentId = (value: string): value is AgentId => value in agents;
+const statSchema = Schema.Struct({ label: Schema.String, value: Schema.String });
 
 const normalizeStats = (
   stats: ReadonlyArray<{ label: string; value: string }> | string,
@@ -26,21 +23,10 @@ const normalizeStats = (
   if (typeof stats !== "string") {
     return stats;
   }
-  try {
-    const parsed: unknown = JSON.parse(stats);
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (entry): entry is { label: string; value: string } =>
-          entry !== null &&
-          typeof entry === "object" &&
-          typeof (entry as Record<string, unknown>).label === "string" &&
-          typeof (entry as Record<string, unknown>).value === "string",
-      );
-    }
-  } catch {
-    return [];
-  }
-  return [];
+  const parsed = Schema.decodeUnknownOption(
+    Schema.fromJsonString(Schema.Array(statSchema)),
+  )(stats);
+  return parsed._tag === "Some" ? parsed.value : [];
 };
 
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
@@ -50,9 +36,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   }
   const url = new URL(request.url);
   const shareToken = url.searchParams.get("shareToken");
-  const agentParam = url.searchParams.get("agent") ?? "scrapper";
   if (shareToken === null) {
-    return { sessionId, agentParam, report: null, error: "This report needs its share link." };
+    return { sessionId, report: null, error: "This report needs its share link." };
   }
   const report = await getSharedReport(sessionId, shareToken).catch((err) => {
     if (err instanceof ApiError) {
@@ -62,38 +47,23 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   });
   return {
     sessionId,
-    agentParam,
     report,
     error: report === null ? "Report is not available yet." : null,
   };
 };
 
 export function Component() {
-  const { sessionId, agentParam, report, error } = useLoaderData<typeof loader>();
-  const slug =
-    report !== null && isAgentId(report.agentSlug)
-      ? report.agentSlug
-      : isAgentId(agentParam)
-        ? agentParam
-        : "scrapper";
-  const agent = agents[slug];
-  const displayName = report !== null ? report.agentName : agent.name;
-  const AgentIcon =
-    agent.id === "vendor"
-      ? VendorIcon
-      : agent.id === "researcher"
-        ? ResearcherIcon
-        : ScrapperIcon;
+  const { sessionId, report, error } = useLoaderData<typeof loader>();
+  const displayName = report === null ? "Your employee" : report.agentName;
   const cardRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const stats = report === null ? [] : normalizeStats(report.stats);
 
   const handleShare = () => {
-    const token = report?.shareToken;
-    let url = window.location.origin + window.location.pathname + `?agent=${agent.id}`;
-    if (token !== undefined && token.length > 0) {
-      url += `&shareToken=${encodeURIComponent(token)}`;
+    let url = window.location.origin + window.location.pathname;
+    if (report !== null && report.shareToken.length > 0) {
+      url += `?shareToken=${encodeURIComponent(report.shareToken)}`;
     }
     navigator.clipboard.writeText(url);
     setCopied(true);
@@ -139,19 +109,23 @@ export function Component() {
                     KLAWVA
                   </span>
                 </div>
-                <div className="font-mono text-klawva-accent text-xs uppercase tracking-wider border border-klawva-accent px-3 py-1 rounded-full">
-                  MISSION COMPLETE
-                </div>
+                {report !== null && (
+                  <div className="font-mono text-klawva-accent text-xs uppercase tracking-wider border border-klawva-accent px-3 py-1 rounded-full">
+                    SHIFT COMPLETE
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-6 mb-8">
-                <AgentIcon size={64} className="text-klawva-text" />
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-klawva-border bg-[#0A0A0A] font-syne font-extrabold text-2xl text-klawva-accent">
+                  {displayName.charAt(0)}
+                </div>
                 <div>
                   <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-klawva-text mb-2">
                     {displayName}
                   </h1>
                   <div className="font-mono text-klawva-muted text-sm">
-                    {report !== null ? "Shift report" : "Mission in progress"}
+                    {report !== null ? "Shift report" : "Shift in progress"}
                   </div>
                 </div>
               </div>
@@ -174,13 +148,13 @@ export function Component() {
 
               <div className="mb-12">
                 <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-4">
-                  Final Summary
+                  Final summary
                 </div>
                 {report?.summary !== undefined ? (
                   <Markdown content={report.summary} />
                 ) : (
                   <p className="font-mono text-klawva-text text-base leading-relaxed">
-                    Mission report is still compiling and will appear here after final delivery.
+                    Shift report is still compiling and will appear here after final delivery.
                   </p>
                 )}
               </div>
@@ -208,7 +182,7 @@ export function Component() {
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button variant="secondary" onClick={handleShare}>
-                {copied ? "Copied!" : "Share this report"}
+                {copied ? "Copied" : "Share this report"}
               </Button>
               <Button variant="secondary" onClick={handleDownload} disabled={isDownloading}>
                 {isDownloading ? "Generating..." : "Download as image"}
@@ -216,9 +190,15 @@ export function Component() {
             </div>
             <div className="h-px w-full bg-klawva-border my-2" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button variant="primary" href={`/employees/${agent.id}`}>
-                Hire again →
-              </Button>
+              {report !== null ? (
+                <Button variant="primary" href={`/employees/${report.agentSlug}`}>
+                  Hire {report.agentName} again
+                </Button>
+              ) : (
+                <Button variant="primary" href="/employees">
+                  Browse employees
+                </Button>
+              )}
               <Button variant="ghost" href="/employees">
                 Try a different employee
               </Button>

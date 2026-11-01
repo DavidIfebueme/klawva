@@ -27,10 +27,33 @@ const sessionDetailRow = Schema.Struct({
   budgetMinor: Schema.Number,
   spentMinor: Schema.Number,
   createdAt: Schema.String,
+  sessionToken: Schema.optionalKey(Schema.NullOr(Schema.String)),
   listingName: Schema.NullOr(Schema.String),
   slug: Schema.NullOr(Schema.String),
 });
 export type AccountSessionRow = typeof sessionDetailRow.Type;
+
+const stateLabels: Readonly<Record<string, string>> = {
+  pending: "Pending",
+  active: "Active",
+  hibernating: "Paused",
+  recovering: "Paused",
+  completed: "Finished",
+  failed: "Failed",
+  expired: "Expired",
+};
+
+export const sessionStateLabel = (state: string): string =>
+  stateLabels[state] ?? state;
+
+const channelLabels: Readonly<Record<string, string>> = {
+  web: "Web chat",
+  telegram: "Telegram",
+  email: "Email",
+};
+
+export const sessionChannelLabel = (channel: string): string =>
+  channelLabels[channel] ?? channel;
 
 const transcriptEntry = Schema.Struct({
   role: Schema.String,
@@ -132,6 +155,22 @@ export async function submitFeedback(
       report,
     }),
   );
+}
+
+const deletionRequest = Schema.Struct({ deadline: Schema.String });
+
+export async function requestSessionDeletion(
+  token: string,
+  id: string,
+): Promise<{ deadline: string }> {
+  const res = await fetch(
+    `${BASE}/api/sessions/${encodeURIComponent(id)}/delete-my-data`,
+    { method: "POST", headers: { "x-auth-token": token } },
+  );
+  if (!res.ok) {
+    throw new ApiError(await failureMessage(res), res.status);
+  }
+  return Schema.decodeUnknownSync(deletionRequest)(await res.json());
 }
 
 export const LinkChannel = Schema.Literals([

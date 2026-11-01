@@ -12,24 +12,26 @@ export function Footer() {
             <span className="font-syne font-bold text-klawva-accent tracking-widest">KLAWVA</span>
           </div>
           <p className="text-klawva-muted text-sm max-w-xs">
-            Hire autonomous AI workers for 24 hours. Pay once. It works. Then it disappears.
+            Klawva hires out AI employees by the shift. One charge per shift.
           </p>
         </div>
         <div className="flex flex-col gap-3">
-          <h4 className="font-syne font-bold text-klawva-text mb-2">Links</h4>
-          <Link href="/" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Home</Link>
+          <h4 className="font-syne font-bold text-klawva-text mb-2">Product</h4>
           <Link href="/employees" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Employees</Link>
           <Link href="/pricing" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Pricing</Link>
+          <Link href="/publish" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Publish</Link>
+          <Link href="/download" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Download</Link>
+          <Link href="/account" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Account</Link>
         </div>
         <div className="flex flex-col gap-3">
           <h4 className="font-syne font-bold text-klawva-text mb-2">Legal</h4>
-          <Link href="/privacy" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Privacy Policy</Link>
-          <Link href="/terms" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Terms of Service</Link>
+          <Link href="/privacy" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Privacy</Link>
+          <Link href="/terms" className="text-klawva-muted hover:text-klawva-accent text-sm transition-colors">Terms</Link>
         </div>
       </div>
       <div className="max-w-7xl mx-auto pt-8 border-t border-klawva-border flex justify-between items-center">
         <p className="text-klawva-dim text-xs font-mono">
-          © {new Date().getFullYear()} Klawva. Workers available 24/7.
+          © {new Date().getFullYear()} Klawva.
         </p>
       </div>
     </footer>

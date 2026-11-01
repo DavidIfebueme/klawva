@@ -32,6 +32,7 @@ const SessionSummary = Schema.Struct({
   budgetMinor: Schema.Number,
   spentMinor: Schema.Number,
   createdAt: Schema.String,
+  sessionToken: Schema.NullOr(Schema.String),
   listingName: Schema.NullOr(Schema.String),
   slug: Schema.NullOr(Schema.String),
 });

@@ -36,9 +36,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     sessionId: params.sessionId,
     token,
     messages,
-    brief: meta.brief,
-    customerEmail: meta.customerEmail,
-    agentSlug: meta.agentId,
+    employeeName: meta.agentName,
   };
 };
 
@@ -55,87 +53,9 @@ const toText = (message: UIMessage): string =>
     .map((part) => (part.type === "text" ? part.text : ""))
     .join("\n");
 
-const toolInputDetail = (input: unknown): string => {
-  if (typeof input !== "object" || input === null) {
-    return "";
-  }
-  if ("query" in input && typeof input.query === "string" && input.query.length > 0) {
-    return input.query;
-  }
-  if ("url" in input && typeof input.url === "string" && input.url.length > 0) {
-    const parsed = URL.parse(input.url);
-    return parsed === null ? input.url : parsed.hostname;
-  }
-  return "";
-};
-
-const customerNameKeys = [
-  "customer_name",
-  "your_name",
-  "full_name",
-  "first_name",
-  "my_name",
-  "name",
-];
-
-const userPart = (
-  brief: Readonly<Record<string, string>>,
-  customerEmail: string,
-): string => {
-  const lowered: Record<string, string> = {};
-  for (const [key, value] of Object.entries(brief)) {
-    lowered[key.toLowerCase()] = value;
-  }
-  for (const key of customerNameKeys) {
-    const value = lowered[key];
-    if (value !== undefined) {
-      const name = value.trim();
-      if (name.length > 0 && name.length <= 60) {
-        return name;
-      }
-    }
-  }
-  for (const [key, value] of Object.entries(brief)) {
-    const name = value.trim();
-    if (
-      key.toLowerCase().includes("name") &&
-      name.length > 0 &&
-      name.length <= 60
-    ) {
-      return name;
-    }
-  }
-  const at = customerEmail.indexOf("@");
-  if (at > 0) {
-    return customerEmail.slice(0, at);
-  }
-  if (customerEmail.trim().length > 0) {
-    return customerEmail.trim();
-  }
-  return "you";
-};
-
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 40);
-
-const employeeLabel = (user: string, agentSlug: string): string =>
-  user === "you"
-    ? `you_${agentSlug}_employee`
-    : `${slugify(user)}_${agentSlug}_employee`;
-
 export function Component() {
-  const {
-    sessionId,
-    token,
-    messages: fallback,
-    brief,
-    customerEmail,
-    agentSlug,
-  } = useLoaderData<typeof loader>();
+  const { sessionId, token, messages: fallback, employeeName } =
+    useLoaderData<typeof loader>();
   const agent = useAgent({
     agent: "session",
     name: sessionId,
@@ -175,9 +95,6 @@ export function Component() {
     status === "streaming" ||
     isServerStreaming ||
     isRecovering;
-
-  const who = userPart(brief, customerEmail);
-  const employee = employeeLabel(who, agentSlug);
 
   const rows = useMemo(() => {
     if (messages.length > 0) {
@@ -268,7 +185,7 @@ export function Component() {
                       }`}
                     >
                       <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-klawva-dim">
-                        {row.role === "user" ? who : employee}
+                        {row.role === "user" ? "you" : employeeName}
                       </div>
                       {row.tools.length > 0 && (
                         <div className="mb-2 flex flex-col gap-1">

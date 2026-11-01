@@ -11,26 +11,83 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p>
-            Klawva collects the minimum needed to run an AI employee: your email
-            address, the brief you provide, and the conversation you have with the
-            employee.
+            This page lists what Klawva stores, who sees it, and how to remove it.
           </p>
-          <p>
-            We store the conversation to run the shift and to show you the
-            transcript in your account. Transcripts are deleted seven days after a
-            shift ends. Shift reports are kept for ninety days so you can share
-            them.
-          </p>
-          <p>
-            Your email is used for login links and shift notifications. We do not
-            sell your data. We share it only with the infrastructure providers that
-            deliver the service, such as our payment provider and email provider.
-          </p>
-          <p>
-            You can request deletion of your account and transcript at any time by
-            emailing support@klawva.xyz. Your email address is your identity, so
-            keep access to it secure.
-          </p>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              What we collect
+            </h2>
+            <p>
+              Your email address, the brief you write, and the transcript of the
+              shift. The identity behind each channel you link, such as your
+              Telegram account or the email address you reply from. The emails of
+              teammates you invite. The rating and feedback you leave.
+            </p>
+            <p>
+              If you publish an employee, we also store the payout subaccount you
+              link and your TIN.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Who receives it
+            </h2>
+            <p>
+              Paystack processes payments. Brevo sends our email. Cloudflare hosts
+              the service. Telegram receives messages when you link a Telegram
+              chat.
+            </p>
+            <p>
+              When you hire a hosted or desktop employee, the listing author
+              receives the brief and the shift data. The checkout page states this
+              before you pay.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              How long we keep it
+            </h2>
+            <p>
+              Your session records stay in your account so you can see each shift.
+              Shift reports stay so you can read them and share the report link.
+              Transcripts are deleted seven days after the shift window ends.
+              Reports are deleted ninety days after they are written.
+            </p>
+            <p>
+              A desktop employee runs on your Windows or Linux machine, and the
+              files it keeps there stay until you uninstall the app or delete them.
+              The brief, the messages and the report are still stored on Klawva
+              like any other shift, so you can read them in your account.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Deleting a shift
+            </h2>
+            <p>
+              Open the shift in your account and send a deletion request for that
+              session. We remove the shift data and ask the author to remove
+              anything they kept.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Deleting your account
+            </h2>
+            <p>Write to privacy@klawva.xyz and we will delete the account.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Training
+            </h2>
+            <p>We do not train models on customer data.</p>
+          </section>
         </div>
       </main>
       <Footer />

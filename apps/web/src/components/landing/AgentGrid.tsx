@@ -3,25 +3,29 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { Badge } from '../ui/Badge';
 import { ScrapperIcon } from '../icons/ScrapperIcon';
-import { VendorIcon } from '../icons/VendorIcon';
 import { ResearcherIcon } from '../icons/ResearcherIcon';
 import { JobSeekerIcon } from '../icons/JobSeekerIcon';
 import { LeadScoutIcon } from '../icons/LeadScoutIcon';
-import { agents } from '@/lib/agents';
+import { KlawvaMark } from '../icons/KlawvaMark';
+import type { EmployeeSummary } from '@/lib/employees-api';
 
-const iconMap = {
+const iconMap: Partial<Record<string, typeof ScrapperIcon>> = {
   scrapper: ScrapperIcon,
-  vendor: VendorIcon,
   researcher: ResearcherIcon,
   jobseeker: JobSeekerIcon,
   leadscout: LeadScoutIcon,
 };
 
-export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAll?: boolean; showSeeAllButton?: boolean }) {
-  const displayedAgents = showAll
-    ? Object.values(agents)
-    : [agents.scrapper, agents.jobseeker, agents.researcher];
+export function AgentGrid({
+  employees,
+  failed,
+}: {
+  employees: ReadonlyArray<EmployeeSummary>;
+  failed: boolean;
+}) {
+  const visible = employees.slice(0, 6);
 
   return (
     <section id="agents" className="py-32 px-6 bg-klawva-bg">
@@ -33,11 +37,11 @@ export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAl
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {displayedAgents.map((agent, index) => {
-            const Icon = iconMap[agent.id];
+          {visible.map((employee, index) => {
+            const Icon = iconMap[employee.slug] ?? KlawvaMark;
             return (
               <motion.div
-                key={agent.id}
+                key={employee.id}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
@@ -45,24 +49,31 @@ export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAl
               >
                 <Card hover className="h-full flex flex-col group">
                   <div className="mb-6">
-                    <Icon size={48} className="mb-6 text-klawva-accent group-hover:text-white transition-colors duration-300" />
-                    <h3 className="font-syne font-bold text-2xl text-klawva-text mb-2">{agent.name}</h3>
-                    <p className="font-mono text-klawva-muted text-sm">{agent.specialty}</p>
+                    <div className="flex items-start justify-between gap-3 mb-6">
+                      <Icon size={48} className="text-klawva-accent group-hover:text-white transition-colors duration-300" />
+                      {employee.authorKind === 'klawva' ? (
+                        <Badge variant="active">By Klawva</Badge>
+                      ) : (
+                        <Badge variant="pending">By {employee.authorDisplay}</Badge>
+                      )}
+                    </div>
+                    <h3 className="font-syne font-bold text-2xl text-klawva-text mb-2">{employee.name}</h3>
+                    <p className="font-mono text-klawva-muted text-sm">{employee.tagline}</p>
                   </div>
                   
                   <div className="h-px w-full bg-klawva-border mb-6" />
                   
-                  <ul className="flex-grow flex flex-col gap-4 mb-8">
-                    {agent.capabilities.slice(0, 3).map((cap, i) => (
-                      <li key={i} className="flex items-start gap-3">
-                        <span className="text-klawva-accent font-mono mt-0.5">→</span>
-                        <span className="font-mono text-sm text-klawva-muted leading-relaxed">{cap}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="flex-grow flex flex-col gap-2 mb-8">
+                    <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider">
+                      {employee.category}
+                    </span>
+                    <span className="font-mono text-klawva-accent text-sm">
+                      ₦{(employee.priceMinor / 100).toLocaleString()} per 24h
+                    </span>
+                  </div>
 
-                  <Button variant="ghost" className="w-full justify-start px-0 group-hover:text-klawva-accent transition-colors duration-300" onClick={() => window.location.href = `/employees/${agent.id}`}>
-                    Hire {agent.name.split(' ').pop()} →
+                  <Button variant="ghost" href={`/employees/${employee.slug}`} className="w-full justify-start px-0 group-hover:text-klawva-accent transition-colors duration-300">
+                    Hire {employee.name} →
                   </Button>
                 </Card>
               </motion.div>
@@ -70,13 +81,19 @@ export function AgentGrid({ showAll = false, showSeeAllButton = true }: { showAl
           })}
         </div>
 
-        {showSeeAllButton && (
-          <div className="mt-16 text-center">
-            <Button variant="ghost" onClick={() => window.location.href = '/employees'}>
-              See all employees →
-            </Button>
-          </div>
+        {visible.length === 0 && (
+          <p className="text-center font-mono text-klawva-muted">
+            {failed
+              ? "The catalogue is unavailable right now. Try again in a moment."
+              : "No employees are listed yet."}
+          </p>
         )}
+
+        <div className="mt-16 text-center">
+          <Button variant="ghost" href="/employees">
+            See all employees →
+          </Button>
+        </div>
       </div>
     </section>
   );

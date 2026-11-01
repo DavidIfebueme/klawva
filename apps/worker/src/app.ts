@@ -676,6 +676,29 @@ const rootGroup = HttpApiBuilder.group(
               ],
             )
             .pipe(Effect.orDie);
+          yield* db
+            .run("DELETE FROM messages WHERE session_id = ?", [params.id])
+            .pipe(Effect.orDie);
+          yield* db
+            .run("DELETE FROM mission_reports WHERE session_id = ?", [params.id])
+            .pipe(Effect.orDie);
+          yield* db
+            .run("UPDATE sessions SET brief = '{}' WHERE id = ?", [params.id])
+            .pipe(Effect.orDie);
+          yield* db
+            .run(
+              "UPDATE data_deletions SET status = 'done' WHERE session_id = ? AND status = 'open'",
+              [params.id],
+            )
+            .pipe(Effect.orDie);
+          yield* Effect.tryPromise({
+            try: () =>
+              env.SESSION.get(env.SESSION.idFromName(params.id)).fetch(
+                "https://session/purge",
+                { method: "POST" },
+              ),
+            catch: () => null,
+          }).pipe(Effect.catch(() => Effect.void));
           const owner = yield* db
             .first(
               "SELECT owner_id AS ownerId, name AS name FROM agent_listings WHERE id = ?",
