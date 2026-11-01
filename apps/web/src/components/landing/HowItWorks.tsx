@@ -1,55 +1,41 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { KlawvaMark } from '../icons/KlawvaMark';
-import { useBillingProfile } from '@/hooks/use-billing-profile';
 
-const baseSteps = [
+const steps = [
   {
     num: '01',
-    title: 'Choose your worker',
-    desc: 'Select the agent that fits your mission: Scrapper, Vendor, or Researcher.',
+    title: 'Pick an employee',
+    desc: 'Browse the catalogue by category: cloud, phone or desktop. Each listing shows the price for a shift.',
   },
   {
     num: '02',
     title: 'Fill in the brief',
-    desc: 'Give your agent clear instructions, context, and any necessary data or URLs.',
+    desc: 'Describe the job in plain language, add any links or files the employee needs, and choose your shift length.',
   },
   {
     num: '03',
-    title: 'Pay the flat fee',
-    desc: 'No subscriptions. No hidden costs. One price for a 24-hour shift.',
+    title: 'Pay for the shift',
+    desc: 'One charge per shift through Paystack. No subscription, no per-message fee. Longer shifts cost less per day.',
   },
   {
     num: '04',
-    title: 'Scan or click to connect',
-    desc: 'Connect via WhatsApp or Telegram. Your agent is ready immediately.',
-    isQR: true,
+    title: 'Connect on your channel',
+    desc: 'Work with cloud and phone employees on Telegram, email or the web. Desktop employees run in the desktop app on Windows or Linux.',
   },
   {
     num: '05',
-    title: 'Your worker gets to work',
-    desc: 'The agent executes your brief autonomously for exactly 24 hours.',
+    title: 'The employee works the shift',
+    desc: 'It follows the brief for the length of the shift you paid for, and you can send new instructions while it runs.',
   },
   {
     num: '06',
-    title: 'Receive your Mission Report',
-    desc: 'When the shift ends, the agent delivers a final report card and self-destructs.',
+    title: 'Read the shift report',
+    desc: 'When the shift ends, the employee files a report on what it did. The transcript stays in your account.',
   },
 ];
 
 export function HowItWorks() {
-  const { profile } = useBillingProfile();
-
-  const steps = baseSteps.map((step) =>
-    step.num === '03'
-      ? {
-          ...step,
-          desc: `${profile.amountDisplay} via ${profile.provider === 'nomba' ? 'Nomba' : profile.provider === 'paystack' ? 'Paystack' : 'Stripe'}. No subscriptions. No hidden costs. One price for a 24-hour shift.`,
-        }
-      : step,
-  );
-
   return (
     <section id="how-it-works" className="py-20 lg:py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-7xl mx-auto">
@@ -58,12 +44,11 @@ export function HowItWorks() {
             THE PROCESS
           </span>
           <h2 className="font-syne font-extrabold text-4xl md:text-5xl lg:text-6xl text-klawva-text mt-4 tracking-tight">
-            HOW IT WORKS
+            How it works
           </h2>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-24">
-          {/* Left Column: Sticky List */}
           <div className="hidden lg:block lg:col-span-5 relative">
             <div className="sticky top-32 flex flex-col gap-6">
               {steps.map((step, i) => (
@@ -79,7 +64,6 @@ export function HowItWorks() {
             </div>
           </div>
 
-          {/* Right Column: Scrolling Panels */}
           <div className="col-span-1 lg:col-span-7 flex flex-col gap-12 lg:gap-32">
             {steps.map((step, i) => (
               <motion.div
@@ -90,7 +74,6 @@ export function HowItWorks() {
                 transition={{ duration: 0.6, ease: 'easeOut' }}
                 className="relative bg-klawva-surface border border-klawva-border rounded-xl p-8 md:p-12 overflow-hidden group hover:border-klawva-accent transition-colors duration-500"
               >
-                {/* Giant background number */}
                 <div className="absolute -top-10 -right-10 font-syne font-extrabold text-[150px] md:text-[180px] leading-none text-klawva-elevated select-none pointer-events-none group-hover:text-klawva-border transition-colors duration-500">
                   {step.num}
                 </div>
@@ -102,31 +85,6 @@ export function HowItWorks() {
                   <p className="font-mono text-klawva-muted text-base md:text-lg leading-relaxed max-w-md">
                     {step.desc}
                   </p>
-
-                  {/* QR Mockup for Step 4 */}
-                  {step.isQR && (
-                    <div className="mt-12 w-full max-w-xs bg-klawva-bg border border-klawva-border rounded-lg p-6 flex flex-col items-center gap-6">
-                      <KlawvaMark size={32} />
-                      <div className="w-48 h-48 bg-klawva-surface border border-klawva-border rounded flex items-center justify-center relative overflow-hidden">
-                        {/* Fake QR pattern */}
-                        <div className="absolute inset-4 grid grid-cols-8 grid-rows-8 gap-1 opacity-50">
-                          {Array.from({ length: 64 }).map((_, j) => (
-                            <div
-                              key={j}
-                              className={`bg-klawva-accent rounded-sm ${((j * 17 + 13) % 100) > 50 ? 'opacity-100' : 'opacity-0'}`}
-                            />
-                          ))}
-                        </div>
-                        {/* QR Corners */}
-                        <div className="absolute top-4 left-4 w-8 h-8 border-4 border-klawva-accent rounded-sm" />
-                        <div className="absolute top-4 right-4 w-8 h-8 border-4 border-klawva-accent rounded-sm" />
-                        <div className="absolute bottom-4 left-4 w-8 h-8 border-4 border-klawva-accent rounded-sm" />
-                      </div>
-                      <span className="font-mono text-klawva-muted text-xs uppercase tracking-widest">
-                        Scan with WhatsApp
-                      </span>
-                    </div>
-                  )}
                 </div>
               </motion.div>
             ))}

@@ -5,7 +5,11 @@ import Link from "@/components/ui/AppLink";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
-import { listAccountSessions } from "@/lib/account-api";
+import {
+  listAccountSessions,
+  sessionChannelLabel,
+  sessionStateLabel,
+} from "@/lib/account-api";
 
 export const loader = async () => {
   const session = requireAccountSession();
@@ -14,10 +18,24 @@ export const loader = async () => {
 };
 
 function statusVariant(state: string): "active" | "pending" | "warning" {
-  if (state === "running" || state === "ready") return "active";
-  if (state === "ended" || state === "reported") return "pending";
+  if (state === "active" || state === "hibernating" || state === "recovering") {
+    return "active";
+  }
+  if (state === "completed" || state === "pending") return "pending";
   return "warning";
 }
+
+const formatShiftWindow = (start: string | null, end: string | null): string => {
+  if (start === null || end === null) return "not started yet";
+  const time = (value: string): string => {
+    const date = new Date(value);
+    const month = date.toLocaleString("en-GB", { month: "short" });
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${date.getDate()} ${month} ${hours}:${minutes}`;
+  };
+  return `runs ${time(start)} to ${time(end)}`;
+};
 
 export function Component() {
   const { session, sessions } = useLoaderData<typeof loader>();
@@ -61,11 +79,12 @@ export function Component() {
                         {entry.listingName ?? "Employee"}
                       </div>
                       <div className="font-mono text-klawva-muted text-xs mt-1">
-                        {entry.channel} · started {new Date(entry.createdAt).toLocaleString()}
+                        {sessionChannelLabel(entry.channel)} ·{" "}
+                        {formatShiftWindow(entry.windowStart, entry.windowEnd)}
                       </div>
                     </div>
                     <Badge variant={statusVariant(entry.state)}>
-                      {entry.state.replace("_", " ")}
+                      {sessionStateLabel(entry.state)}
                     </Badge>
                   </Card>
                 </Link>

@@ -6,7 +6,6 @@ import { Button } from '../ui/Button';
 export function FinalCTA() {
   return (
     <section className="relative w-full min-h-screen lg:h-screen flex items-center justify-center px-4 md:px-6 py-20 lg:py-0 bg-klawva-bg border-t border-klawva-border overflow-hidden">
-      {/* Background glow */}
       <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(232,255,71,0.08)_0%,transparent_60%)] pointer-events-none" />
 
       <div className="relative z-10 text-center max-w-3xl mx-auto flex flex-col items-center">
@@ -17,7 +16,7 @@ export function FinalCTA() {
           transition={{ duration: 0.6, ease: 'easeOut' }}
           className="font-syne font-extrabold text-4xl sm:text-5xl md:text-7xl lg:text-8xl text-klawva-text mb-6 tracking-tight leading-[0.9]"
         >
-          YOUR FIRST WORKER IS WAITING.
+          Hire an employee, or publish one.
         </motion.h2>
 
         <motion.p
@@ -27,7 +26,7 @@ export function FinalCTA() {
           transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
           className="font-mono text-klawva-muted text-xl md:text-2xl mb-12"
         >
-          Pick an agent. Brief them. Let them work.
+          Pick a shift from the catalogue, or list your own employee and keep 80% of each sale.
         </motion.p>
 
         <motion.div
@@ -35,9 +34,13 @@ export function FinalCTA() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.4, ease: 'easeOut' }}
+          className="flex flex-col sm:flex-row items-center gap-4"
         >
           <Button variant="primary" size="lg" href="/employees" className="text-xl px-12 py-6">
-            Hire Now →
+            Hire an employee
+          </Button>
+          <Button variant="secondary" size="lg" href="/publish" className="text-xl px-12 py-6">
+            Publish an employee
           </Button>
         </motion.div>
       </div>

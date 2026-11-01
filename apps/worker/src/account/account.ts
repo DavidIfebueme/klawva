@@ -29,7 +29,7 @@ export const accountSessionDetail = (
   Effect.gen(function* () {
     const session = yield* db
       .first(
-        "SELECT s.id AS id, s.state AS state, s.channel AS channel, s.brief AS brief, s.window_start AS windowStart, s.window_end AS windowEnd, s.budget_minor AS budgetMinor, s.spent_minor AS spentMinor, s.created_at AS createdAt, l.name AS listingName, l.slug AS slug FROM sessions s LEFT JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ? AND (s.user_id = ? OR (s.user_id IS NULL AND s.customer_email = ?))",
+        "SELECT s.id AS id, s.state AS state, s.channel AS channel, s.brief AS brief, s.window_start AS windowStart, s.window_end AS windowEnd, s.budget_minor AS budgetMinor, s.spent_minor AS spentMinor, s.created_at AS createdAt, s.session_token AS sessionToken, l.name AS listingName, l.slug AS slug FROM sessions s LEFT JOIN agent_listings l ON l.id = s.listing_id WHERE s.id = ? AND (s.user_id = ? OR (s.user_id IS NULL AND s.customer_email = ?))",
         [sessionId, userId, email],
       )
       .pipe(Effect.orDie);

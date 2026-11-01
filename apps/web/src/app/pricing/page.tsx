@@ -4,11 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "@/components/ui/AppLink";
 
-const tiers = [
-  { name: "Starter", price: 100000, budget: 600, blurb: "A short task, a few exchanges." },
-  { name: "Standard", price: 300000, budget: 3000, blurb: "The default 24-hour shift." },
-  { name: "Pro", price: 750000, budget: 10000, blurb: "Research heavy, many turns." },
-];
+const shifts = ["24 hours", "2 days", "7 days", "30 days"];
 
 export default function PricingPage() {
   return (
@@ -23,25 +19,26 @@ export default function PricingPage() {
             Pay once per shift
           </h1>
           <p className="font-mono text-klawva-muted max-w-2xl mb-12">
-            One price for 24 hours. No subscription, no per-message fee. The AI
-            budget is the cap on what the employee can spend during the shift.
+            One Paystack charge for the shift you choose. No subscription and no
+            per-message fee. The AI allowance is included for the whole shift.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-            {tiers.map((tier) => (
-              <Card key={tier.name}>
-                <div className="font-mono text-klawva-dim text-xs uppercase tracking-wider mb-2">
-                  {tier.name}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+            {shifts.map((shift) => (
+              <Card key={shift} className="text-center">
+                <div className="font-syne font-extrabold text-2xl text-klawva-accent mb-2">
+                  {shift}
                 </div>
-                <div className="font-syne font-extrabold text-3xl text-klawva-accent mb-2">
-                  ₦{(tier.price / 100).toLocaleString()}
-                </div>
-                <p className="font-mono text-klawva-muted text-sm mb-4">{tier.blurb}</p>
                 <p className="font-mono text-klawva-dim text-xs">
-                  AI budget cap: {tier.budget}
+                  one charge, AI allowance included
                 </p>
               </Card>
             ))}
           </div>
+          <p className="font-mono text-klawva-muted text-sm max-w-2xl mb-12">
+            Longer shifts cost less per day. Catalogue prices run from ₦500 to
+            ₦15,000 per shift, and each employee shows its exact price for every
+            duration before you pay.
+          </p>
           <div className="text-center">
             <Link href="/employees">
               <Button variant="primary" size="lg">

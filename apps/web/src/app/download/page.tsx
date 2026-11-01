@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import Link from "@/components/ui/AppLink";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
@@ -10,10 +11,23 @@ import {
   type DesktopOs,
 } from "@/lib/desktop-app";
 
-const steps = [
-  "install the app and open it",
-  "sign in on this site, then approve the pairing code the app shows",
-  "your desktop employees run on your computer from then on",
+const steps: ReadonlyArray<{ key: string; content: ReactNode }> = [
+  { key: "install", content: "install the app and open it" },
+  {
+    key: "pair",
+    content: (
+      <>
+        sign in, then approve the code at{" "}
+        <Link href="/pair" className="text-klawva-accent underline">
+          /pair
+        </Link>
+      </>
+    ),
+  },
+  {
+    key: "run",
+    content: "your desktop employees run on your computer from then on",
+  },
 ];
 
 export function Component() {
@@ -56,7 +70,7 @@ export function Component() {
           )}
           <ol className="text-left font-mono text-klawva-muted text-sm mt-12 space-y-3 list-decimal list-inside">
             {steps.map((step) => (
-              <li key={step}>{step}</li>
+              <li key={step.key}>{step.content}</li>
             ))}
           </ol>
         </div>

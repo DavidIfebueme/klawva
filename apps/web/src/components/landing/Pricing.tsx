@@ -2,12 +2,18 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../ui/Card';
-import { useBillingProfile } from '@/hooks/use-billing-profile';
 import { Button } from '../ui/Button';
 
-export function Pricing() {
-  const { profile } = useBillingProfile();
+const durations = ['24 hours', '2 days', '7 days', '30 days'];
 
+const included = [
+  'One shift at the length you pick',
+  'AI budget for the shift',
+  'Transcript in your account',
+  'Shift report at the end',
+];
+
+export function Pricing({ minPriceMinor }: { minPriceMinor: number }) {
   return (
     <section id="pricing" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-3xl mx-auto text-center">
@@ -25,8 +31,10 @@ export function Pricing() {
             transition={{ duration: 0.5, ease: 'easeOut' }}
           >
             <Card className="h-full flex flex-col items-center justify-center p-12 hover:border-klawva-accent transition-colors duration-300">
-              <h3 className="font-syne font-extrabold text-6xl text-klawva-accent mb-4">{profile.amountDisplay}</h3>
-              <p className="font-mono text-klawva-muted text-sm mb-8">from, per 24-hour session</p>
+              <h3 className="font-syne font-extrabold text-6xl text-klawva-accent mb-4">
+                from ₦{(minPriceMinor / 100).toLocaleString()}
+              </h3>
+              <p className="font-mono text-klawva-muted text-sm mb-8">per shift</p>
             </Card>
           </motion.div>
         </div>
@@ -36,33 +44,52 @@ export function Pricing() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.3 }}
-          className="flex flex-wrap justify-center gap-3 mb-16"
+          className="flex flex-wrap justify-center gap-3 mb-8"
         >
-          <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider px-3 py-1 border border-klawva-border rounded-full">
-            [ Full 24-hour shift ]
-          </span>
-          <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider px-3 py-1 border border-klawva-border rounded-full">
-            [ Mission Report Card ]
-          </span>
-          <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider px-3 py-1 border border-klawva-border rounded-full">
-            [ Destruction by Default ]
-          </span>
-          <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider px-3 py-1 border border-klawva-border rounded-full">
-            [ Telegram, email, or web ]
-          </span>
+          {durations.map((duration) => (
+            <span
+              key={duration}
+              className="font-mono text-klawva-dim text-xs px-3 py-1 border border-klawva-border rounded-full"
+            >
+              [ {duration} ]
+            </span>
+          ))}
         </motion.div>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.35 }}
+          className="font-mono text-klawva-muted text-sm mb-12"
+        >
+          Longer shifts cost less per day. One charge through Paystack.
+        </motion.p>
+
+        <motion.ul
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left max-w-xl mx-auto mb-16"
+        >
+          {included.map((item) => (
+            <li key={item} className="font-mono text-klawva-muted text-sm flex items-start gap-3">
+              <span className="text-klawva-accent">→</span>
+              {item}
+            </li>
+          ))}
+        </motion.ul>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-          className="bg-klawva-surface/50 border border-dashed border-klawva-border rounded-lg p-6 hover:border-klawva-accent/50 transition-colors duration-300"
+          transition={{ duration: 0.5, delay: 0.45 }}
+          className="flex flex-col sm:flex-row items-center justify-center gap-4"
         >
-          <p className="font-mono text-klawva-muted text-sm mb-4">
-            Need something custom? <strong className="text-klawva-text font-syne font-bold">Custom Klawva Employee</strong>.
-          </p>
-          <Button variant="secondary" href="/custom-request">Request one →</Button>
+          <Button variant="primary" href="/employees">Browse employees</Button>
+          <Button variant="secondary" href="/publish">Publish an employee</Button>
         </motion.div>
       </div>
     </section>

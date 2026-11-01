@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import * as Schema from "effect/Schema";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
@@ -17,7 +18,9 @@ const approveCode = async (
   if (!response.ok) {
     throw new Error(`approve failed with ${response.status}`);
   }
-  return (await response.json()) as { ok: boolean };
+  return Schema.decodeUnknownSync(Schema.Struct({ ok: Schema.Boolean }))(
+    await response.json(),
+  );
 };
 
 export function Component() {
@@ -28,10 +31,9 @@ export function Component() {
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
     if (session === null) {
-      setError("sign in first, then come back to this page.");
       return;
     }
     const trimmed = code.trim().toUpperCase();
@@ -41,14 +43,12 @@ export function Component() {
     }
     setLoading(true);
     setError("");
-    try {
-      await approveCode(session.token, trimmed, name.trim() || "this computer");
-      setDone(true);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "approve failed");
-    } finally {
-      setLoading(false);
-    }
+    approveCode(session.token, trimmed, name.trim() || "this computer")
+      .then(() => setDone(true))
+      .catch(() => {
+        setError("Could not pair. Check the code and try again before it expires.");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -59,7 +59,20 @@ export function Component() {
           <span className="font-mono text-klawva-accent text-xs uppercase tracking-[0.2em] block mb-3">
             Pair a device
           </span>
-          {done ? (
+          {session === null ? (
+            <>
+              <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
+                Sign in to pair a device
+              </h1>
+              <p className="font-mono text-klawva-muted text-sm mb-8">
+                pairing links the computer to your account, so sign in first. the
+                login link brings you back here.
+              </p>
+              <Button href="/studio/login?next=/pair" variant="primary" size="lg">
+                sign in
+              </Button>
+            </>
+          ) : done ? (
             <>
               <h1 className="font-syne font-bold text-3xl text-klawva-text mb-4">
                 Paired. Go back to the app.
@@ -75,8 +88,9 @@ export function Component() {
                 Enter the code from the app
               </h1>
               <p className="font-mono text-klawva-muted text-sm mb-8">
-                the klawva desktop app shows a code like XXXX-XXXX. type it
-                here to link that computer to your account.
+                the klawva desktop app shows a code like XXXX-XXXX. the code
+                expires 10 minutes after it appears. type it here to link that
+                computer to your account.
               </p>
               <form onSubmit={submit} className="flex flex-col gap-4">
                 <input

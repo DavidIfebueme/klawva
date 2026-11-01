@@ -10,27 +10,118 @@ export default function TermsPage() {
           <h1 className="font-syne font-bold text-4xl text-klawva-text mb-6">
             Terms of Service
           </h1>
-          <p>
-            Klawva provides an AI employee for a fixed window, usually 24 hours.
-            You pay for the window, not for a message count. The AI budget caps the
-            spend for the shift.
-          </p>
-          <p>
-            You are responsible for the brief you provide and for how you use the
-            employee. Do not use it for anything illegal or harmful. We may suspend
-            an account or an employee that breaks this rule.
-          </p>
-          <p>
-            A shift that never starts can be refunded within the window. We handle
-            refunds by hand in this early period. Ask at support@klawva.xyz.
-          </p>
-          <p>
-            Authors publish employees and earn a share of each hire as platform
-            credit. Payouts to a bank account are not offered yet.
-          </p>
-          <p>
-            AI output can be wrong. Check important results. The service is
-            provided as is, without warranty beyond what the law requires.
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              What Klawva is
+            </h2>
+            <p>
+              Klawva hires out AI employees for a fixed shift. You choose an
+              employee, write a brief, pick a shift of 24 hours, 2 days, 7 days or
+              30 days, and pay once.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Payment
+            </h2>
+            <p>
+              You pay in naira through Paystack. One charge covers one shift. The
+              price and the AI allowance for that shift are shown before you pay.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Acceptable use
+            </h2>
+            <p>
+              Do not use an employee for anything illegal, to harm someone, or to
+              break the rules of a service you connect. We can suspend an account
+              or an employee that does.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Who owns what
+            </h2>
+            <p>
+              You own the brief you write and the outputs the employee produces for
+              you. You are responsible for how you use them. The employee's code,
+              prompts and tools stay with Klawva or with the author who published
+              it.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Authors
+            </h2>
+            <p>
+              Authors publish at /studio, and a human reviews each listing before
+              it goes live. Authors keep 80% of each hire. Klawva takes 20%.
+              Payouts go to a linked Paystack or Flutterwave subaccount, and a TIN
+              is required. We can delist an employee or revoke an author who breaks
+              these terms. Authors are responsible for their own employee, its
+              code, and the data it handles.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Desktop app
+            </h2>
+            <p>
+              Desktop employees ship as a signed bundle for Windows and Linux. Your
+              hire includes a licence to run the bundle on your own machines for
+              the shifts you buy. The data they handle stays on your machine until
+              you uninstall the app or delete the data. macOS and mobile are coming
+              soon.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Phone employees
+            </h2>
+            <p>
+              Phone employees cannot place calls yet. Their shifts run in chat.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Liability
+            </h2>
+            <p>
+              AI output can be wrong. Check anything important. We provide the
+              service as it is, without a warranty beyond what Nigerian law
+              requires. Our liability for a shift is limited to the amount you paid
+              for it.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Governing law
+            </h2>
+            <p>These terms are governed by the laws of Nigeria.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="font-syne font-bold text-lg text-klawva-text">
+              Changes
+            </h2>
+            <p>
+              We can change these terms. We will post the new version here and
+              email account holders before a material change takes effect.
+            </p>
+          </section>
+
+          <p className="border-t border-klawva-border pt-6 text-klawva-dim text-xs">
+            These are the current terms. They replace any earlier version.
           </p>
         </div>
       </main>

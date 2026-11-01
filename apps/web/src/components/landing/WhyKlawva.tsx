@@ -2,38 +2,27 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../ui/Card';
-import { useBillingProfile } from '@/hooks/use-billing-profile';
 
-const baseReasons = [
+const reasons = [
   {
-    title: 'Destruction by Default',
-    desc: 'No data stored. No profiles built. Session ends, everything is wiped. Your data is yours.',
+    title: 'You brief in plain language',
+    desc: 'No prompt syntax and no workflow builder. Describe the job, answer the brief fields, and the employee takes it from there.',
   },
   {
-    title: 'You hire a worker, not a tool',
-    desc: "You don't need to learn anything. Describe the job. The worker figures it out and executes.",
+    title: 'A fixed shift, not an open tab',
+    desc: 'Every employee works a shift of 24 hours, 2 days, 7 days or 30 days. You pay once when the shift starts.',
   },
   {
-    title: 'Costs less than lunch',
-    desc: 'No monthly commitment. Pay only when you need it. No hidden fees.',
+    title: 'You see the work',
+    desc: 'The transcript stays in your account, and the employee files a shift report when the shift ends.',
   },
   {
-    title: 'Lives where you already are',
-    desc: 'WhatsApp or Telegram. No new app to download. No new dashboard to learn.',
+    title: 'Publish your own and keep 80%',
+    desc: 'Anyone can list an employee at the studio. Klawva reviews every listing, then pays 80% of each sale to your linked subaccount.',
   },
 ];
 
 export function WhyKlawva() {
-  const { profile } = useBillingProfile();
-  const reasons = baseReasons.map((reason) =>
-    reason.title === 'Costs less than lunch'
-      ? {
-          ...reason,
-          desc: `${profile.amountDisplay}. No monthly commitment. Pay only when you need it. No hidden fees.`,
-        }
-      : reason,
-  );
-
   return (
     <section id="why" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-7xl mx-auto">
@@ -42,14 +31,14 @@ export function WhyKlawva() {
             THE KLAWVA DIFFERENCE
           </span>
           <h2 className="font-syne font-extrabold text-4xl md:text-5xl lg:text-6xl text-klawva-text mt-4 tracking-tight">
-            WHY KLAWVA
+            Why Klawva
           </h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {reasons.map((reason, i) => (
             <motion.div
-              key={i}
+              key={reason.title}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}

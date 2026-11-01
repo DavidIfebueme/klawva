@@ -12,7 +12,18 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { requireAccountSession, rethrowAccountAuth } from "@/lib/account-loader";
-import { addMember, getAccountSession, listChannels, listMembers, submitFeedback, unlinkChannel, type AccountChannelLink } from "@/lib/account-api";
+import {
+  addMember,
+  getAccountSession,
+  listChannels,
+  listMembers,
+  requestSessionDeletion,
+  sessionChannelLabel,
+  sessionStateLabel,
+  submitFeedback,
+  unlinkChannel,
+  type AccountChannelLink,
+} from "@/lib/account-api";
 import { Markdown } from "@/components/ui/Markdown";
 
 const humanize = (value: string): string =>
@@ -46,8 +57,10 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 };
 
 function statusVariant(state: string): "active" | "pending" | "warning" {
-  if (state === "active" || state === "ready") return "active";
-  if (state === "completed") return "pending";
+  if (state === "active" || state === "hibernating" || state === "recovering") {
+    return "active";
+  }
+  if (state === "completed" || state === "pending") return "pending";
   return "warning";
 }
 
@@ -55,6 +68,7 @@ export function Component() {
   const { session, detail, members, channels } = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const brief = parseBrief(detail.session.brief);
+  const launchToken = detail.session.sessionToken ?? null;
   const [rating, setRating] = useState(5);
   const [report, setReport] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
@@ -65,6 +79,27 @@ export function Component() {
   const [memberError, setMemberError] = useState("");
   const [unlinking, setUnlinking] = useState("");
   const [channelError, setChannelError] = useState("");
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteDone, setDeleteDone] = useState(false);
+
+  const handleDeleteRequest = () => {
+    if (launchToken === null) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    requestSessionDeletion(launchToken, detail.session.id)
+      .then(() => {
+        setDeleteDone(true);
+        setDeleteArmed(false);
+      })
+      .catch((cause: unknown) => {
+        setDeleteError(
+          cause instanceof Error ? cause.message : "Could not send the request.",
+        );
+      })
+      .finally(() => setDeleteBusy(false));
+  };
 
   const handleUnlink = (link: AccountChannelLink) =>
     unlinkChannel(
@@ -125,14 +160,14 @@ export function Component() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <span className="font-mono text-klawva-dim text-xs uppercase tracking-wider block mb-1">
-                {detail.session.channel}
+                {sessionChannelLabel(detail.session.channel)}
               </span>
               <h1 className="font-syne font-bold text-3xl text-klawva-text">
                 {detail.session.listingName ?? "Employee"}
               </h1>
             </div>
             <Badge variant={statusVariant(detail.session.state)}>
-              {detail.session.state.replace("_", " ")}
+              {sessionStateLabel(detail.session.state)}
             </Badge>
           </div>
 
@@ -280,9 +315,21 @@ export function Component() {
               Channels
             </h2>
             {channels.length === 0 ? (
-              <p className="font-mono text-klawva-muted text-sm">
-                No channels linked yet. Link one from the launch page.
-              </p>
+              <div>
+                <p className="font-mono text-klawva-muted text-sm">
+                  No channels linked yet.
+                </p>
+                {launchToken !== null && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    href={`/employees/launch/${detail.session.id}/${launchToken}`}
+                  >
+                    Link a channel
+                  </Button>
+                )}
+              </div>
             ) : (
               <ul className="space-y-2">
                 {channels.map((entry) => (
@@ -290,9 +337,7 @@ export function Component() {
                     key={`${entry.channel}:${entry.chatId}`}
                     className="flex items-center justify-between gap-3 font-mono text-klawva-text text-sm"
                   >
-                    <span>
-                      {entry.channel} · {entry.chatId}
-                    </span>
+                    <span>{sessionChannelLabel(entry.channel)}</span>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -311,6 +356,60 @@ export function Component() {
             )}
             {channelError && (
               <p className="text-xs text-klawva-orange font-mono mt-3">{channelError}</p>
+            )}
+          </Card>
+
+          <Card>
+            <h2 className="font-syne font-bold text-lg uppercase text-white mb-4">
+              Your data
+            </h2>
+            {deleteDone ? (
+              <p className="font-mono text-klawva-accent text-sm">
+                Deletion requested. We will remove the shift data and ask the
+                author to delete anything they kept.
+              </p>
+            ) : launchToken === null ? (
+              <p className="font-mono text-klawva-muted text-sm">
+                Write to privacy@klawva.xyz to delete the data for this shift.
+              </p>
+            ) : (
+              <>
+                <p className="font-mono text-klawva-muted text-sm">
+                  Delete the brief, transcript and report for this shift. We also
+                  ask the author to remove anything they kept.
+                </p>
+                {deleteArmed ? (
+                  <div className="mt-4 flex items-center gap-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={deleteBusy}
+                      onClick={handleDeleteRequest}
+                    >
+                      Confirm delete
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeleteArmed(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => setDeleteArmed(true)}
+                  >
+                    Delete shift data
+                  </Button>
+                )}
+              </>
+            )}
+            {deleteError && (
+              <p className="text-xs text-klawva-orange font-mono mt-3">{deleteError}</p>
             )}
           </Card>
         </div>

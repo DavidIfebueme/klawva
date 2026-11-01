@@ -5,7 +5,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-error";
 import { getStudioSession } from "@/lib/studio-session";
-import { agents, type AgentId, type BriefField } from "@/lib/agents";
+import { briefField, type BriefFieldSpec } from "@/lib/brief-fields";
 import {
   createHireSession,
   getEmployee,
@@ -68,20 +68,8 @@ const parseFields = (raw: string): string[] => {
   return [];
 };
 
-const isAgentId = (value: string): value is AgentId => value in agents;
-
-const fieldsFor = (employee: EmployeeDetail): ReadonlyArray<BriefField> => {
-  if (isAgentId(employee.slug)) {
-    return agents[employee.slug].briefFields;
-  }
-  return parseFields(employee.briefFields).map((name) => ({
-    id: name,
-    label: humanize(name),
-    placeholder: "",
-    type: "textarea",
-    required: true,
-  }));
-};
+const fieldsFor = (employee: EmployeeDetail): ReadonlyArray<BriefFieldSpec> =>
+  parseFields(employee.briefFields).map(briefField);
 
 const channels = [
   {
@@ -179,7 +167,6 @@ export function Component() {
     employee.durations.find((option) => option.days === durationDays) ??
     employee.durations[0];
   const totalMinor = selected?.priceMinor ?? employee.priceMinor;
-  const budgetMinor = employee.budgetMinor * durationDays;
 
   const emailOk = emailPattern.test(email.trim());
   const showEmailError = email.trim().length > 0 && !emailOk;
@@ -399,9 +386,10 @@ export function Component() {
                     Runs on your computer
                   </p>
                   <p className="font-mono text-klawva-muted text-xs">
-                    this is a desktop employee. after payment you get the app,
-                    pair it once, and it works on your computer. no telegram, no
-                    email.
+                    This is a desktop employee. The app runs on Windows and
+                    Linux. After payment you download it and pair it once, and
+                    the employee works on your computer. macOS and mobile are
+                    coming soon.
                   </p>
                 </div>
               ) : (
@@ -409,6 +397,10 @@ export function Component() {
                 <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
                   How should it reach you?
                 </label>
+                <p className="font-mono text-klawva-dim text-xs">
+                  Web chat is available on every hire. A phone employee works in
+                  chat for now.
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {channels.map((option) => (
                     <button
@@ -447,7 +439,7 @@ export function Component() {
                         ? "That data leaves the country."
                         : "That data stays in the country."
                     } It is kept for ${employee.consent.retentionDays} days.`
-                  : "Reports and their evidence are kept for 90 days."}{" "}
+                  : "Reports and their evidence are kept for a limited time after the shift."}{" "}
                 Do not put passwords or card numbers in a brief.
               </p>
 
@@ -460,8 +452,7 @@ export function Component() {
                     {durationDays === 1
                       ? "24-hour shift"
                       : `${durationDays}-day shift`}
-                    . AI budget cap: {budgetMinor} credits, about{" "}
-                    {Math.floor(budgetMinor / 50)} replies. 50 credits per reply.
+                    . The AI allowance for this shift is included in the price.
                   </p>
                 </div>
                 <Button type="submit" variant="primary" size="lg" loading={loading}>
