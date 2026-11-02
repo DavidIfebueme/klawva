@@ -85,7 +85,9 @@ export function Component() {
             <p className="font-mono text-klawva-dim text-sm leading-relaxed">
               {employee.phone?.outbound === true
                 ? "Calls the number in your brief, inside that market's calling window. One call per shift. The call opens with an AI disclosure and is transcribed."
-                : "Calling is not live yet for this employee, so the shift runs in chat for now."}
+                : employee.phone?.inbound === true
+                  ? "Answers calls on Klavva's demo line, +1 815 624 3901. Authors who list a voice agent bring their own number."
+                  : "Calling is not live yet for this employee, so the shift runs in chat for now."}
             </p>
           )}
           {(employee.lane ?? "authored") !== "authored" && (

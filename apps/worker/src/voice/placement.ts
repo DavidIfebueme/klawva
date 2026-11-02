@@ -40,7 +40,7 @@ export interface DialOutcome {
   readonly maxSeconds: number | null;
 }
 
-const bolnaWebhookUrl = (env: PhoneEnv): string => {
+export const bolnaWebhookUrl = (env: PhoneEnv): string => {
   const base = (env.FRONTEND_BASE_URL ?? "").replace(/\/$/, "");
   const secret = env.VOICE_WEBHOOK_SECRET ?? "";
   if (base.length === 0 || secret.length === 0) {

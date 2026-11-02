@@ -11,6 +11,7 @@ import { Database, type DatabaseImpl } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { constantTimeEqual } from "../lib/secure.ts";
 import { fileCallReport } from "../report/report.ts";
+import { fileInboundCall } from "./inbound.ts";
 
 const ConsentEntry = Schema.Struct({
   number: Schema.String,
@@ -24,26 +25,34 @@ const voiceConsent = HttpApiEndpoint.post("voiceConsent", "/api/voice/consent", 
   error: AuthError,
 });
 
+export const BolnaWebhookPayload = Schema.Struct({
+  id: Schema.optionalKey(Schema.String),
+  carrierRef: Schema.optionalKey(Schema.String),
+  execution_id: Schema.optionalKey(Schema.String),
+  call_type: Schema.optionalKey(Schema.String),
+  status: Schema.optionalKey(Schema.String),
+  summary: Schema.optionalKey(Schema.String),
+  transcript: Schema.optionalKey(Schema.String),
+  conversation_duration: Schema.optionalKey(Schema.Number),
+  telephony_data: Schema.optionalKey(
+    Schema.Struct({
+      call_type: Schema.optionalKey(Schema.String),
+      to_number: Schema.optionalKey(Schema.String),
+      from_number: Schema.optionalKey(Schema.String),
+    }),
+  ),
+});
+
+export const bolnaCallType = (payload: {
+  readonly call_type?: string;
+  readonly telephony_data?: { readonly call_type?: string };
+}): string | undefined => payload.call_type ?? payload.telephony_data?.call_type;
+
 const bolnaWebhook = HttpApiEndpoint.post(
   "bolnaWebhook",
   "/api/voice/bolna/webhook",
   {
-    payload: Schema.Struct({
-      id: Schema.optionalKey(Schema.String),
-      carrierRef: Schema.optionalKey(Schema.String),
-      execution_id: Schema.optionalKey(Schema.String),
-      call_type: Schema.optionalKey(Schema.String),
-      status: Schema.optionalKey(Schema.String),
-      summary: Schema.optionalKey(Schema.String),
-      transcript: Schema.optionalKey(Schema.String),
-      conversation_duration: Schema.optionalKey(Schema.Number),
-      telephony_data: Schema.optionalKey(
-        Schema.Struct({
-          to_number: Schema.optionalKey(Schema.String),
-          from_number: Schema.optionalKey(Schema.String),
-        }),
-      ),
-    }),
+    payload: BolnaWebhookPayload,
     success: Schema.Struct({ ok: Schema.Boolean }),
     error: AuthError,
   },
@@ -147,8 +156,26 @@ export const voiceGroup = HttpApiBuilder.group(
           if (payload.status !== undefined && !terminalCallStatuses.has(payload.status)) {
             return { ok: true };
           }
-          if (payload.call_type === "inbound") {
-            return { ok: true };
+          if (bolnaCallType(payload) === "inbound") {
+            const executionId =
+              payload.id ?? payload.execution_id ?? payload.carrierRef;
+            const toNumber = payload.telephony_data?.to_number;
+            if (executionId === undefined || toNumber === undefined) {
+              return { ok: false };
+            }
+            const filed = yield* fileInboundCall(db, {
+              executionId,
+              toNumber,
+              status: payload.status ?? "completed",
+              ...(payload.summary === undefined ? {} : { summary: payload.summary }),
+              ...(payload.transcript === undefined
+                ? {}
+                : { transcript: payload.transcript }),
+              ...(payload.conversation_duration === undefined
+                ? {}
+                : { conversationDuration: payload.conversation_duration }),
+            });
+            return { ok: filed };
           }
           const carrierRef = payload.id ?? payload.carrierRef ?? payload.execution_id;
           if (carrierRef === undefined) {
