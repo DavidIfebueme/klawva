@@ -9,6 +9,7 @@ import { identityFromToken, tokenFromHeaders } from "../auth/auth.ts";
 import { AuthError } from "../auth/tokens.ts";
 import { Database, type DatabaseImpl } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
+import { constantTimeEqual } from "../lib/secure.ts";
 import { fileCallReport } from "../report/report.ts";
 
 const ConsentEntry = Schema.Struct({
@@ -28,15 +29,36 @@ const bolnaWebhook = HttpApiEndpoint.post(
   "/api/voice/bolna/webhook",
   {
     payload: Schema.Struct({
+      id: Schema.optionalKey(Schema.String),
       carrierRef: Schema.optionalKey(Schema.String),
       execution_id: Schema.optionalKey(Schema.String),
+      call_type: Schema.optionalKey(Schema.String),
+      status: Schema.optionalKey(Schema.String),
       summary: Schema.optionalKey(Schema.String),
       transcript: Schema.optionalKey(Schema.String),
+      conversation_duration: Schema.optionalKey(Schema.Number),
+      telephony_data: Schema.optionalKey(
+        Schema.Struct({
+          to_number: Schema.optionalKey(Schema.String),
+          from_number: Schema.optionalKey(Schema.String),
+        }),
+      ),
     }),
     success: Schema.Struct({ ok: Schema.Boolean }),
     error: AuthError,
   },
 );
+
+const terminalCallStatuses = new Set([
+  "completed",
+  "no-answer",
+  "busy",
+  "failed",
+  "canceled",
+  "stopped",
+  "error",
+  "balance-low",
+]);
 
 class VoiceGroup extends HttpApiGroup.make("Voice")
   .add(voiceConsent)
@@ -115,11 +137,20 @@ export const voiceGroup = HttpApiBuilder.group(
       .handle("bolnaWebhook", ({ payload }) =>
         Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
-          const secret = request.headers["x-webhook-secret"];
-          if (typeof secret !== "string" || secret !== env.CRON_SECRET) {
+          const header = request.headers["x-webhook-secret"];
+          const query = new URL(request.url).searchParams.get("k");
+          const secret = typeof header === "string" ? header : query;
+          const expected = env.VOICE_WEBHOOK_SECRET ?? env.CRON_SECRET;
+          if (secret === null || !constantTimeEqual(secret, expected)) {
             return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
           }
-          const carrierRef = payload.carrierRef ?? payload.execution_id;
+          if (payload.status !== undefined && !terminalCallStatuses.has(payload.status)) {
+            return { ok: true };
+          }
+          if (payload.call_type === "inbound") {
+            return { ok: true };
+          }
+          const carrierRef = payload.id ?? payload.carrierRef ?? payload.execution_id;
           if (carrierRef === undefined) {
             return yield* Effect.fail(new AuthError({ reason: "missing_ref" }));
           }
@@ -127,7 +158,9 @@ export const voiceGroup = HttpApiBuilder.group(
             payload.summary ??
             (payload.transcript !== undefined && payload.transcript.length > 0
               ? payload.transcript.slice(0, 500)
-              : "call completed");
+              : payload.status === "completed" && payload.conversation_duration === 0
+                ? "Call completed with no conversation."
+                : `Call ${payload.status ?? "completed"}.`);
           const filed = yield* fileBolnaReport(db, carrierRef, summary);
           if (!filed) {
             return yield* Effect.fail(

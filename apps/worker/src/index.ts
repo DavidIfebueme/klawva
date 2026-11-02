@@ -401,6 +401,18 @@ export default {
         return undefined;
       })(),
     );
+    ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { retryPendingDials } = await import("./voice/retry.ts");
+        await Effect.runPromise(
+          retryPendingDials(db, env, new Date()).pipe(
+            Effect.catch(() => Effect.succeed(0)),
+          ),
+        );
+        return undefined;
+      })(),
+    );
     if (event.cron !== "0 * * * *") {
       return;
     }

@@ -79,7 +79,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     tagline: "Calls your customers to book and confirm.",
     category: "phone",
     agentId: "appointmentsetter",
-    briefFields: ["calendar_rules", "customer_list", "call_window"],
+    briefFields: ["phone", "calendar_rules", "customer_list", "call_window"],
     priceMinor: 1200000,
     budgetMinor: 650000,
     phone: {
@@ -96,7 +96,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     tagline: "Chases invoices and shares updates, politely.",
     category: "phone",
     agentId: "followupcaller",
-    briefFields: ["invoice_list", "owner_tone_notes", "approved_consequences"],
+    briefFields: ["phone", "invoice_list", "owner_tone_notes", "approved_consequences"],
     priceMinor: 1200000,
     budgetMinor: 650000,
     phone: {
@@ -113,7 +113,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
     tagline: "Scheduled care calls for your customers.",
     category: "phone",
     agentId: "checkincaller",
-    briefFields: ["customer_list", "service_summary", "rebooking_rules"],
+    briefFields: ["phone", "customer_list", "service_summary", "rebooking_rules"],
     priceMinor: 1200000,
     budgetMinor: 650000,
     phone: {

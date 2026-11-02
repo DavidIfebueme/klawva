@@ -24,6 +24,7 @@ const labels: Readonly<Record<string, string>> = {
   ideal_customer: "Who is the ideal customer?",
   industry: "Industry",
   contact_preference: "How should leads be contacted?",
+  phone: "Number to call",
   business_facts: "Facts about the business",
   calendar_rules: "Booking rules",
   escalation_contact: "Who to escalate to",
@@ -57,6 +58,7 @@ const placeholders: Readonly<Record<string, string>> = {
   salary_range: "e.g. 800k to 1.5m monthly",
   ideal_customer: "e.g. Small restaurants in Lagos with a website",
   industry: "e.g. food",
+  phone: "+15550100000",
   business_facts: "Hours, location, what you sell",
   calendar_rules: "e.g. 30 minute slots, Mon to Fri",
   escalation_contact: "A name and a number",
@@ -84,6 +86,6 @@ export const briefField = (name: string): BriefFieldSpec => ({
   id: name,
   label: labels[name] ?? humanize(name),
   placeholder: placeholders[name] ?? "",
-  type: name.endsWith("_file") ? "file" : "textarea",
+  type: name === "phone" ? "tel" : name.endsWith("_file") ? "file" : "textarea",
   required: !optional.has(name),
 });

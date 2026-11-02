@@ -93,6 +93,7 @@ const channels = [
 type ChannelChoice = (typeof channels)[number]["id"];
 
 const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const phonePattern = /^\+[1-9]\d{6,14}$/;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -116,8 +117,11 @@ export function Component() {
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [email, setEmail] = useState(() => getStudioSession()?.email ?? "");
   const isDesktop = employee.category === "desktop";
+  const needsCallConsent = employee.phone?.outbound === true;
   const [channel, setChannel] = useState<ChannelChoice>("telegram");
   const [durationDays, setDurationDays] = useState(1);
+  const [callConsent, setCallConsent] = useState(false);
+  const [consentTouched, setConsentTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -191,6 +195,18 @@ export function Component() {
       });
       return;
     }
+    if (needsCallConsent) {
+      const phone = (brief.phone ?? "").trim();
+      if (!phonePattern.test(phone)) {
+        setError("Enter the number in international format, starting with +.");
+        return;
+      }
+      if (!callConsent) {
+        setConsentTouched(true);
+        setError("Tick the permission box before you pay.");
+        return;
+      }
+    }
     if (!emailOk) {
       setError("Enter a valid email address.");
       return;
@@ -207,6 +223,7 @@ export function Component() {
         ),
         customerEmail: email.trim(),
         durationDays,
+        ...(needsCallConsent ? { callConsent: true } : {}),
       });
       const payment = await initializeHirePayment(
         session.id,
@@ -330,6 +347,38 @@ export function Component() {
                 );
               })}
 
+              {needsCallConsent && (
+                <div
+                  className={`border rounded p-4 ${
+                    consentTouched && !callConsent
+                      ? "border-klawva-orange"
+                      : "border-klawva-border"
+                  }`}
+                >
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={callConsent}
+                      onChange={(e) => {
+                        setCallConsent(e.target.checked);
+                        setConsentTouched(true);
+                      }}
+                      className="mt-1 accent-klawva-accent"
+                    />
+                    <span className="font-mono text-klawva-muted text-xs leading-relaxed">
+                      I have permission to call the number in this brief, and
+                      they have not asked me to stop. The call opens with an AI
+                      disclosure.
+                    </span>
+                  </label>
+                  {consentTouched && !callConsent && (
+                    <p className="font-mono text-klawva-orange text-xs mt-2">
+                      This is required for a calling employee.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-col gap-2">
                 <label className="font-mono text-klawva-muted text-xs uppercase tracking-wider">
                   Email address
@@ -400,8 +449,9 @@ export function Component() {
                   How should it reach you?
                 </label>
                 <p className="font-mono text-klawva-dim text-xs">
-                  Web chat is available on every hire. A phone employee works in
-                  chat for now.
+                  {employee.phone?.outbound === true
+                    ? "A phone employee places the call when payment clears, inside that market's calling window."
+                    : "Web chat is available on every hire. This phone employee works in chat for now."}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {channels.map((option) => (

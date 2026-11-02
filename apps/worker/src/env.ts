@@ -46,6 +46,7 @@ export interface Env {
   readonly TWILIO_AUTH_TOKEN?: string;
   readonly TWILIO_FROM_NUMBER?: string;
   readonly VOICE_RELAY_URL?: string;
+  readonly VOICE_WEBHOOK_SECRET?: string;
 }
 
 export class WorkerEnv extends Context.Service<WorkerEnv, Env>()(

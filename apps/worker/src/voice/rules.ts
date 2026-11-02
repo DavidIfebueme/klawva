@@ -5,10 +5,14 @@ import type { LaunchMarket } from "../db/schema.ts";
 export type Market = LaunchMarket;
 
 const quietWindowsUtc: Record<Market, { startHour: number; endHour: number }> = {
-  us: { startHour: 13, endHour: 25 },
-  in: { startHour: 2, endHour: 14 },
-  ng: { startHour: 7, endHour: 19 },
+  us: { startHour: 16, endHour: 26 },
+  in: { startHour: 3.5, endHour: 15.5 },
+  ng: { startHour: 7, endHour: 20 },
 };
+
+const e164 = /^\+[1-9]\d{6,14}$/;
+
+export const isE164 = (number: string): boolean => e164.test(number);
 
 export const insideCallingWindow = (market: Market, at: Date): boolean => {
   const window = quietWindowsUtc[market];
