@@ -44,6 +44,12 @@ const employeeDetail = Schema.Struct({
     }),
   ),
   capabilitySheet: Schema.optional(Schema.Array(Schema.String)),
+  phone: Schema.optional(
+    Schema.Struct({
+      outbound: Schema.Boolean,
+      inbound: Schema.Boolean,
+    }),
+  ),
   consent: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -166,6 +172,7 @@ export interface HireSessionInput {
   brief: Record<string, string>;
   customerEmail: string;
   durationDays: number;
+  callConsent?: boolean;
 }
 
 export async function createHireSession(

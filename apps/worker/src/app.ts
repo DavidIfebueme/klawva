@@ -44,7 +44,9 @@ import { StudioApi, studioGroup } from "./studio/api.ts";
 import { AdminApi, adminGroup } from "./admin/api.ts";
 import { AccountApi, accountGroup } from "./account/api.ts";
 import { DevicesApi, devicesGroup } from "./auth/devices-api.ts";
-import { VoiceApi, voiceGroup } from "./voice/api.ts";
+import { VoiceApi, voiceGroup, upsertConsent } from "./voice/api.ts";
+import { insertSessionRow } from "./session/create.ts";
+import { isE164 } from "./voice/rules.ts";
 import { publicListingQuery } from "./listings/catalog.ts";
 import { parseQuery } from "./search/query.ts";
 import { searchCatalog } from "./search/search.ts";
@@ -125,6 +127,12 @@ const PublicListingDetail = Schema.Struct({
       retentionDays: Schema.Number,
     }),
   ),
+  phone: Schema.optionalKey(
+    Schema.Struct({
+      outbound: Schema.Boolean,
+      inbound: Schema.Boolean,
+    }),
+  ),
   durations: Schema.Array(
     Schema.Struct({
       days: Schema.Number,
@@ -170,6 +178,7 @@ const CreateSession = Schema.Struct({
   brief: Schema.Record(Schema.String, Schema.String),
   customerEmail: Schema.optionalKey(Schema.String),
   durationDays: Schema.optionalKey(Schema.Number),
+  callConsent: Schema.optionalKey(Schema.Boolean),
 });
 
 const health = HttpApiEndpoint.get("health", "/health", {
@@ -186,44 +195,6 @@ const createSession = HttpApiEndpoint.post("createSession", "/api/sessions", {
   success: SessionCreated,
   error: ListingConflict,
 });
-
-export const insertSessionRow = (
-  db: DatabaseImpl,
-  params: {
-    readonly userId: string | null;
-    readonly listingId: string;
-    readonly listingVersion: number;
-    readonly agentId: string;
-    readonly brief: string;
-    readonly customerEmail: string | null;
-    readonly budgetMinor: number;
-    readonly durationDays: number;
-  },
-): Effect.Effect<string> => {
-  const id = crypto.randomUUID();
-  return db
-    .run(
-      "INSERT INTO sessions (id, user_id, session_token, listing_id, listing_version, agent_id, channel, brief, state, customer_email, window_start, window_end, budget_minor, spent_minor, duration_days, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'web', ?, 'pending', ?, NULL, NULL, ?, 0, ?, ?, ?)",
-      [
-        id,
-        params.userId,
-        crypto.randomUUID().replace(/-/g, ""),
-        params.listingId,
-        params.listingVersion,
-        params.agentId,
-        params.brief,
-        params.customerEmail,
-        params.budgetMinor,
-        params.durationDays,
-        new Date().toISOString(),
-        new Date().toISOString(),
-      ],
-    )
-    .pipe(
-      Effect.orDie,
-      Effect.map(() => id),
-    );
-};
 
 const telegramWebhook = HttpApiEndpoint.post(
   "telegramWebhook",
@@ -655,6 +626,14 @@ const rootGroup = HttpApiBuilder.group(
             ...(dataPolicy === undefined ? {} : { dataPolicy }),
             capabilitySheet: capabilitySheet(manifest),
             consent,
+            ...(manifest.phone === undefined
+              ? {}
+              : {
+                  phone: {
+                    outbound: manifest.phone.outbound,
+                    inbound: manifest.phone.inbound,
+                  },
+                }),
           };
         }),
       )
@@ -1122,6 +1101,19 @@ const rootGroup = HttpApiBuilder.group(
               new ListingConflict({ reason: "phone_path_not_live" }),
             );
           }
+          const briefPhone = (payload.brief.phone ?? "").trim();
+          if (manifest?.phone?.outbound === true) {
+            if (payload.callConsent !== true) {
+              return yield* Effect.fail(
+                new ListingConflict({ reason: "phone_consent_required" }),
+              );
+            }
+            if (!isE164(briefPhone)) {
+              return yield* Effect.fail(
+                new ListingConflict({ reason: "bad_phone" }),
+              );
+            }
+          }
           if (
             manifest?.runtime?.kind === "hosted" &&
             env.HOSTED_AGENTS_ENABLED !== "true"
@@ -1153,6 +1145,13 @@ const rootGroup = HttpApiBuilder.group(
             ],
           )
           .pipe(Effect.orDie);
+          if (manifest?.phone?.outbound === true) {
+            yield* upsertConsent(db, {
+              number: briefPhone,
+              source: `checkout_attested:${id}`,
+              consentedAt: now,
+            });
+          }
           if (userId !== null) {
             yield* db
               .run(

@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import type { DatabaseImpl } from "../db/database.ts";
+import { insertSessionRow } from "../session/create.ts";
 
 export const shopperCadence = {
   hostedNewListingDays: 30,
@@ -153,7 +154,7 @@ export const runDueShoppers = (
           [listingId],
         )
         .pipe(Effect.orDie);
-      const sessionId = yield* (yield* Effect.promise(() => import("../app.ts"))).insertSessionRow(
+      const sessionId = yield* insertSessionRow(
         db,
         {
           userId: null,

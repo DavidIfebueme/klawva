@@ -9,7 +9,9 @@ import {
   koboPerMinute,
   maxSecondsForBudget,
 } from "../src/voice/ratecard.ts";
-import { aiDisclosureLine, insideCallingWindow } from "../src/voice/rules.ts";
+import { aiDisclosureLine, insideCallingWindow, isE164 } from "../src/voice/rules.ts";
+import { Brief } from "../src/db/schema.ts";
+import * as Schema from "effect/Schema";
 import { signatureVerifiedApiPath } from "../src/lib/owner.ts";
 import {
   TWIML_DEFAULT_SECONDS,
@@ -46,8 +48,9 @@ const base = {
   market: "us" as const,
   agentName: "Ada",
   script: "Book the caller into the next free slot.",
+  brief: "calendar rules: 30 minute slots",
   budgetRemainingKobo: 450000,
-  at: new Date(Date.UTC(2026, 9, 23, 15, 0, 0)),
+  at: new Date(Date.UTC(2026, 9, 23, 17, 0, 0)),
 };
 
 describe("rate card", () => {
@@ -69,19 +72,38 @@ describe("rate card", () => {
 });
 
 describe("calling windows", () => {
-  it("allows us calls inside 8am to 8pm central", () => {
-    expect(insideCallingWindow("us", new Date(Date.UTC(2026, 9, 23, 14, 0, 0)))).toBe(true);
-    expect(insideCallingWindow("us", new Date(Date.UTC(2026, 9, 23, 3, 0, 0)))).toBe(false);
+  it("allows us calls from 8am pacific to 9pm eastern", () => {
+    expect(insideCallingWindow("us", new Date(Date.UTC(2026, 9, 23, 17, 0, 0)))).toBe(true);
+    expect(insideCallingWindow("us", new Date(Date.UTC(2026, 9, 24, 1, 30, 0)))).toBe(true);
+    expect(insideCallingWindow("us", new Date(Date.UTC(2026, 9, 23, 14, 0, 0)))).toBe(false);
+    expect(insideCallingWindow("us", new Date(Date.UTC(2026, 9, 24, 2, 30, 0)))).toBe(false);
   });
 
-  it("allows india calls inside 8am to 8pm ist", () => {
+  it("allows india calls inside 9am to 9pm ist", () => {
     expect(insideCallingWindow("in", new Date(Date.UTC(2026, 9, 23, 9, 0, 0)))).toBe(true);
-    expect(insideCallingWindow("in", new Date(Date.UTC(2026, 9, 23, 20, 0, 0)))).toBe(false);
+    expect(insideCallingWindow("in", new Date(Date.UTC(2026, 9, 23, 15, 0, 0)))).toBe(true);
+    expect(insideCallingWindow("in", new Date(Date.UTC(2026, 9, 23, 16, 0, 0)))).toBe(false);
   });
 
-  it("allows nigeria calls inside 8am to 8pm wat", () => {
+  it("allows nigeria calls inside 8am to 9pm wat", () => {
     expect(insideCallingWindow("ng", new Date(Date.UTC(2026, 9, 23, 12, 0, 0)))).toBe(true);
     expect(insideCallingWindow("ng", new Date(Date.UTC(2026, 9, 23, 22, 0, 0)))).toBe(false);
+  });
+
+  it("decodes the stored session brief from its json text", () => {
+    const decoded = Schema.decodeUnknownOption(Brief)(
+      JSON.stringify({ phone: "+15551234567" }),
+    );
+    expect(decoded._tag).toBe("Some");
+    expect(decoded._tag === "Some" ? decoded.value.phone : "").toBe("+15551234567");
+  });
+
+  it("only accepts e164 numbers for a brief callee", () => {
+    expect(isE164("+2349066033744")).toBe(true);
+    expect(isE164("+15551234567")).toBe(true);
+    expect(isE164("0803 123 4567")).toBe(false);
+    expect(isE164("2349066033744")).toBe(false);
+    expect(isE164("+0123456")).toBe(false);
   });
 });
 
@@ -92,7 +114,7 @@ describe("gated dial", () => {
       dialChecked(fakeDb(consentedRow), carrier, base),
     );
     expect(handle.carrierRef).toBe("ref1");
-    expect(handle.maxSeconds).toBe(2250);
+    expect(handle.maxSeconds).toBe(600);
     expect(calls.length).toBe(1);
   });
 
@@ -131,6 +153,47 @@ describe("gated dial", () => {
     );
     expect(exit._tag).toBe("Failure");
     expect(calls.length).toBe(0);
+  });
+
+  it("keeps every call under the ten minute cap", async () => {
+    const { carrier, calls } = recordingCarrier();
+    const handle = await Effect.runPromise(
+      dialChecked(fakeDb(consentedRow), carrier, {
+        ...base,
+        budgetRemainingKobo: 100_000_000,
+      }),
+    );
+    expect(handle.maxSeconds).toBe(600);
+    expect(calls[0].maxSeconds).toBe(600);
+  });
+
+  it("does not spend a dial attempt when a gate refuses", async () => {
+    const writes: string[] = [];
+    const db: DatabaseImpl = {
+      ...fakeDb(null),
+      run: (sql) => {
+        writes.push(String(sql));
+        return Effect.void;
+      },
+    };
+    const { carrier } = recordingCarrier();
+    await Effect.runPromiseExit(dialChecked(db, carrier, base));
+    expect(writes.some((sql) => sql.includes("attempt_count = attempt_count + 1"))).toBe(false);
+  });
+
+  it("counts one attempt when the carrier is dialled", async () => {
+    const writes: string[] = [];
+    const db: DatabaseImpl = {
+      ...fakeDb(consentedRow),
+      run: (sql) => {
+        writes.push(String(sql));
+        return Effect.void;
+      },
+    };
+    const { carrier } = recordingCarrier();
+    await Effect.runPromise(dialChecked(db, carrier, base));
+    const attempts = writes.filter((sql) => sql.includes("attempt_count = attempt_count + 1"));
+    expect(attempts.length).toBe(1);
   });
 
   it("opens with the ai disclosure line", async () => {

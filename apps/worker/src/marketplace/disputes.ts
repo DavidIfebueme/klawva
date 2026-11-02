@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { DatabaseImpl } from "../db/database.ts";
 import { isStructuralRefund } from "../payments/split.ts";
+import { insertSessionRow } from "../session/create.ts";
 
 export type DisputeState =
   | "opened"
@@ -187,7 +188,7 @@ export const createRerunSession = (
       .pipe(Effect.orDie);
     const budgetMinor =
       version === null ? 0 : Number(version.budgetMinor) * durationDays;
-    const rerunId = yield* (yield* Effect.promise(() => import("../app.ts"))).insertSessionRow(
+    const rerunId = yield* insertSessionRow(
       db,
       {
         userId: null,

@@ -16,6 +16,7 @@ export interface DialParams {
   readonly market: Market;
   readonly agentName: string;
   readonly script: string;
+  readonly brief: string;
   readonly welcomeMessage: string;
   readonly maxSeconds: number;
 }
@@ -32,6 +33,7 @@ export interface Carrier {
 
 export interface BolnaConfig {
   readonly apiKey: string;
+  readonly webhookUrl: string;
 }
 
 export const bolnaCarrier = (config: BolnaConfig): Carrier => ({
@@ -42,6 +44,11 @@ export const bolnaCarrier = (config: BolnaConfig): Carrier => ({
         if (config.apiKey.length === 0) {
           throw new Error("bolna_not_configured");
         }
+        const brief = params.brief.trim().slice(0, 4000);
+        const systemPrompt =
+          brief.length === 0
+            ? params.script
+            : `${params.script}\n\nFacts for this call:\n${brief}`;
         const agentResponse = await fetch("https://api.bolna.ai/v2/agent", {
           method: "POST",
           headers: {
@@ -52,6 +59,10 @@ export const bolnaCarrier = (config: BolnaConfig): Carrier => ({
             agent_config: {
               agent_name: params.agentName,
               agent_welcome_message: params.welcomeMessage,
+              call_summary_enabled: true,
+              ...(config.webhookUrl.length === 0
+                ? {}
+                : { webhook_url: config.webhookUrl }),
               tasks: [
                 {
                   task_type: "conversation",
@@ -98,7 +109,7 @@ export const bolnaCarrier = (config: BolnaConfig): Carrier => ({
                 },
               ],
             },
-            agent_prompts: { task_1: { system_prompt: params.script } },
+            agent_prompts: { task_1: { system_prompt: systemPrompt } },
           }),
         });
         if (!agentResponse.ok) {
@@ -164,7 +175,8 @@ export const twilioCarrier = (config: TwilioConfig): Carrier => ({
           },
         );
         if (!response.ok) {
-          throw new Error(`twilio call ${response.status}`);
+          const detail = await response.text();
+          throw new Error(`twilio call ${response.status}: ${detail.slice(0, 300)}`);
         }
         const call = Schema.decodeUnknownSync(
           Schema.Struct({ sid: Schema.String }),

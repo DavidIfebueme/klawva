@@ -19,7 +19,7 @@ const dbWith = (consent: { consentSource: string; consentedAt: string; dnc: numb
       return Effect.void;
     },
     batch: () => Effect.void,
-    changed: () => Effect.succeed(0),
+    changed: () => Effect.succeed(1),
   } as unknown as DatabaseImpl;
   return { db, writes };
 };
@@ -39,11 +39,11 @@ const base = {
   sessionId: "s1",
   agentName: "Ada",
   manifest: { phone },
-  brief: {} as unknown,
+  brief: {},
   budgetRemainingKobo: 450_000,
 };
 
-const at = new Date(Date.UTC(2026, 9, 28, 15, 0, 0));
+const at = new Date(Date.UTC(2026, 9, 28, 17, 0, 0));
 
 describe("carrier per market", () => {
   it("nigeria rides twilio and needs all four values", () => {

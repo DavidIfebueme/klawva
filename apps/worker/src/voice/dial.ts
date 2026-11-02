@@ -7,6 +7,7 @@ import { budgetCoversCall, maxSecondsForBudget } from "./ratecard.ts";
 import { aiDisclosureLine, consentFor, insideCallingWindow, type Market } from "./rules.ts";
 import {
   bindTransport,
+  recordDialAttempt,
   type IllegalTransportTransition,
 } from "../session/transports.ts";
 
@@ -28,6 +29,7 @@ export interface CheckedDialParams {
   readonly market: Market;
   readonly agentName: string;
   readonly script: string;
+  readonly brief: string;
   readonly budgetRemainingKobo: number;
   readonly at?: Date;
 }
@@ -54,17 +56,21 @@ export const dialChecked = (
     if (!budgetCoversCall(params.budgetRemainingKobo, carrier.name)) {
       return yield* Effect.fail(new DialRefused({ reason: "budget_too_small" }));
     }
-    const maxSeconds = maxSecondsForBudget(params.budgetRemainingKobo, carrier.name);
+    const maxSeconds = Math.min(
+      maxSecondsForBudget(params.budgetRemainingKobo, carrier.name),
+      600,
+    );
     const dialParams: DialParams = {
       to: params.to,
       market: params.market,
       agentName: params.agentName,
       script: params.script,
+      brief: params.brief,
       welcomeMessage: `${aiDisclosureLine} ${params.script.split(".")[0]}.`,
       maxSeconds,
     };
+    yield* recordDialAttempt(db, params.sessionId);
     const handle = yield* carrier.dial(dialParams);
-    // a dial that cannot bind its leg is a failed dial: the report layer needs the row
     yield* bindTransport(
       db,
       params.sessionId,

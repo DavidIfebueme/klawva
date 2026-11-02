@@ -83,7 +83,9 @@ export function Component() {
           </p>
           {employee.category === "phone" && (
             <p className="font-mono text-klawva-dim text-sm leading-relaxed">
-              Calling is not live yet, so a phone shift runs in chat for now.
+              {employee.phone?.outbound === true
+                ? "Calls the number in your brief, inside that market's calling window. One call per shift. The call opens with an AI disclosure and is transcribed."
+                : "Calling is not live yet for this employee, so the shift runs in chat for now."}
             </p>
           )}
           {(employee.lane ?? "authored") !== "authored" && (

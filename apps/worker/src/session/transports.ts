@@ -104,6 +104,47 @@ export const bindTransport = (
       .pipe(Effect.orDie);
   });
 
+export const claimDial = (
+  db: DatabaseImpl,
+  sessionId: string,
+  at: Date,
+): Effect.Effect<boolean> => {
+  const now = at.toISOString();
+  const stale = new Date(at.getTime() - 300_000).toISOString();
+  return db
+    .changed(
+      "UPDATE session_transports SET dialing_at = ?, updated_at = ? WHERE session_id = ? AND type = 'phone_out' AND carrier_ref IS NULL AND (dialing_at IS NULL OR dialing_at < ?)",
+      [now, now, sessionId, stale],
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((changes) => changes > 0),
+    );
+};
+
+export const recordDialAttempt = (
+  db: DatabaseImpl,
+  sessionId: string,
+): Effect.Effect<void> =>
+  db
+    .run(
+      "UPDATE session_transports SET attempt_count = attempt_count + 1, updated_at = ? WHERE session_id = ? AND type = 'phone_out' AND carrier_ref IS NULL",
+      [new Date().toISOString(), sessionId],
+    )
+    .pipe(Effect.orDie);
+
+export const deferTransport = (
+  db: DatabaseImpl,
+  sessionId: string,
+  until: string,
+): Effect.Effect<void> =>
+  db
+    .run(
+      "UPDATE session_transports SET dialing_at = NULL, retry_after = ?, updated_at = ? WHERE session_id = ? AND type = 'phone_out' AND carrier_ref IS NULL",
+      [until, new Date().toISOString(), sessionId],
+    )
+    .pipe(Effect.orDie);
+
 export const closeTransports = (
   db: DatabaseImpl,
   sessionId: string,

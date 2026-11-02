@@ -10,7 +10,7 @@ import { constantTimeEqual } from "../lib/secure.ts";
 import { dispatchTask } from "../hosted/dispatch.ts";
 import { ingestArtifact } from "../hosted/ingest.ts";
 import { placePhoneHire } from "../voice/placement.ts";
-import { Brief, BriefRecord, manifestOf } from "../db/schema.ts";
+import { Brief, manifestOf } from "../db/schema.ts";
 
 export class PaystackError extends Schema.TaggedError<PaystackError>()(
   "PaystackError",
@@ -228,7 +228,7 @@ export const handlePaystackWebhook = (
             .map((byte) => byte.toString(16).padStart(2, "0"))
             .join("");
         });
-        const parsedBrief = Schema.decodeUnknownOption(BriefRecord)(
+        const parsedBrief = Schema.decodeUnknownOption(Brief)(
           String(hosted.brief ?? "{}"),
         );
         yield* dispatchTask(db, {
@@ -244,7 +244,7 @@ export const handlePaystackWebhook = (
         }).pipe(Effect.catch(() => Effect.void));
       }
       if (manifest !== null && manifest.phone !== undefined) {
-        const parsedBrief = Schema.decodeUnknownOption(BriefRecord)(
+        const parsedBrief = Schema.decodeUnknownOption(Brief)(
           String(hosted.brief ?? "{}"),
         );
         const budget = yield* db
