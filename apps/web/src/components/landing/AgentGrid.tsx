@@ -10,6 +10,7 @@ import { JobSeekerIcon } from '../icons/JobSeekerIcon';
 import { LeadScoutIcon } from '../icons/LeadScoutIcon';
 import { KlawvaMark } from '../icons/KlawvaMark';
 import type { EmployeeSummary } from '@/lib/employees-api';
+import { formatPrice, useDisplay } from "@/lib/display";
 
 const iconMap: Partial<Record<string, typeof ScrapperIcon>> = {
   scrapper: ScrapperIcon,
@@ -25,6 +26,7 @@ export function AgentGrid({
   employees: ReadonlyArray<EmployeeSummary>;
   failed: boolean;
 }) {
+  const display = useDisplay();
   const visible = employees.slice(0, 6);
 
   return (
@@ -68,7 +70,7 @@ export function AgentGrid({
                       {employee.category}
                     </span>
                     <span className="font-mono text-klawva-accent text-sm">
-                      ₦{(employee.priceMinor / 100).toLocaleString()} per 24h
+                      {formatPrice(employee.priceMinor, display)} per 24h
                     </span>
                   </div>
 

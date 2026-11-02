@@ -48,6 +48,7 @@ import { VoiceApi, voiceGroup } from "./voice/api.ts";
 import { publicListingQuery } from "./listings/catalog.ts";
 import { parseQuery } from "./search/query.ts";
 import { searchCatalog } from "./search/search.ts";
+import { displayContext } from "./lib/fx.ts";
 import { ownsSession, sessionTokenMatches } from "./account/account.ts";
 
 const ReportStats = Schema.Array(
@@ -252,6 +253,16 @@ const listingDetailBySlugEndpoint = HttpApiEndpoint.get(
   },
 );
 
+const displayEndpoint = HttpApiEndpoint.get("display", "/api/display", {
+  query: Schema.Struct({ country: Schema.optional(Schema.String) }),
+  success: Schema.Struct({
+    country: Schema.NullOr(Schema.String),
+    currency: Schema.String,
+    rate: Schema.Number,
+    updatedAt: Schema.NullOr(Schema.String),
+  }),
+});
+
 const configEndpoint = HttpApiEndpoint.get("config", "/api/config", {
   success: Schema.Struct({ telegramBotUsername: Schema.String }),
 });
@@ -416,6 +427,7 @@ class RootGroup extends HttpApiGroup.make("Root")
   .add(listListingsEndpoint)
   .add(listingDetailBySlugEndpoint)
   .add(deleteMyDataEndpoint)
+  .add(displayEndpoint)
   .add(configEndpoint)
   .add(connectorsEndpoint)
   .add(sessionLaunchEndpoint)
@@ -715,6 +727,14 @@ const rootGroup = HttpApiBuilder.group(
             ).pipe(Effect.catch(() => Effect.void));
           }
           return { deadline };
+        }),
+      )
+      .handle("display", ({ query }) =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const header = request.headers["cf-ipcountry"];
+          const country = query.country ?? (header === undefined ? null : header);
+          return yield* displayContext(db, country);
         }),
       )
       .handle("config", () =>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ApiError } from "@/lib/api-error";
 import { getEmployee } from "@/lib/employees-api";
+import { formatPrice, useDisplay } from "@/lib/display";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   if (params.agent === undefined) {
@@ -22,6 +23,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 
 export function Component() {
   const { employee } = useLoaderData<typeof loader>();
+  const display = useDisplay();
 
   if (employee === null) {
     return (
@@ -108,7 +110,7 @@ export function Component() {
                 {employee.name}
               </h2>
               <span className="font-syne font-extrabold text-2xl text-klawva-accent">
-                ₦{(employee.priceMinor / 100).toLocaleString()}
+                {formatPrice(employee.priceMinor, display)}
               </span>
             </div>
             <Link href={`/checkout?agent=${employee.slug}`} className="block w-full">

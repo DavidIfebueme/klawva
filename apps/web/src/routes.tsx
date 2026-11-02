@@ -6,12 +6,12 @@ import {
   useRouteError,
 } from "react-router-dom";
 import CustomRequest from "./app/custom-request/page.tsx";
-import Pricing from "./app/pricing/page.tsx";
 import Privacy from "./app/privacy/page.tsx";
 import Terms from "./app/terms/page.tsx";
 import NotFound from "./app/not-found.tsx";
 import StudioLayout from "./app/studio/layout.tsx";
 import { clearStudioSession } from "./lib/studio-session.ts";
+import { loadDisplay } from "./lib/display.ts";
 
 function errorDetail(error: unknown): string {
   if (isRouteErrorResponse(error)) {
@@ -72,6 +72,10 @@ function StudioRouteError() {
 
 export const router = createBrowserRouter([
   {
+    id: "root",
+    loader: ({ request }: { request: Request }) =>
+      loadDisplay(new URL(request.url).searchParams.get("country")),
+    shouldRevalidate: () => false,
     element: <Outlet />,
     errorElement: <RootRouteError />,
     children: [
@@ -102,7 +106,7 @@ export const router = createBrowserRouter([
       { path: "/agents", loader: () => redirect("/employees") },
       { path: "/custom-request", element: <CustomRequest /> },
       { path: "/publish", lazy: () => import("./app/publish/page.tsx") },
-      { path: "/pricing", element: <Pricing /> },
+      { path: "/pricing", lazy: () => import("./app/pricing/page.tsx") },
       { path: "/privacy", element: <Privacy /> },
       { path: "/terms", element: <Terms /> },
       {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-error";
 import { getStudioSession } from "@/lib/studio-session";
 import { briefField, type BriefFieldSpec } from "@/lib/brief-fields";
+import { conversionNote, formatNaira, formatPrice, useDisplay } from "@/lib/display";
 import {
   createHireSession,
   getEmployee,
@@ -110,6 +111,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export function Component() {
   const { employee } = useLoaderData<typeof loader>();
+  const display = useDisplay();
   const fields = fieldsFor(employee);
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [email, setEmail] = useState(() => getStudioSession()?.email ?? "");
@@ -370,10 +372,10 @@ export function Component() {
                         {option.days === 1 ? "24 hours" : `${option.days} days`}
                       </div>
                       <div className="font-mono text-klawva-text text-xs mt-1">
-                        ₦{(option.priceMinor / 100).toLocaleString()}
+                        {formatPrice(option.priceMinor, display)}
                       </div>
                       <div className="font-mono text-klawva-dim text-xs">
-                        ₦{Math.round(option.priceMinor / 100 / option.days).toLocaleString()} per day
+                        {formatPrice(Math.round(option.priceMinor / option.days), display)} per day
                       </div>
                     </button>
                   ))}
@@ -446,7 +448,7 @@ export function Component() {
               <div className="flex items-center justify-between pt-4 border-t border-klawva-border">
                 <div>
                   <span className="font-syne font-extrabold text-2xl text-klawva-accent">
-                    ₦{(totalMinor / 100).toLocaleString()}
+                    {formatPrice(totalMinor, display)}
                   </span>
                   <p className="font-mono text-klawva-dim text-xs mt-1">
                     {durationDays === 1
@@ -455,6 +457,12 @@ export function Component() {
                     . The AI allowance for this shift is included in the price,
                     about {Math.floor(employee.budgetMinor / 50)} messages.
                   </p>
+                  {conversionNote(display) !== null && (
+                    <p className="font-mono text-klawva-dim text-[11px] mt-2">
+                      {conversionNote(display)} You are charged{" "}
+                      {formatNaira(totalMinor)}.
+                    </p>
+                  )}
                 </div>
                 <Button type="submit" variant="primary" size="lg" loading={loading}>
                   Pay and launch →
