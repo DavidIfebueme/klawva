@@ -18,11 +18,15 @@ export const fallbackDisplay: DisplayContext = {
 
 export const loadDisplay = async (country: string | null): Promise<DisplayContext> => {
   const query = country === null ? "" : `?country=${encodeURIComponent(country)}`;
-  const res = await fetch(`/api/display${query}`);
-  if (!res.ok) {
+  try {
+    const res = await fetch(`/api/display${query}`);
+    if (!res.ok) {
+      return fallbackDisplay;
+    }
+    return Schema.decodeUnknownSync(displayContext)(await res.json());
+  } catch {
     return fallbackDisplay;
   }
-  return Schema.decodeUnknownSync(displayContext)(await res.json());
 };
 
 export const useDisplay = (): DisplayContext =>

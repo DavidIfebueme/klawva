@@ -75,7 +75,9 @@ export const router = createBrowserRouter([
     id: "root",
     loader: ({ request }: { request: Request }) =>
       loadDisplay(new URL(request.url).searchParams.get("country")),
-    shouldRevalidate: () => false,
+    shouldRevalidate: ({ currentUrl, nextUrl }) =>
+      currentUrl.searchParams.get("country") !==
+      nextUrl.searchParams.get("country"),
     element: <Outlet />,
     errorElement: <RootRouteError />,
     children: [

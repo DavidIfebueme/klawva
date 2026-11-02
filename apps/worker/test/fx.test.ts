@@ -11,7 +11,7 @@ import {
 const fakeDb = (initial: Readonly<Record<string, { perNgn: number; updatedAt: string }>>) => {
   const rates = new Map(Object.entries(initial));
   const writes: Array<{ sql: string; params?: ReadonlyArray<Param> }> = [];
-  const db = {
+  const db: DatabaseImpl = {
     all: () => Effect.succeed([] as ReadonlyArray<Row>),
     first: (sql: string, params?: ReadonlyArray<Param>) => {
       if (sql.startsWith("SELECT per_ngn")) {
@@ -44,7 +44,7 @@ const fakeDb = (initial: Readonly<Record<string, { perNgn: number; updatedAt: st
       return Effect.void;
     },
     changed: () => Effect.succeed(0),
-  } as DatabaseImpl;
+  };
   return { db, rates, writes };
 };
 
@@ -82,6 +82,21 @@ describe("refreshing rates", () => {
       refreshRates(db, async () => new Response("nope", { status: 500 })),
     );
     expect(stored).toBe(false);
+    expect(rates.get("USD")?.perNgn).toBe(0.00074);
+  });
+
+  it("refuses a provider rate that is zero, negative or not finite", async () => {
+    const { db, rates } = fakeDb({
+      USD: { perNgn: 0.00074, updatedAt: "2026-11-01T00:00:00Z" },
+    });
+    const zero = await Effect.runPromise(
+      refreshRates(db, async () => new Response(JSON.stringify(payload(0, -1)))),
+    );
+    const infinite = await Effect.runPromise(
+      refreshRates(db, async () => new Response(JSON.stringify(payload(1e999, 0.07)))),
+    );
+    expect(zero).toBe(false);
+    expect(infinite).toBe(false);
     expect(rates.get("USD")?.perNgn).toBe(0.00074);
   });
 

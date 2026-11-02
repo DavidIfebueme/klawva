@@ -62,6 +62,15 @@ export const refreshRates = (
     if (parsed._tag === "None" || parsed.value.result !== "success") {
       return false;
     }
+    const { USD: usd, INR: inr } = parsed.value.rates;
+    if (
+      !Number.isFinite(usd) ||
+      usd <= 0 ||
+      !Number.isFinite(inr) ||
+      inr <= 0
+    ) {
+      return false;
+    }
     const at = now.toISOString();
     yield* db
       .batch([
