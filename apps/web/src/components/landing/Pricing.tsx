@@ -3,6 +3,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { formatPrice, useDisplay } from "@/lib/display";
 
 const durations = ['24 hours', '2 days', '7 days', '30 days'];
 
@@ -14,6 +15,7 @@ const included = [
 ];
 
 export function Pricing({ minPriceMinor }: { minPriceMinor: number | null }) {
+  const display = useDisplay();
   return (
     <section id="pricing" className="py-32 px-6 bg-klawva-bg border-t border-klawva-border">
       <div className="max-w-3xl mx-auto text-center">
@@ -34,7 +36,7 @@ export function Pricing({ minPriceMinor }: { minPriceMinor: number | null }) {
               <h3 className="font-syne font-extrabold text-6xl text-klawva-accent mb-4">
                 {minPriceMinor === null
                   ? "One charge"
-                  : `from ₦${(minPriceMinor / 100).toLocaleString()}`}
+                  : `from ${formatPrice(minPriceMinor, display)}`}
               </h3>
               <p className="font-mono text-klawva-muted text-sm mb-8">
                 {minPriceMinor === null

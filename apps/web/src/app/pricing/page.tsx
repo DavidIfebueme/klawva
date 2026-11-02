@@ -3,10 +3,24 @@ import { Footer } from "@/components/layout/Footer";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "@/components/ui/AppLink";
+import { useLoaderData } from "react-router-dom";
+import { formatPrice, useDisplay } from "@/lib/display";
+import { listEmployees } from "@/lib/employees-api";
 
 const shifts = ["24 hours", "2 days", "7 days", "30 days"];
 
-export default function PricingPage() {
+export const loader = async () => {
+  const employees = await listEmployees().catch(() => []);
+  const prices = employees.map((employee) => employee.priceMinor);
+  return {
+    minPriceMinor: prices.length === 0 ? null : Math.min(...prices),
+    maxPriceMinor: prices.length === 0 ? null : Math.max(...prices),
+  };
+};
+
+export function Component() {
+  const { minPriceMinor, maxPriceMinor } = useLoaderData<typeof loader>();
+  const display = useDisplay();
   return (
     <div className="min-h-screen flex flex-col bg-klawva-bg">
       <Navbar />
@@ -35,9 +49,10 @@ export default function PricingPage() {
             ))}
           </div>
           <p className="font-mono text-klawva-muted text-sm max-w-2xl mb-12">
-            Longer shifts cost less per day. Catalogue prices run from ₦500 to
-            ₦15,000 per shift, and each employee shows its exact price for every
-            duration before you pay.
+            Longer shifts cost less per day.{" "}
+            {minPriceMinor === null || maxPriceMinor === null
+              ? "Each employee shows its exact price for every duration before you pay."
+              : `Catalogue prices run from ${formatPrice(minPriceMinor, display)} to ${formatPrice(maxPriceMinor, display)} per shift, and each employee shows its exact price for every duration before you pay.`}
           </p>
           <div className="text-center">
             <Link href="/employees">

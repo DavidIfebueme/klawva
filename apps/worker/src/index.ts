@@ -413,6 +413,16 @@ export default {
       })(),
     );
     ctx.waitUntil(
+      (async () => {
+        const db = makeDatabase(env.DB);
+        const { refreshRatesIfStale } = await import("./lib/fx.ts");
+        await Effect.runPromise(
+          refreshRatesIfStale(db).pipe(Effect.catch(() => Effect.succeed(false))),
+        );
+        return undefined;
+      })(),
+    );
+    ctx.waitUntil(
       Effect.runPromise(sweep(env))
         .then(() => undefined)
         .catch(() => undefined),

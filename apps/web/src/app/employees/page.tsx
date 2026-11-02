@@ -10,6 +10,7 @@ import { Footer } from "@/components/layout/Footer";
 import Link from "@/components/ui/AppLink";
 import { Badge } from "@/components/ui/Badge";
 import { Search } from "lucide-react";
+import { formatPrice, useDisplay } from "@/lib/display";
 import {
   listEmployees,
   searchEmployees,
@@ -53,6 +54,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export function Component() {
   const data = useLoaderData<typeof loader>();
+  const display = useDisplay();
   const navigation = useNavigation();
   const [params, setParams] = useSearchParams();
   const [category, setCategory] = useState("all");
@@ -227,7 +229,7 @@ export function Component() {
                     </p>
                   )}
                   <div className="font-mono text-klawva-accent text-sm">
-                    ₦{(employee.priceMinor / 100).toLocaleString()} per 24h
+                    {formatPrice(employee.priceMinor, display)} per 24h
                   </div>
                   {employee.avgRating !== null && (
                     <div className="font-mono text-klawva-dim text-xs mt-1">

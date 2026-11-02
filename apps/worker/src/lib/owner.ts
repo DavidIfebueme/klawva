@@ -13,6 +13,7 @@ export const ownerGateEnabled = (
 
 export const isPublicApiPath = (pathname: string): boolean =>
   pathname === "/api/config" ||
+  pathname === "/api/display" ||
   pathname === "/api/listings" ||
   pathname.startsWith("/api/listings/") ||
   pathname === "/api/devices/claim";
