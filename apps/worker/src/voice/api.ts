@@ -52,6 +52,7 @@ const bolnaWebhook = HttpApiEndpoint.post(
   "bolnaWebhook",
   "/api/voice/bolna/webhook",
   {
+    query: Schema.Struct({ k: Schema.optional(Schema.String) }),
     payload: BolnaWebhookPayload,
     success: Schema.Struct({ ok: Schema.Boolean }),
     error: AuthError,
@@ -143,12 +144,11 @@ export const voiceGroup = HttpApiBuilder.group(
           return { ok: true, upserted: payload.numbers.length };
         }),
       )
-      .handle("bolnaWebhook", ({ payload }) =>
+      .handle("bolnaWebhook", ({ payload, query }) =>
         Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
           const header = request.headers["x-webhook-secret"];
-          const query = new URL(request.url).searchParams.get("k");
-          const secret = typeof header === "string" ? header : query;
+          const secret = typeof header === "string" ? header : query.k ?? null;
           const expected = env.VOICE_WEBHOOK_SECRET ?? env.CRON_SECRET;
           if (secret === null || !constantTimeEqual(secret, expected)) {
             return yield* Effect.fail(new AuthError({ reason: "missing_token" }));
