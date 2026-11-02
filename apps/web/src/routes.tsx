@@ -73,11 +73,23 @@ function StudioRouteError() {
 export const router = createBrowserRouter([
   {
     id: "root",
-    loader: ({ request }: { request: Request }) =>
-      loadDisplay(new URL(request.url).searchParams.get("country")),
-    shouldRevalidate: ({ currentUrl, nextUrl }) =>
-      currentUrl.searchParams.get("country") !==
-      nextUrl.searchParams.get("country"),
+    loader: ({ request }: { request: Request }) => {
+      const param = new URL(request.url).searchParams.get("country");
+      if (typeof window === "undefined") {
+        return loadDisplay(param);
+      }
+      if (param === "auto") {
+        window.sessionStorage.removeItem("displayCountry");
+      } else if (param !== null) {
+        window.sessionStorage.setItem("displayCountry", param.toUpperCase());
+      }
+      const stored = window.sessionStorage.getItem("displayCountry");
+      return loadDisplay(stored);
+    },
+    shouldRevalidate: ({ currentUrl, nextUrl }) => {
+      const next = nextUrl.searchParams.get("country");
+      return next !== null && next !== currentUrl.searchParams.get("country");
+    },
     element: <Outlet />,
     errorElement: <RootRouteError />,
     children: [
