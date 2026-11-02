@@ -301,12 +301,20 @@ describe("bolna webhook payload mapping", () => {
 });
 
 describe("twiml relay", () => {
-  it("serves the disclosure and the caller's stop inside the clamp band", () => {
-    const xml = twimlForCall(clampRelaySeconds("120"));
+  it("serves the disclosure and a named one way message", () => {
+    const xml = twimlForCall(clampRelaySeconds("120"), "Klavva Appointment Setter");
     expect(xml).toContain("This call is from an AI employee");
-    expect(xml).toContain("up to 120 seconds");
+    expect(xml).toContain("on behalf of Klavva Appointment Setter");
+    expect(xml).toContain("cannot hold a conversation");
     expect(xml).toContain("<Hangup/>");
+    expect(xml).not.toContain("<Pause");
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+  });
+
+  it("escapes the business name", () => {
+    const xml = twimlForCall(30, "Ada & Sons <Ltd>");
+    expect(xml).toContain("Ada &amp; Sons &lt;Ltd&gt;");
+    expect(xml).not.toContain("<Ltd>");
   });
 
   it("clamps the stop so no caller pushes a call past the budget brake", () => {

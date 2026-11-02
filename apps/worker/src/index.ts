@@ -197,10 +197,14 @@ export default {
       }
       return new Response(null, { status: 405 });
     }
-    if (url.pathname === "/api/voice/twiml" && request.method === "GET") {
+    if (
+      url.pathname === "/api/voice/twiml" &&
+      (request.method === "GET" || request.method === "POST")
+    ) {
       const { clampRelaySeconds, twimlForCall } = await import("./voice/twiml.ts");
       const seconds = clampRelaySeconds(url.searchParams.get("maxSeconds"));
-      return new Response(twimlForCall(seconds), {
+      const name = url.searchParams.get("name") ?? undefined;
+      return new Response(twimlForCall(seconds, name), {
         headers: { "Content-Type": "text/xml; charset=utf-8" },
       });
     }

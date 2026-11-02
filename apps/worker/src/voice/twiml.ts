@@ -1,5 +1,3 @@
-import { aiDisclosureLine } from "./rules.ts";
-
 export const TWIML_DEFAULT_SECONDS = 90;
 export const TWIML_MIN_SECONDS = 30;
 export const TWIML_MAX_SECONDS = 600;
@@ -13,12 +11,23 @@ export const clampRelaySeconds = (raw: string | null): number => {
   return Math.min(Math.max(parsed, TWIML_MIN_SECONDS), TWIML_MAX_SECONDS);
 };
 
-export const twimlForCall = (maxSeconds: number): string =>
-  `<?xml version="1.0" encoding="UTF-8"?>
+const escapeXml = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+export const twimlForCall = (
+  _maxSeconds: number,
+  name = "the business you are hearing from",
+): string => {
+  const business = escapeXml(name.slice(0, 80));
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">${aiDisclosureLine}</Say>
-  <Say voice="alice">Hello, this is a Klawva employee on a test call. The line stays open for up to ${maxSeconds} seconds.</Say>
-  <Pause length="${maxSeconds}"/>
-  <Say voice="alice">That is the end of the test call. Goodbye.</Say>
+  <Say voice="alice">This call is from an AI employee. It is an automated message, not a conversation, and it is not recorded.</Say>
+  <Say voice="alice">This is an automated message on behalf of ${business}. This line cannot hold a conversation yet. ${business} will follow up another way. Goodbye.</Say>
   <Hangup/>
 </Response>`;
+};

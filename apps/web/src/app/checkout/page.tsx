@@ -376,6 +376,12 @@ export function Component() {
                       This is required for a calling employee.
                     </p>
                   )}
+                  {(brief.phone ?? "").trim().startsWith("+234") && (
+                    <p className="font-mono text-klawva-dim text-[11px] mt-2">
+                      Nigerian calls play an automated message in this version.
+                      They cannot hold a back and forth yet.
+                    </p>
+                  )}
                 </div>
               )}
 

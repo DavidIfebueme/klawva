@@ -170,7 +170,7 @@ export const twilioCarrier = (config: TwilioConfig): Carrier => ({
             body: new URLSearchParams({
               To: params.to,
               From: config.fromNumber,
-              Url: `${config.relayUrl}?maxSeconds=${params.maxSeconds}`,
+              Url: `${config.relayUrl}?maxSeconds=${params.maxSeconds}&name=${encodeURIComponent(params.agentName)}`,
             }).toString(),
           },
         );
