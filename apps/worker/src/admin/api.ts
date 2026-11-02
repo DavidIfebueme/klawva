@@ -11,6 +11,7 @@ import { Database } from "../db/database.ts";
 import { WorkerEnv } from "../env.ts";
 import { Forbidden, ListingConflict, ListingNotFound } from "../errors.ts";
 import { reindexAll } from "../search/indexing.ts";
+import { provisionReceptionist } from "../voice/inbound.ts";
 import { approveListing, auditLog, overview, rejectListing, reviewQueue, revokeListing, seed, unpublishListing } from "./admin.ts";
 
 const IdParam = Schema.Struct({ id: Schema.String });
@@ -117,6 +118,19 @@ const adminUnpublish = HttpApiEndpoint.post(
   },
 );
 
+const adminVoiceReceptionist = HttpApiEndpoint.post(
+  "adminVoiceReceptionist",
+  "/api/admin/voice/receptionist",
+  {
+    success: Schema.Struct({
+      agentId: Schema.String,
+      number: Schema.String,
+      assigned: Schema.Boolean,
+    }),
+    error: allErrors,
+  },
+);
+
 const adminRevoke = HttpApiEndpoint.post(
   "adminRevoke",
   "/api/admin/listings/:id/revoke",
@@ -137,7 +151,8 @@ class AdminGroup extends HttpApiGroup.make("Admin")
   .add(adminSeed)
   .add(adminReindex)
   .add(adminUnpublish)
-  .add(adminRevoke) {}
+  .add(adminRevoke)
+  .add(adminVoiceReceptionist) {}
 
 export class AdminApi extends HttpApi.make("AdminApi").add(AdminGroup) {}
 
@@ -218,6 +233,15 @@ export const adminGroup = HttpApiBuilder.group(
         Effect.gen(function* () {
           const identity = yield* requireAdmin();
           return yield* revokeListing(db, identity.email, params.id, payload.reason);
+        }),
+      )
+      .handle("adminVoiceReceptionist", () =>
+        Effect.gen(function* () {
+          const identity = yield* requireAdmin();
+          yield* Effect.logInfo("voice.receptionist.provision").pipe(
+            Effect.annotateLogs({ actor: identity.email }),
+          );
+          return yield* provisionReceptionist(db, env);
         }),
       );
   }),

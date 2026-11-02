@@ -451,7 +451,9 @@ export function Component() {
                 <p className="font-mono text-klawva-dim text-xs">
                   {employee.phone?.outbound === true
                     ? "A phone employee places the call when payment clears, inside that market's calling window."
-                    : "Web chat is available on every hire. This phone employee works in chat for now."}
+                    : employee.phone?.inbound === true
+                      ? "The receptionist answers calls on Klavva's demo line. Web chat is also included."
+                      : "Web chat is available on every hire. This phone employee works in chat for now."}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {channels.map((option) => (
