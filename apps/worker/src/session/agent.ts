@@ -28,7 +28,7 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { resolveRuntime } from "../agent/proxy.ts";
-import { boxliteConfigFrom } from "../box/boxlite.ts";
+import { boxliteConfigFrom, releaseSessionBox } from "../box/boxlite.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
 import {
   charsToTokens,
@@ -464,6 +464,10 @@ export const completeShift = (
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const db = makeDatabase(env.DB);
+    const boxConfig = boxliteConfigFrom(env);
+    if (boxConfig !== null) {
+      yield* releaseSessionBox(boxConfig, sessionId);
+    }
     const state = yield* currentState(store);
     if (terminalSessionStates.includes(state)) {
       yield* projectState(store, db, sessionId, state);

@@ -17,7 +17,7 @@ export const boxIdleSeconds = 120;
 export const boxDeleteSeconds = 7200;
 export const boxPageLimit = 5;
 export const boxWorkDir = "/home/chrome/work";
-export const boxOutputPath = `${boxWorkDir}/page.html`;
+export const pagePathFor = (id: string): string => `${boxWorkDir}/page-${id}.html`;
 export const maxRenderedChars = 600_000;
 
 export const boxNameFor = (sessionId: string): string => `klawva-${sessionId}`;
@@ -247,6 +247,17 @@ export const readFile = (
     Effect.map((buffer) => unwrapTransfer(new Uint8Array(buffer))),
   );
 
+export const releaseSessionBox = (
+  config: BoxliteConfig,
+  sessionId: string,
+): Effect.Effect<void> =>
+  findBox(config, sessionId).pipe(
+    Effect.flatMap((boxId) =>
+      boxId === null ? Effect.void : removeBox(config, boxId),
+    ),
+    Effect.catch(() => Effect.void),
+  );
+
 export const removeBox = (
   config: BoxliteConfig,
   boxId: string,
@@ -264,11 +275,14 @@ export const touchBox = (
     Effect.asVoid,
   );
 
-export const renderCommand = (url: string): ReadonlyArray<string> => {
+export const renderCommand = (
+  url: string,
+  path: string,
+): ReadonlyArray<string> => {
   const encoded = btoa(url);
   return [
     "-c",
-    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && timeout 35 chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; exit $?`,
+    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && timeout 35 chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${path} 2>/dev/null; exit $?`,
   ];
 };
 
@@ -340,14 +354,15 @@ export const browseUrl = (
       return "browse refused: url not allowed";
     }
     const boxId = yield* ensureBox(config, sessionId);
+    const path = pagePathFor(crypto.randomUUID());
     const executionId = yield* startExecution(
       config,
       boxId,
       "sh",
-      renderCommand(target),
+      renderCommand(target, path),
     );
     const execution = yield* awaitExecution(config, boxId, executionId);
-    const html = yield* readFile(config, boxId, boxOutputPath);
+    const html = yield* readFile(config, boxId, path);
     const text = toText(html).slice(0, maxRenderedChars);
     if (text.length > 0) {
       return text;

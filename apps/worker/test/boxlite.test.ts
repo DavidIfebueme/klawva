@@ -53,7 +53,7 @@ describe("browse target", () => {
 describe("render command", () => {
   it("carries the url as base64 so shell metacharacters cannot break out", () => {
     const url = "https://example.com/?q='; echo pwned; #";
-    const command = renderCommand(url);
+    const command = renderCommand(url, "/home/chrome/work/page-1.html");
     const shell = command[1];
     expect(shell).not.toContain("pwned");
     expect(shell).not.toContain("'https");
@@ -62,8 +62,8 @@ describe("render command", () => {
   });
 
   it("writes the page outside the unreachable tmp mount", () => {
-    const shell = renderCommand("https://example.com")[1];
-    expect(shell).toContain("/home/chrome/work/page.html");
+    const shell = renderCommand("https://example.com", "/home/chrome/work/page-1.html")[1];
+    expect(shell).toContain("/home/chrome/work/page-1.html");
     expect(shell).not.toContain("> /tmp/");
     expect(shell).toContain("mkdir -p /home/chrome/work");
   });
