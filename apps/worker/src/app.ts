@@ -21,7 +21,12 @@ import {
   secretHeader,
   TelegramUpdate,
 } from "./channels/telegram.ts";
-import { AgentRuntime, defaultModel, defaultToolAllowlist } from "./agent/runtime.ts";
+import {
+  AgentRuntime,
+  allToolNames,
+  defaultModel,
+  defaultToolAllowlist,
+} from "./agent/runtime.ts";
 import { ReportNotFound } from "./report/report.ts";
 import { sendEmail } from "./email/brevo.ts";
 import { escapeHtml, renderTemplate } from "./email/templates.ts";
@@ -1070,7 +1075,7 @@ const rootGroup = HttpApiBuilder.group(
           const allowlist =
             storedAllowlist !== null && storedAllowlist._tag === "Some"
               ? storedAllowlist.value.filter((name) =>
-                  defaultToolAllowlist.includes(name),
+                  allToolNames.includes(name),
                 )
               : [...defaultToolAllowlist];
           const model =

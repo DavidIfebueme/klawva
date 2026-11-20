@@ -43,6 +43,7 @@ import {
   recordQuotaSpent,
 } from "../agent/meter.ts";
 import { ModelError, systemText } from "../agent/runtime.ts";
+import { boxliteConfigFrom } from "../box/boxlite.ts";
 import { neuronsSpent, resolveRuntime, bedrockEnabled } from "../agent/proxy.ts";
 import { aiToolsFor } from "./stream-tools.ts";
 
@@ -241,7 +242,12 @@ export class SessionAgent extends AIChatAgent<Env> {
               model: workersai(config.model),
               system: systemText(config.soul, config.brief),
               messages: history,
-              tools: aiToolsFor(config.allowlist, sessionId, this.env.BRAVE_API_KEY ?? ""),
+              tools: aiToolsFor(
+                config.allowlist,
+                sessionId,
+                this.env.BRAVE_API_KEY ?? "",
+                boxliteConfigFrom(this.env),
+              ),
               stopWhen: stepCountIs(4),
               abortSignal: _options?.abortSignal,
               onStepFinish: (step) => {

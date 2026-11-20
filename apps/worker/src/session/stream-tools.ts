@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { toolRegistry } from "../agent/runtime.ts";
+import type { BoxliteConfig } from "../box/boxlite.ts";
 
 const urlInput = z.object({ url: z.string() });
 const queryInput = z.object({ query: z.string() });
@@ -9,6 +10,7 @@ const queryInput = z.object({ query: z.string() });
 const inputSchemas: Record<string, z.ZodType> = {
   fetch_url: urlInput,
   extract_links: urlInput,
+  browse_url: urlInput,
   web_search: queryInput,
 };
 
@@ -16,6 +18,7 @@ export const aiToolsFor = (
   allowlist: ReadonlyArray<string>,
   sessionId: string,
   braveKey: string,
+  boxlite: BoxliteConfig | null,
 ): ToolSet => {
   const tools: ToolSet = {};
   for (const definition of toolRegistry) {
@@ -29,7 +32,7 @@ export const aiToolsFor = (
       inputSchema,
       execute: async (args) =>
         Effect.runPromise(
-          execute(JSON.stringify(args), { sessionId, braveKey }),
+          execute(JSON.stringify(args), { sessionId, braveKey, boxlite }),
         ).catch(
           (cause: unknown) => `tool failed: ${String(cause).slice(0, 200)}`,
         ),

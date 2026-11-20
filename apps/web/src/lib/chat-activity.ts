@@ -37,6 +37,7 @@ export const toolActivityLine = (
     web_search: ["Searching", "Searched"],
     fetch_url: ["Fetching", "Fetched"],
     extract_links: ["Extracting links from", "Extracted links from"],
+    browse_url: ["Browsing", "Read"],
   };
   const label = toolDisplayName(name);
   const suffix = detail.length > 0 ? ` ${detail}` : "";
