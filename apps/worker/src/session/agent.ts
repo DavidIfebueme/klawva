@@ -28,6 +28,7 @@ import {
   runTurn,
 } from "../agent/runtime.ts";
 import { resolveRuntime } from "../agent/proxy.ts";
+import { boxliteConfigFrom } from "../box/boxlite.ts";
 import { make as makeDatabase, type DatabaseImpl } from "../db/database.ts";
 import {
   charsToTokens,
@@ -856,6 +857,7 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: config.allowlist,
             braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
+            boxlite: boxliteConfigFrom(sessionEnv.env),
             ai: sessionEnv.env.AI,
           }).pipe(
             Effect.flatMap((turn) =>
@@ -950,6 +952,7 @@ const sessionGroup = HttpApiBuilder.group(
             sessionId: sessionEnv.sessionId,
             allowlist: admission.config.allowlist,
             braveKey: sessionEnv.env.BRAVE_API_KEY ?? "",
+            boxlite: boxliteConfigFrom(sessionEnv.env),
             ai: sessionEnv.env.AI,
           }).pipe(
             Effect.flatMap((turn) =>

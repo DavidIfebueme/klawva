@@ -2,6 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { fetchLinks, fetchUrl, webSearch } from "./tools.ts";
+import { browseUrl, type BoxliteConfig } from "../box/boxlite.ts";
 import { checkReplyQuality, meetsQualityBar } from "../moderation/clef.ts";
 
 export const defaultModel = "@cf/zai-org/glm-4.7-flash";
@@ -10,6 +11,7 @@ export const defaultToolAllowlist: ReadonlyArray<string> = [
   "fetch_url",
   "extract_links",
   "web_search",
+  "browse_url",
 ];
 
 const StoredAllowlist = Schema.fromJsonString(Schema.Array(Schema.String));
@@ -55,6 +57,7 @@ export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
 export interface ToolContext {
   readonly sessionId: string;
   readonly braveKey: string;
+  readonly boxlite: BoxliteConfig | null;
 }
 
 export interface ToolDefinition {
@@ -161,10 +164,34 @@ const webSearchTool: ToolDefinition = {
     }),
 };
 
+const browseUrlTool: ToolDefinition = {
+  name: "browse_url",
+  description:
+    "Open a public page in a real browser and return its visible text. Use this when fetch_url returns an empty or incomplete page because the site renders with JavaScript.",
+  parameters: urlParameters,
+  execute: (rawArgs, ctx) =>
+    Effect.gen(function* () {
+      const url = decodeUrl(rawArgs);
+      if (url.length === 0) {
+        return "browse failed: missing url";
+      }
+      if (ctx.boxlite === null) {
+        return "browse failed: browser is not configured on this employee";
+      }
+      const outcome = yield* Effect.result(
+        browseUrl(ctx.boxlite, ctx.sessionId, url),
+      );
+      return outcome._tag === "Success"
+        ? outcome.success
+        : `browse failed: ${outcome.failure.reason}`;
+    }),
+};
+
 export const toolRegistry: ReadonlyArray<ToolDefinition> = [
   fetchUrlTool,
   extractLinksTool,
   webSearchTool,
+  browseUrlTool,
 ];
 
 export interface ToolSpec {
@@ -342,12 +369,14 @@ export const runTurn = (params: {
   readonly sessionId: string;
   readonly allowlist: ReadonlyArray<string>;
   readonly braveKey: string;
+  readonly boxlite?: BoxliteConfig | null;
   readonly ai?: Ai;
 }): Effect.Effect<TurnResult, ModelError> =>
   Effect.gen(function* () {
     const ctx: ToolContext = {
       sessionId: params.sessionId,
       braveKey: params.braveKey,
+      boxlite: params.boxlite ?? null,
     };
     const messages: ChatMessage[] = [
       ...buildMessages(params.soul, params.brief, params.history),

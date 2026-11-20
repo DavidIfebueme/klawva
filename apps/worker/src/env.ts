@@ -30,6 +30,8 @@ export interface Env {
   readonly AUTH_LIMITER: RateLimiter;
   readonly PUBLIC_LIMITER: RateLimiter;
   readonly BRAVE_API_KEY: string;
+  readonly BOXLITE_API_KEY?: string;
+  readonly BOXLITE_REST_URL?: string;
   readonly OWNER_ONLY?: string;
   readonly OWNER_KEY?: string;
   readonly AWS_ACCESS_KEY_ID?: string;
