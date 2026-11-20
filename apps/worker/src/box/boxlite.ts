@@ -175,7 +175,7 @@ export const awaitExecution = (
   executionId: string,
 ): Effect.Effect<Execution, BoxliteError> =>
   Effect.gen(function* () {
-    for (let attempt = 0; attempt < 50; attempt += 1) {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
       const execution = yield* readExecution(config, boxId, executionId);
       if (ended(execution)) {
         return execution;
@@ -184,6 +184,22 @@ export const awaitExecution = (
     }
     return yield* Effect.fail(new BoxliteError({ reason: "execution timeout" }));
   });
+
+export const unwrapTransfer = (bytes: Uint8Array): string => {
+  const decoder = new TextDecoder();
+  if (bytes.length < 512) {
+    return decoder.decode(bytes);
+  }
+  const sizeField = decoder
+    .decode(bytes.slice(124, 136))
+    .replace(/\0/g, "")
+    .trim();
+  const size = Number.parseInt(sizeField, 8);
+  if (Number.isNaN(size) || size < 0 || 512 + size > bytes.length) {
+    return decoder.decode(bytes);
+  }
+  return decoder.decode(bytes.slice(512, 512 + size));
+};
 
 export const readFile = (
   config: BoxliteConfig,
@@ -194,7 +210,12 @@ export const readFile = (
     config,
     `/v1/boxes/${boxId}/files?path=${encodeURIComponent(path)}`,
     { method: "GET" },
-  ).pipe(Effect.flatMap((response) => Effect.promise(() => response.text())));
+  ).pipe(
+    Effect.flatMap((response) =>
+      Effect.promise(() => response.arrayBuffer()),
+    ),
+    Effect.map((buffer) => unwrapTransfer(new Uint8Array(buffer))),
+  );
 
 export const removeBox = (
   config: BoxliteConfig,
@@ -217,7 +238,7 @@ export const renderCommand = (url: string): ReadonlyArray<string> => {
   const encoded = btoa(url);
   return [
     "-c",
-    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; echo $? > ${boxExitPath}`,
+    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && timeout 25 chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; echo $? > ${boxExitPath}`,
   ];
 };
 
@@ -253,10 +274,12 @@ export const browseUrl = (
       renderCommand(target),
     );
     const execution = yield* awaitExecution(config, boxId, executionId);
-    if (execution.exit_code !== undefined && execution.exit_code !== 0) {
-      return `browse failed: shell_exit_${execution.exit_code}`;
-    }
     const html = yield* readFile(config, boxId, boxOutputPath);
     const text = toText(html).slice(0, maxRenderedChars);
-    return text.length === 0 ? "browse returned no text" : text;
+    if (text.length > 0) {
+      return text;
+    }
+    return execution.exit_code !== undefined && execution.exit_code !== 0
+      ? `browse failed: render_exit_${execution.exit_code}`
+      : "browse returned no text";
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boxNameFor, navigableUrl, renderCommand } from "../src/box/boxlite.ts";
+import { boxNameFor, navigableUrl, renderCommand, unwrapTransfer } from "../src/box/boxlite.ts";
 
 describe("box lifecycle naming", () => {
   it("keys one box per session", () => {
@@ -46,5 +46,28 @@ describe("render command", () => {
     expect(shell).toContain("/home/chrome/work/page.html");
     expect(shell).not.toContain("> /tmp/");
     expect(shell).toContain("mkdir -p /home/chrome/work");
+  });
+});
+
+const tarOf = (name: string, content: string): Uint8Array => {
+  const header = new Uint8Array(512);
+  header.set(new TextEncoder().encode(name), 0);
+  const size = content.length.toString(8).padStart(11, "0");
+  header.set(new TextEncoder().encode(`${size}\0`), 124);
+  const body = new TextEncoder().encode(content);
+  const out = new Uint8Array(512 + Math.ceil(body.length / 512) * 512);
+  out.set(header, 0);
+  out.set(body, 512);
+  return out;
+};
+
+describe("file transfer", () => {
+  it("reads the payload out of the tar the files endpoint returns", () => {
+    const payload = tarOf("page.html", "<html><body>hello</body></html>");
+    expect(unwrapTransfer(payload)).toBe("<html><body>hello</body></html>");
+  });
+
+  it("falls back to the raw bytes when the payload is not a tar header", () => {
+    expect(unwrapTransfer(new TextEncoder().encode("short"))).toBe("short");
   });
 });
