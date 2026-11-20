@@ -7,6 +7,7 @@ export interface ListingDefinition {
   readonly category: string;
   readonly agentId: string;
   readonly briefFields: ReadonlyArray<string>;
+  readonly tools?: ReadonlyArray<string>;
   readonly priceMinor: number;
   readonly budgetMinor: number;
   readonly voice?: VoiceManifest;
@@ -18,6 +19,7 @@ export interface ListingDefinition {
 export const definitions: ReadonlyArray<ListingDefinition> = [
   {
     slug: "scrapper",
+    tools: ["fetch_url", "extract_links", "web_search", "browse_url"],
     name: "Klawva Scrapper",
     tagline: "Web intelligence and data.",
     category: "data",
@@ -28,6 +30,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
   },
   {
     slug: "researcher",
+    tools: ["fetch_url", "extract_links", "web_search", "browse_url"],
     name: "Klawva Researcher",
     tagline: "Multi-source research reports.",
     category: "research",
@@ -38,6 +41,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
   },
   {
     slug: "jobseeker",
+    tools: ["fetch_url", "extract_links", "web_search", "browse_url"],
     name: "Klawva Job Seeker",
     tagline: "Finds and ranks job openings.",
     category: "careers",
@@ -48,6 +52,7 @@ export const definitions: ReadonlyArray<ListingDefinition> = [
   },
   {
     slug: "leadscout",
+    tools: ["fetch_url", "extract_links", "web_search", "browse_url"],
     name: "Klawva Lead Scout",
     tagline: "Finds and qualifies leads.",
     category: "sales",

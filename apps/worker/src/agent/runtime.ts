@@ -11,7 +11,6 @@ export const defaultToolAllowlist: ReadonlyArray<string> = [
   "fetch_url",
   "extract_links",
   "web_search",
-  "browse_url",
 ];
 
 const StoredAllowlist = Schema.fromJsonString(Schema.Array(Schema.String));
@@ -24,7 +23,7 @@ export const resolveAllowlist = (
   }
   const decoded = Schema.decodeUnknownOption(StoredAllowlist)(raw);
   return decoded._tag === "Some"
-    ? decoded.value.filter((name) => defaultToolAllowlist.includes(name))
+    ? decoded.value.filter((name) => allToolNames.includes(name))
     : [...defaultToolAllowlist];
 };
 
@@ -193,6 +192,10 @@ export const toolRegistry: ReadonlyArray<ToolDefinition> = [
   webSearchTool,
   browseUrlTool,
 ];
+
+export const allToolNames: ReadonlyArray<string> = toolRegistry.map(
+  (tool) => tool.name,
+);
 
 export interface ToolSpec {
   readonly name: string;

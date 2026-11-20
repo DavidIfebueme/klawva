@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vitest";
 import {
+  allToolNames,
   defaultToolAllowlist,
   resolveAllowlist,
   resolveToolCall,
@@ -32,7 +33,14 @@ describe("tool allowlist", () => {
   it("exposes only allowed tools to the model", () => {
     expect(specNames(["fetch_url"])).toEqual(["fetch_url"]);
     expect(specNames([])).toEqual([]);
-    expect(specNames(defaultToolAllowlist).slice().sort()).toEqual(toolRegistry.map((tool) => tool.name).sort());
+    expect(specNames(defaultToolAllowlist).slice().sort()).toEqual([
+      "extract_links",
+      "fetch_url",
+      "web_search",
+    ]);
+    expect(specNames([...allToolNames]).slice().sort()).toEqual(
+      toolRegistry.map((tool) => tool.name).sort(),
+    );
   });
 
   it("refuses tools outside the allowlist", async () => {

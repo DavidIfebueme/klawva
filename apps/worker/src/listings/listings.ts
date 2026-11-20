@@ -59,10 +59,11 @@ export const seedListings = (
     for (const definition of definitions) {
       const soul = soulFor(definition.agentId);
       const manifest = manifestFor(definition, soul);
+      const toolAllowlist = definition.tools ?? defaultToolAllowlist;
       const hash = yield* manifestHash({
         manifest,
         briefFields: definition.briefFields,
-        toolAllowlist: defaultToolAllowlist,
+        toolAllowlist,
         model: defaultModel,
         budgetMinor: definition.budgetMinor,
       });
@@ -99,7 +100,7 @@ export const seedListings = (
             soul,
             manifestJson,
             JSON.stringify(definition.briefFields),
-            JSON.stringify(defaultToolAllowlist),
+            JSON.stringify(toolAllowlist),
             defaultModel,
             definition.budgetMinor,
             now,

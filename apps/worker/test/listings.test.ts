@@ -258,6 +258,23 @@ describe("desktop listings", () => {
     expect(inbox!.priceMinor).toBeLessThanOrEqual(jobseeker!.priceMinor * 2);
   });
 
+  it("gives the browser only to the employees that read the open web", () => {
+    const withBrowser = definitions
+      .filter((definition) => (definition.tools ?? []).includes("browse_url"))
+      .map((definition) => definition.agentId)
+      .sort();
+    expect(withBrowser).toEqual([
+      "jobseeker",
+      "leadscout",
+      "researcher",
+      "scrapper",
+    ]);
+    const phone = definitions.filter((definition) => definition.category === "phone");
+    for (const definition of phone) {
+      expect(definition.tools ?? []).not.toContain("browse_url");
+    }
+  });
+
   it("keeps the draft-only employees draft only in their souls", () => {
     for (const agentId of ["inbox", "paperwork", "cvtailor"]) {
       const soul = soulFor(agentId).toLowerCase();
