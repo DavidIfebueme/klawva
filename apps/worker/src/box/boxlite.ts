@@ -17,6 +17,7 @@ export const boxIdleSeconds = 120;
 export const boxWorkDir = "/home/chrome/work";
 export const boxOutputPath = `${boxWorkDir}/page.html`;
 export const boxExitPath = `${boxWorkDir}/exit.txt`;
+export const boxShotPath = `${boxWorkDir}/shot.png`;
 export const maxRenderedChars = 600_000;
 
 export const boxNameFor = (sessionId: string): string => `klawva-${sessionId}`;
@@ -185,27 +186,29 @@ export const awaitExecution = (
     return yield* Effect.fail(new BoxliteError({ reason: "execution timeout" }));
   });
 
-export const unwrapTransfer = (bytes: Uint8Array): string => {
-  const decoder = new TextDecoder();
+export const unwrapTransferBytes = (bytes: Uint8Array): Uint8Array => {
   if (bytes.length < 512) {
-    return decoder.decode(bytes);
+    return bytes;
   }
-  const sizeField = decoder
+  const sizeField = new TextDecoder()
     .decode(bytes.slice(124, 136))
     .replace(/\0/g, "")
     .trim();
   const size = Number.parseInt(sizeField, 8);
   if (Number.isNaN(size) || size < 0 || 512 + size > bytes.length) {
-    return decoder.decode(bytes);
+    return bytes;
   }
-  return decoder.decode(bytes.slice(512, 512 + size));
+  return bytes.slice(512, 512 + size);
 };
 
-export const readFile = (
+export const unwrapTransfer = (bytes: Uint8Array): string =>
+  new TextDecoder().decode(unwrapTransferBytes(bytes));
+
+export const readBytes = (
   config: BoxliteConfig,
   boxId: string,
   path: string,
-): Effect.Effect<string, BoxliteError> =>
+): Effect.Effect<Uint8Array, BoxliteError> =>
   request(
     config,
     `/v1/boxes/${boxId}/files?path=${encodeURIComponent(path)}`,
@@ -214,7 +217,16 @@ export const readFile = (
     Effect.flatMap((response) =>
       Effect.promise(() => response.arrayBuffer()),
     ),
-    Effect.map((buffer) => unwrapTransfer(new Uint8Array(buffer))),
+    Effect.map((buffer) => unwrapTransferBytes(new Uint8Array(buffer))),
+  );
+
+export const readFile = (
+  config: BoxliteConfig,
+  boxId: string,
+  path: string,
+): Effect.Effect<string, BoxliteError> =>
+  readBytes(config, boxId, path).pipe(
+    Effect.map((bytes) => new TextDecoder().decode(bytes)),
   );
 
 export const removeBox = (
@@ -282,4 +294,37 @@ export const browseUrl = (
     return execution.exit_code !== undefined && execution.exit_code !== 0
       ? `browse failed: render_exit_${execution.exit_code}`
       : "browse returned no text";
+  });
+
+export const screenshotCommand = (url: string): ReadonlyArray<string> => {
+  const encoded = btoa(url);
+  return [
+    "-c",
+    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && timeout 25 chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 --screenshot=${boxShotPath} "$u" > /dev/null 2>&1; echo $? > ${boxExitPath}`,
+  ];
+};
+
+export const captureScreenshot = (
+  config: BoxliteConfig,
+  sessionId: string,
+  rawUrl: string,
+): Effect.Effect<Uint8Array, BoxliteError> =>
+  Effect.gen(function* () {
+    const target = navigableUrl(rawUrl);
+    if (target === null) {
+      return yield* Effect.fail(new BoxliteError({ reason: "url not allowed" }));
+    }
+    const boxId = yield* ensureBox(config, sessionId);
+    const executionId = yield* startExecution(
+      config,
+      boxId,
+      "sh",
+      screenshotCommand(target),
+    );
+    yield* awaitExecution(config, boxId, executionId);
+    const bytes = yield* readBytes(config, boxId, boxShotPath);
+    if (bytes.length < 8) {
+      return yield* Effect.fail(new BoxliteError({ reason: "empty screenshot" }));
+    }
+    return bytes;
   });

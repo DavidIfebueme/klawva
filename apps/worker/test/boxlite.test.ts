@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { boxNameFor, navigableUrl, renderCommand, unwrapTransfer } from "../src/box/boxlite.ts";
+import {
+  boxNameFor,
+  navigableUrl,
+  renderCommand,
+  screenshotCommand,
+  unwrapTransfer,
+  unwrapTransferBytes,
+} from "../src/box/boxlite.ts";
 
 describe("box lifecycle naming", () => {
   it("keys one box per session", () => {
@@ -69,5 +76,29 @@ describe("file transfer", () => {
 
   it("falls back to the raw bytes when the payload is not a tar header", () => {
     expect(unwrapTransfer(new TextEncoder().encode("short"))).toBe("short");
+  });
+});
+
+describe("screenshot command", () => {
+  it("asks chromium for a png and keeps the url out of the shell", () => {
+    const command = screenshotCommand("https://example.com/?x='; rm -rf / #");
+    const shell = command[1];
+    expect(shell).toContain("--screenshot=/home/chrome/work/shot.png");
+    expect(shell).toContain("--window-size=1280,800");
+    expect(shell).not.toContain("rm -rf");
+    expect(shell).toContain("base64 -d");
+  });
+});
+
+describe("binary transfer", () => {
+  it("returns the exact bytes of a png so media can be sent onward", () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const header = new Uint8Array(512);
+    header.set(new TextEncoder().encode("shot.png"), 0);
+    header.set(new TextEncoder().encode("00000000014\0"), 124);
+    const envelope = new Uint8Array(1024);
+    envelope.set(header, 0);
+    envelope.set(png, 512);
+    expect(Array.from(unwrapTransferBytes(envelope))).toEqual(Array.from(png));
   });
 });
