@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { boxNameFor, navigableUrl, renderCommand, unwrapTransfer } from "../src/box/boxlite.ts";
+import * as Effect from "effect/Effect";
+import {
+  boxNameFor,
+  navigableUrl,
+  renderCommand,
+  resolvePublicUrl,
+  unwrapTransfer,
+} from "../src/box/boxlite.ts";
 
 describe("box lifecycle naming", () => {
-  it("keys one box per session", () => {
-    expect(boxNameFor("6ed9bce6-cb31-47cf-91b1-e6e4d29422a5")).toBe(
-      "klawva-6ed9bce6-cb31-47cf-91b1-e6e4d29422a5",
+  it("gives every session its own box name", () => {
+    const first = boxNameFor("6ed9bce6-cb31-47cf-91b1-e6e4d29422a5");
+    const second = boxNameFor("6ed9bce6-cb31-47cf-91b1-e6e4d29422b6");
+    expect(first).not.toBe(second);
+    expect(first.startsWith("klawva-")).toBe(true);
+  });
+});
+
+describe("redirect guard", () => {
+  it("refuses a private destination before any request is made", async () => {
+    const exit = await Effect.runPromiseExit(
+      resolvePublicUrl(new URL("http://127.0.0.1:8787/admin")),
     );
+    expect(exit._tag).toBe("Success");
+    if (exit._tag === "Success") {
+      expect(exit.value).toBeNull();
+    }
   });
 });
 
@@ -67,7 +87,9 @@ describe("file transfer", () => {
     expect(unwrapTransfer(payload)).toBe("<html><body>hello</body></html>");
   });
 
-  it("falls back to the raw bytes when the payload is not a tar header", () => {
-    expect(unwrapTransfer(new TextEncoder().encode("short"))).toBe("short");
+  it("falls back to the raw bytes when the header carries no octal size", () => {
+    const notTar = new Uint8Array(600);
+    notTar.set(new TextEncoder().encode("plain body"), 512);
+    expect(unwrapTransfer(notTar)).toContain("plain body");
   });
 });

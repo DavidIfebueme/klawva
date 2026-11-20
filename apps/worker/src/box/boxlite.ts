@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { isBlockedHost, toText } from "../agent/tools.ts";
+import { isBlockedHost, redirectStatuses, toText } from "../agent/tools.ts";
 
 export interface BoxliteConfig {
   readonly apiKey: string;
@@ -14,9 +14,10 @@ export class BoxliteError extends Schema.TaggedError<BoxliteError>()(
 
 export const boxImage = "docker.io/zenika/alpine-chrome:with-node";
 export const boxIdleSeconds = 120;
+export const boxDeleteSeconds = 7200;
+export const boxPageLimit = 5;
 export const boxWorkDir = "/home/chrome/work";
 export const boxOutputPath = `${boxWorkDir}/page.html`;
-export const boxExitPath = `${boxWorkDir}/exit.txt`;
 export const maxRenderedChars = 600_000;
 
 export const boxNameFor = (sessionId: string): string => `klawva-${sessionId}`;
@@ -35,7 +36,10 @@ const BoxRecord = Schema.Struct({
   status: Schema.String,
 });
 
-const BoxList = Schema.Struct({ boxes: Schema.Array(BoxRecord) });
+const BoxList = Schema.Struct({
+  boxes: Schema.Array(BoxRecord),
+  next_page_token: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
 
 const Execution = Schema.Struct({
   execution_id: Schema.String,
@@ -59,6 +63,7 @@ const request = (
     try: () =>
       fetch(`${config.restUrl}${path}`, {
         method: init.method,
+        signal: AbortSignal.timeout(120_000),
         headers: {
           authorization: `Bearer ${config.apiKey}`,
           ...(init.body === undefined
@@ -95,7 +100,7 @@ const decodeExecution = (body: unknown): Effect.Effect<Execution, BoxliteError> 
 
 const bodyOf = (response: Response): Effect.Effect<unknown, BoxliteError> =>
   Effect.tryPromise({
-    try: () => response.json() as Promise<unknown>,
+    try: async (): Promise<unknown> => await response.json(),
     catch: (cause) => new BoxliteError({ reason: `json ${String(cause)}` }),
   });
 
@@ -103,15 +108,30 @@ export const findBox = (
   config: BoxliteConfig,
   sessionId: string,
 ): Effect.Effect<string | null, BoxliteError> =>
-  request(config, "/v1/boxes", { method: "GET" }).pipe(
-    Effect.flatMap(bodyOf),
-    Effect.flatMap(decodeList),
-    Effect.map((list) => {
-      const name = boxNameFor(sessionId);
+  Effect.gen(function* () {
+    const name = boxNameFor(sessionId);
+    let token: string | null = null;
+    for (let page = 0; page < boxPageLimit; page += 1) {
+      const query: string =
+        token === null ? "" : `?page_token=${encodeURIComponent(token)}`;
+      const list: typeof BoxList.Type = yield* request(
+        config,
+        `/v1/boxes${query}`,
+        {
+          method: "GET",
+        },
+      ).pipe(Effect.flatMap(bodyOf), Effect.flatMap(decodeList));
       const match = list.boxes.find((box) => box.name === name);
-      return match === undefined ? null : match.box_id;
-    }),
-  );
+      if (match !== undefined) {
+        return match.box_id;
+      }
+      token = list.next_page_token ?? null;
+      if (token === null) {
+        return null;
+      }
+    }
+    return null;
+  });
 
 export const createBox = (
   config: BoxliteConfig,
@@ -126,7 +146,7 @@ export const createBox = (
       memory_mib: 2048,
       disk_size_gb: 10,
       auto_stop: boxIdleSeconds,
-      auto_delete: 0,
+      auto_delete: boxDeleteSeconds,
       cmd: ["sh", "-c", "sleep infinity"],
     },
   }).pipe(
@@ -141,7 +161,17 @@ export const ensureBox = (
 ): Effect.Effect<string, BoxliteError> =>
   findBox(config, sessionId).pipe(
     Effect.flatMap((existing) =>
-      existing === null ? createBox(config, sessionId) : Effect.succeed(existing),
+      existing === null
+        ? createBox(config, sessionId).pipe(
+            Effect.catch((first: BoxliteError) =>
+              findBox(config, sessionId).pipe(
+                Effect.flatMap((raced) =>
+                  raced === null ? Effect.fail(first) : Effect.succeed(raced),
+                ),
+              ),
+            ),
+          )
+        : Effect.succeed(existing),
     ),
   );
 
@@ -175,12 +205,12 @@ export const awaitExecution = (
   executionId: string,
 ): Effect.Effect<Execution, BoxliteError> =>
   Effect.gen(function* () {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
+    for (let attempt = 0; attempt < 35; attempt += 1) {
       const execution = yield* readExecution(config, boxId, executionId);
       if (ended(execution)) {
         return execution;
       }
-      yield* Effect.sleep("300 millis");
+      yield* Effect.sleep("1000 millis");
     }
     return yield* Effect.fail(new BoxliteError({ reason: "execution timeout" }));
   });
@@ -238,9 +268,48 @@ export const renderCommand = (url: string): ReadonlyArray<string> => {
   const encoded = btoa(url);
   return [
     "-c",
-    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && timeout 25 chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; echo $? > ${boxExitPath}`,
+    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && timeout 35 chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; exit $?`,
   ];
 };
+
+export const resolvePublicUrl = (
+  start: URL,
+): Effect.Effect<string | null, BoxliteError> =>
+  Effect.gen(function* () {
+    let current = start;
+    for (let hop = 0; hop <= 3; hop += 1) {
+      if (isBlockedHost(current.hostname)) {
+        return null;
+      }
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(current, {
+            method: "GET",
+            redirect: "manual",
+            signal: AbortSignal.timeout(8_000),
+          }),
+        catch: (cause) => new BoxliteError({ reason: `hop ${String(cause)}` }),
+      });
+      const location = redirectStatuses.has(response.status)
+        ? response.headers.get("location")
+        : null;
+      yield* Effect.promise(
+        () => response.body?.cancel() ?? Promise.resolve(),
+      );
+      if (location === null) {
+        return current.toString();
+      }
+      const next = URL.parse(location, current.toString());
+      if (next === null) {
+        return null;
+      }
+      if (next.protocol !== "https:" && next.protocol !== "http:") {
+        return null;
+      }
+      current = next;
+    }
+    return null;
+  });
 
 export const navigableUrl = (raw: string): string | null => {
   const parsed = URL.parse(raw);
@@ -262,7 +331,11 @@ export const browseUrl = (
   rawUrl: string,
 ): Effect.Effect<string, BoxliteError> =>
   Effect.gen(function* () {
-    const target = navigableUrl(rawUrl);
+    const checked = navigableUrl(rawUrl);
+    if (checked === null) {
+      return "browse refused: url not allowed";
+    }
+    const target = yield* resolvePublicUrl(new URL(checked));
     if (target === null) {
       return "browse refused: url not allowed";
     }
@@ -278,6 +351,9 @@ export const browseUrl = (
     const text = toText(html).slice(0, maxRenderedChars);
     if (text.length > 0) {
       return text;
+    }
+    if (execution.exit_code === 124 || execution.exit_code === 143) {
+      return "browse failed: page took too long to render";
     }
     return execution.exit_code !== undefined && execution.exit_code !== 0
       ? `browse failed: render_exit_${execution.exit_code}`

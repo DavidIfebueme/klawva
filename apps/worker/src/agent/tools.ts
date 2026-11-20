@@ -21,7 +21,7 @@ const fetchTimeoutMs = 10_000;
 export const maxExtractLinks = 50;
 export const maxRedirects = 3;
 
-const redirectStatuses: ReadonlySet<number> = new Set([
+export const redirectStatuses: ReadonlySet<number> = new Set([
   301, 302, 303, 307, 308,
 ]);
 
