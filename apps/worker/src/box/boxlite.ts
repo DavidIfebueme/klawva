@@ -349,7 +349,9 @@ export const browseUrl = (
     if (checked === null) {
       return "browse refused: url not allowed";
     }
-    const target = yield* resolvePublicUrl(new URL(checked));
+    const target = yield* resolvePublicUrl(new URL(checked)).pipe(
+      Effect.catch(() => Effect.succeed(checked)),
+    );
     if (target === null) {
       return "browse refused: url not allowed";
     }
