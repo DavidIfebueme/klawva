@@ -14,8 +14,9 @@ export class BoxliteError extends Schema.TaggedError<BoxliteError>()(
 
 export const boxImage = "docker.io/zenika/alpine-chrome:with-node";
 export const boxIdleSeconds = 120;
-export const boxOutputPath = "/work/page.html";
-export const boxExitPath = "/work/exit.txt";
+export const boxWorkDir = "/home/chrome/work";
+export const boxOutputPath = `${boxWorkDir}/page.html`;
+export const boxExitPath = `${boxWorkDir}/exit.txt`;
 export const maxRenderedChars = 600_000;
 
 export const boxNameFor = (sessionId: string): string => `klawva-${sessionId}`;
@@ -124,7 +125,6 @@ export const createBox = (
       cpus: 1,
       memory_mib: 2048,
       disk_size_gb: 10,
-      auto_remove: false,
       auto_stop: boxIdleSeconds,
       auto_delete: 0,
       cmd: ["sh", "-c", "sleep infinity"],
@@ -217,7 +217,7 @@ export const renderCommand = (url: string): ReadonlyArray<string> => {
   const encoded = btoa(url);
   return [
     "-c",
-    `mkdir -p /work && u=$(printf %s '${encoded}' | base64 -d) && chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; echo $? > ${boxExitPath}`,
+    `mkdir -p ${boxWorkDir} && u=$(printf %s '${encoded}' | base64 -d) && chromium-browser --headless --disable-gpu --no-sandbox --hide-scrollbars --virtual-time-budget=5000 --dump-dom "$u" > ${boxOutputPath} 2>/dev/null; echo $? > ${boxExitPath}`,
   ];
 };
 

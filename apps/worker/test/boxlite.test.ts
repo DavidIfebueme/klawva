@@ -43,7 +43,8 @@ describe("render command", () => {
 
   it("writes the page outside the unreachable tmp mount", () => {
     const shell = renderCommand("https://example.com")[1];
-    expect(shell).toContain("/work/page.html");
+    expect(shell).toContain("/home/chrome/work/page.html");
     expect(shell).not.toContain("> /tmp/");
+    expect(shell).toContain("mkdir -p /home/chrome/work");
   });
 });
