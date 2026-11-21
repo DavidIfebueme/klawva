@@ -34,6 +34,7 @@ import {
   retryTextFor,
   sanitized,
   serveRestApi,
+  fallbackTurnMessages,
   turnSucceeded,
 } from "./agent.ts";
 import {
@@ -202,10 +203,14 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     const config = admission.config;
     if (quotaSpent) {
-      const history = fallbackHistory(this.messages);
+      const history = fallbackTurnMessages(
+        config.soul,
+        config.brief,
+        fallbackHistory(this.messages),
+      );
       const reply = await Effect.runPromise(
         resolveRuntime(this.env, db, config.model)
-          .complete(history, false)
+          .complete(history, true)
           .pipe(
             Effect.map((result) => result.text),
             Effect.catch(() => Effect.succeed(dailyAiReply)),

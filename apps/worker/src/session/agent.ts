@@ -21,6 +21,8 @@ import { sessionTokenMatches, ownsSession } from "../account/account.ts";
 import { identityFromToken } from "../auth/auth.ts";
 import { deviceForToken } from "../auth/devices.ts";
 import {
+  buildMessages,
+  type ChatMessage,
   defaultModel,
   defaultToolAllowlist,
   ModelError,
@@ -232,6 +234,12 @@ export const loadTurnConfig = (
       model: (yield* store.get("model")) ?? defaultModel,
     };
   });
+
+export const fallbackTurnMessages = (
+  soul: string,
+  brief: Readonly<Record<string, string>>,
+  history: ReadonlyArray<ChatMessage>,
+): ReadonlyArray<ChatMessage> => buildMessages(soul, brief, history);
 
 export const capacityReply =
   "Klawva is at capacity for today. Please try again tomorrow.";
