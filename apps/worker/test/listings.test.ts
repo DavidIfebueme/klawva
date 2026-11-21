@@ -275,6 +275,16 @@ describe("desktop listings", () => {
     }
   });
 
+  it("tells the web-reading employees they have live tools", () => {
+    for (const agentId of ["scrapper", "researcher", "jobseeker", "leadscout"]) {
+      const soul = soulFor(agentId);
+      expect(soul).toContain("browse_url");
+      expect(soul).toContain("Never say you cannot access a website");
+      expect(soul).toContain("never present a simulated or hypothetical result");
+    }
+    expect(soulFor("receptionist")).not.toContain("browse_url");
+  });
+
   it("keeps the draft-only employees draft only in their souls", () => {
     for (const agentId of ["inbox", "paperwork", "cvtailor"]) {
       const soul = soulFor(agentId).toLowerCase();
