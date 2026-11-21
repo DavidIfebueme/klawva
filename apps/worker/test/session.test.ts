@@ -8,7 +8,6 @@ import {
   canSpend,
   canTransition,
   expireSession,
-  fallbackTurnMessages,
   projectState,
   transition,
 } from "../src/session/agent.ts";
@@ -240,19 +239,5 @@ describe("session projection", () => {
       expect.any(String),
       "s1",
     ]);
-  });
-});
-
-describe("quota fallback", () => {
-  it("keeps the employee soul and brief when the daily ai budget is spent", () => {
-    const messages = fallbackTurnMessages(
-      "You are the Klawva Scrapper.",
-      { task: "scrape jobs from job platforms" },
-      [{ role: "user", content: "hello" }],
-    );
-    expect(messages[0]?.role).toBe("system");
-    expect(messages[0]?.content).toContain("Klawva Scrapper");
-    expect(messages[0]?.content).toContain("scrape jobs from job platforms");
-    expect(messages.at(-1)?.content).toBe("hello");
   });
 });

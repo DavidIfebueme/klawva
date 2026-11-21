@@ -34,7 +34,6 @@ import {
   retryTextFor,
   sanitized,
   serveRestApi,
-  fallbackTurnMessages,
   turnSucceeded,
 } from "./agent.ts";
 import {
@@ -43,7 +42,7 @@ import {
   recordAiUsage,
   recordQuotaSpent,
 } from "../agent/meter.ts";
-import { ModelError, systemText } from "../agent/runtime.ts";
+import { ModelError, runTurn, systemText } from "../agent/runtime.ts";
 import { boxliteConfigFrom } from "../box/boxlite.ts";
 import { neuronsSpent, resolveRuntime, bedrockEnabled } from "../agent/proxy.ts";
 import { aiToolsFor } from "./stream-tools.ts";
@@ -203,19 +202,23 @@ export class SessionAgent extends AIChatAgent<Env> {
     }
     const config = admission.config;
     if (quotaSpent) {
-      const history = fallbackTurnMessages(
-        config.soul,
-        config.brief,
-        fallbackHistory(this.messages),
-      );
-      const reply = await Effect.runPromise(
-        resolveRuntime(this.env, db, config.model)
-          .complete(history, true)
-          .pipe(
-            Effect.map((result) => result.text),
-            Effect.catch(() => Effect.succeed(dailyAiReply)),
+      const turn = await Effect.runPromise(
+        runTurn({
+          runtime: resolveRuntime(this.env, db, config.model),
+          soul: config.soul,
+          brief: config.brief,
+          history: fallbackHistory(this.messages),
+          sessionId,
+          allowlist: config.allowlist,
+          braveKey: this.env.BRAVE_API_KEY ?? "",
+          boxlite: boxliteConfigFrom(this.env),
+        }).pipe(
+          Effect.catch(() =>
+            Effect.succeed({ text: dailyAiReply, steps: [] }),
           ),
+        ),
       );
+      const reply = turn.text.length > 0 ? turn.text : modelRetryReply;
       await Effect.runPromise(
         persistAssistant(store, db, this.name, reply),
       ).catch(() => undefined);
