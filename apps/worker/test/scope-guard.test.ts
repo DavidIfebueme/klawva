@@ -14,6 +14,18 @@ const hiringBrief = {
   task: "shortlist candidates and send weekly digests",
 };
 
+describe("text screen", () => {
+  it("does not treat the workers' own job as an injection", () => {
+    expect(
+      screenBrief({
+        task: "scrape jobs from job platforms for me",
+        urls: "https://www.jobberman.com/jobs",
+        output: "proper table",
+      }),
+    ).toBeNull();
+  });
+});
+
 const inBrief = [
   "also include junior backend roles in Lagos",
   "what is the expected notice period for these positions",
