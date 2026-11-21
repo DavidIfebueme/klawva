@@ -402,3 +402,49 @@ describe("self-check gate", () => {
     expect(out.text).toBe("plain answer");
   });
 });
+
+describe("fallback turn", () => {
+  it("executes the tool the model asks for instead of returning its narration", async () => {
+    const seen: Array<ReadonlyArray<{ readonly role: string; readonly content: string }>> = [];
+    let call = 0;
+    const runtime: AgentRuntimeImpl = {
+      complete: (messages) => {
+        seen.push(messages.map((message) => ({ role: message.role, content: message.content })));
+        call += 1;
+        return Effect.succeed(
+          call === 1
+            ? {
+                text: "I will search for it.",
+                toolCalls: [
+                  { id: "call_1", name: "web_search", arguments: '{"query":"backend jobs"}' },
+                ],
+                usage: { inTokens: 1, outTokens: 1 },
+              }
+            : {
+                text: "Found three roles.",
+                toolCalls: [],
+                usage: { inTokens: 1, outTokens: 1 },
+              },
+        );
+      },
+    };
+
+    const turn = await Effect.runPromise(
+      runTurn({
+        runtime,
+        soul: "You are the Klawva Scrapper.",
+        brief: { task: "find remote backend jobs" },
+        history: [{ role: "user", content: "go ahead" }],
+        sessionId: "s1",
+        allowlist: ["web_search"],
+        braveKey: "",
+      }),
+    );
+
+    expect(turn.text).toBe("Found three roles.");
+    expect(call).toBe(2);
+    expect(seen[0]?.[0]?.role).toBe("system");
+    expect(seen[0]?.[0]?.content).toContain("find remote backend jobs");
+    expect(seen[1]?.some((message) => message.role === "tool")).toBe(true);
+  });
+});
