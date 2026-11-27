@@ -448,3 +448,44 @@ describe("fallback turn", () => {
     expect(seen[1]?.some((message) => message.role === "tool")).toBe(true);
   });
 });
+
+describe("tool turn limit", () => {
+  it("still answers after the tool rounds run out", async () => {
+    let call = 0;
+    const runtime: AgentRuntimeImpl = {
+      complete: (_messages, withTools) => {
+        call += 1;
+        return Effect.succeed(
+          withTools
+            ? {
+                text: "",
+                toolCalls: [
+                  { id: `call_${call}`, name: "web_search", arguments: '{"query":"x"}' },
+                ],
+                usage: { inTokens: 1, outTokens: 1 },
+              }
+            : {
+                text: "Here is what I found so far.",
+                toolCalls: [],
+                usage: { inTokens: 1, outTokens: 1 },
+              },
+        );
+      },
+    };
+
+    const turn = await Effect.runPromise(
+      runTurn({
+        runtime,
+        soul: "You are the Klawva Scrapper.",
+        brief: { task: "find something" },
+        history: [{ role: "user", content: "go" }],
+        sessionId: "s1",
+        allowlist: ["web_search"],
+        braveKey: "",
+      }),
+    );
+
+    expect(turn.text).toBe("Here is what I found so far.");
+    expect(turn.steps.length).toBeGreaterThan(1);
+  });
+});
