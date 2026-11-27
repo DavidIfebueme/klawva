@@ -426,6 +426,18 @@ export const runTurn = (params: {
         messages.push({ role: "tool", content });
       }
     }
-    return { text: "", steps };
+    const closing = yield* params.runtime.complete(
+      [
+        ...messages,
+        {
+          role: "user",
+          content:
+            "You are out of tool turns. Answer now with what you already found. Do not call a tool.",
+        },
+      ],
+      false,
+    );
+    steps.push(closing.usage);
+    return { text: closing.text, steps };
   });
 
